@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Contact Us — Padmora by Yashi</title>
+<meta name="description" content="Get in touch with Padmora by Yashi — questions about an order, a saree, or our weavers.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="contact.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="page-banner">
+    <div class="container">
+      <p class="breadcrumb"><a href="/">Home</a> / Contact Us</p>
+      <h1>We're Here to Help</h1>
+      <p>Questions about a saree, an order, or a bulk order — write to us.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:36px;">
+    <div class="container">
+      <div class="contact-layout">
+        <div class="contact-info-card">
+          <h3>Get in Touch</h3>
+          <p>📞 +91 98765 43210<br>Mon–Sat, 10am–7pm IST</p>
+          <p>✉️ hello@padmora.example</p>
+          <p>📍 Padmora by Yashi Studio<br>Bandra West, Mumbai, Maharashtra 400050</p>
+          <p style="margin-top:20px;">Ordering 5+ sarees at once? Mention it in your message and our team will follow up with a bundle quote.</p>
+        </div>
+        <div>
+          <div class="form-error" id="contactError"></div>
+          <div id="contactSuccess" class="form-error" style="display:none;background:rgba(31,75,74,0.1);color:var(--teal);"></div>
+          <form id="contactForm">
+            <div class="form-row-2">
+              <div class="form-field"><label>Full Name</label><input type="text" id="cName" required></div>
+              <div class="form-field"><label>Email Address</label><input type="email" id="cEmail" required></div>
+            </div>
+            <div class="form-field"><label>Subject</label>
+              <select id="cSubject">
+                <option>General Enquiry</option>
+                <option>Order Support</option>
+                <option>Bulk Order</option>
+                <option>Returns &amp; Exchange</option>
+              </select>
+            </div>
+            <div class="form-field"><label>Message</label><textarea id="cMessage" rows="5" required></textarea></div>
+            <button type="submit" class="btn btn-primary">Send Message</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  document.getElementById('contactForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const errBox = document.getElementById('contactError');
+    const okBox = document.getElementById('contactSuccess');
+    errBox.classList.remove('show'); okBox.style.display = 'none';
+    try{
+      const res = await apiFetch('/contact', {
+        method:'POST',
+        body: JSON.stringify({
+          name: document.getElementById('cName').value,
+          email: document.getElementById('cEmail').value,
+          subject: document.getElementById('cSubject').value,
+          message: document.getElementById('cMessage').value
+        })
+      });
+      okBox.textContent = res.message;
+      okBox.style.display = 'block';
+      document.getElementById('contactForm').reset();
+    }catch(err){
+      errBox.textContent = err.message;
+      errBox.classList.add('show');
+    }
+  });
+</script>
+</body>
+</html>

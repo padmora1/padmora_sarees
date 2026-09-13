@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Shop All Sarees — Padmora by Yashi</title>
+<meta name="description" content="Browse our full collection of handloom sarees — Maheshwari, Ajrakh, Paithani and Narayanpet — filterable by fabric, occasion and price.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Shop All Sarees — Padmora by Yashi">
+<meta property="og:description" content="Browse our full collection of handloom sarees, filterable by fabric, occasion and price.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="shop.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="page-banner">
+    <div class="container">
+      <p class="breadcrumb"><a href="/">Home</a> / Menu</p>
+      <h1>Shop All Sarees</h1>
+      <p>Every weave, every occasion — filter to find the one.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:36px;">
+    <div class="container">
+      <div class="shop-layout">
+        <aside class="filters">
+          <input type="text" class="search-page-input" id="searchInput" placeholder="Search sarees...">
+          <div class="filter-group">
+            <h4>Fabric</h4>
+            <div id="fabricFilters"></div>
+          </div>
+          <div class="filter-group">
+            <h4>Occasion</h4>
+            <div id="occasionFilters"></div>
+          </div>
+          <div class="filter-group">
+            <h4>Price up to ₹<span id="priceLabel">25000</span></h4>
+            <input type="range" min="1500" max="25000" step="500" value="25000" class="price-range" id="priceRange">
+          </div>
+          <button class="clear-filters" id="clearFilters">Clear all filters</button>
+        </aside>
+
+        <div>
+          <div class="toolbar">
+            <span class="result-count" id="resultCount">Loading…</span>
+            <div class="custom-select" id="sortSelectWrap">
+              <button type="button" class="custom-select-trigger" id="sortTrigger">
+                <span id="sortTriggerLabel">Sort by: Popularity</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <div class="custom-select-menu" id="sortMenu">
+                <button type="button" class="custom-select-option" data-value="popular">Popularity<span class="check-mark">✓</span></button>
+                <button type="button" class="custom-select-option" data-value="low">Price: Low to High<span class="check-mark">✓</span></button>
+                <button type="button" class="custom-select-option" data-value="high">Price: High to Low<span class="check-mark">✓</span></button>
+                <button type="button" class="custom-select-option" data-value="rating">Customer Rating<span class="check-mark">✓</span></button>
+              </div>
+            </div>
+          </div>
+          <div class="product-grid" id="productGrid"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  // Populated from /api/fabrics + /api/occasions (Catalog taxonomy, admin-managed)
+  // instead of a hardcoded list — a fabric/occasion added in admin shows up here
+  // with zero frontend changes.
+  let allFabrics = [];
+  let allOccasions = [];
+
+  const params = new URLSearchParams(window.location.search);
+  let state = {
+    fabric: params.get('fabric') ? new Set([params.get('fabric')]) : new Set(),
+    occasion: params.get('occasion') ? new Set([params.get('occasion')]) : new Set(),
+    maxPrice: 25000,
+    sort: params.get('sort') || 'popular',
+    search: params.get('search') || ''
+  };
+
+  async function loadTaxonomy(){
+    try{
+      const [{fabrics}, {occasions}] = await Promise.all([apiFetch('/fabrics'), apiFetch('/occasions')]);
+      allFabrics = fabrics.map(f=>f.name);
+      allOccasions = occasions.map(o=>o.name);
+    }catch(e){
+      // Backend unreachable — fall back to the last-known catalog shape so the
+      // filter panel isn't just blank.
+      allFabrics = ['Maheshwari','Ajrakh','Paithani','Narayanpeth'];
+      allOccasions = ['Wedding','Festive','Party','Casual','Office'];
+    }
+  }
+
+  function renderFilterOptions(){
+    document.getElementById('fabricFilters').innerHTML = allFabrics.map(f=>`
+      <label class="filter-option"><input type="checkbox" value="${f}" class="fabricCheck" ${state.fabric.has(f)?'checked':''}> ${f}</label>`).join('');
+    document.getElementById('occasionFilters').innerHTML = allOccasions.map(o=>`
+      <label class="filter-option"><input type="checkbox" value="${o}" class="occasionCheck" ${state.occasion.has(o)?'checked':''}> ${o}</label>`).join('');
+
+    document.querySelectorAll('.fabricCheck').forEach(cb=>cb.addEventListener('change',()=>{
+      cb.checked ? state.fabric.add(cb.value) : state.fabric.delete(cb.value); loadProducts();
+    }));
+    document.querySelectorAll('.occasionCheck').forEach(cb=>cb.addEventListener('change',()=>{
+      cb.checked ? state.occasion.add(cb.value) : state.occasion.delete(cb.value); loadProducts();
+    }));
+  }
+
+  document.getElementById('priceRange').addEventListener('input', e=>{
+    state.maxPrice = Number(e.target.value);
+    document.getElementById('priceLabel').textContent = state.maxPrice.toLocaleString('en-IN');
+    loadProducts();
+  });
+  document.getElementById('searchInput').addEventListener('input', e=>{ state.search = e.target.value; loadProducts(); });
+  document.getElementById('clearFilters').addEventListener('click', ()=>{
+    state = { fabric:new Set(), occasion:new Set(), maxPrice:25000, sort:'popular', search:'' };
+    document.getElementById('priceRange').value = 25000;
+    document.getElementById('priceLabel').textContent = '25000';
+    document.getElementById('searchInput').value = '';
+    setSort('popular');
+    renderFilterOptions();
+    loadProducts();
+  });
+
+  // ---- Custom sort dropdown ----
+  const SORT_LABELS = { popular:'Sort by: Popularity', low:'Price: Low to High', high:'Price: High to Low', rating:'Customer Rating' };
+  function setSort(value){
+    state.sort = value;
+    document.getElementById('sortTriggerLabel').textContent = SORT_LABELS[value] || SORT_LABELS.popular;
+    document.querySelectorAll('.custom-select-option').forEach(opt=>opt.classList.toggle('active', opt.dataset.value===value));
+  }
+  document.getElementById('sortTrigger').addEventListener('click', (e)=>{
+    e.stopPropagation();
+    document.getElementById('sortSelectWrap').classList.toggle('open');
+  });
+  document.querySelectorAll('.custom-select-option').forEach(opt=>opt.addEventListener('click', ()=>{
+    setSort(opt.dataset.value);
+    document.getElementById('sortSelectWrap').classList.remove('open');
+    loadProducts();
+  }));
+  document.addEventListener('click', (e)=>{
+    const wrap = document.getElementById('sortSelectWrap');
+    if(wrap.classList.contains('open') && !wrap.contains(e.target)) wrap.classList.remove('open');
+  });
+
+  let wishlistedIds = new Set();
+
+  function productCardHTML(p){
+    const off = Math.round((1 - p.price/p.mrp)*100);
+    // A product with no badge set (p.badge is null/'') must show no badge at
+    // all — the old fallthrough ternary defaulted anything that wasn't
+    // 'sale'/'new' to 'Bestseller', which mislabeled every plain product.
+    const badgeLabel = p.badge==='sale'?'Sale':p.badge==='new'?'New':p.badge==='bestseller'?'Bestseller':'';
+    const isWished = wishlistedIds.has(p.id);
+    const soldOut = p.stock <= 0;
+    return `
+    <div class="product-card ${soldOut?'sold-out':''}">
+      <a href="/product?id=${p.id}" class="product-media" style="background:${swatchBg(p.swatch)};display:block;">
+        ${soldOut ? `<div class="sold-out-ribbon"><span class="ribbon-lotus">${LOTUS_GLYPH_SVG}</span>Sold Out</div>` : (badgeLabel ? `<span class="product-badge ${p.badge}">${badgeLabel}</span>` : '')}
+        <button class="wishlist-toggle ${isWished?'active':''}" aria-label="${isWished?'Remove from wishlist':'Add to wishlist'}" onclick="event.preventDefault();quickWish(${p.id}, this);">
+          <svg viewBox="0 0 24 24" stroke-width="1.6"><path d="M12 21s-7.5-4.7-10-9.3C.3 8 2 4.5 5.6 4.1c2-.2 3.8.8 4.4 2.5.6-1.7 2.4-2.7 4.4-2.5C18 4.5 19.7 8 22 11.7 19.5 16.3 12 21 12 21z"/></svg>
+        </button>
+        <span class="quick-add">${soldOut ? 'Pre Book' : 'Quick View'}</span>
+      </a>
+      <div class="product-info">
+        <div class="product-fabric">${p.fabric}</div>
+        <a href="/product?id=${p.id}" class="product-name">${p.name}</a>
+        <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews})</div>
+        <div class="product-price">
+          <span class="price-now">${money(p.price)}</span>
+          <span class="price-mrp">${money(p.mrp)}</span>
+          <span class="price-off">${off}% off</span>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  async function quickWish(id, btn){
+    const nowActive = !wishlistedIds.has(id);
+    try{
+      if(nowActive){ await wishlistAdd(id); wishlistedIds.add(id); toast('Added to wishlist ♡'); }
+      else{ await wishlistRemove(id); wishlistedIds.delete(id); toast('Removed from wishlist'); }
+      if(btn){ btn.classList.toggle('active', nowActive); btn.setAttribute('aria-label', nowActive?'Remove from wishlist':'Add to wishlist'); }
+      refreshBadgeCounts();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function loadProducts(){
+    const q = new URLSearchParams();
+    if(state.fabric.size) q.set('fabric', [...state.fabric].join(','));
+    if(state.occasion.size) q.set('occasion', [...state.occasion].join(','));
+    if(state.maxPrice < 25000) q.set('maxPrice', state.maxPrice);
+    if(state.search) q.set('search', state.search);
+    if(state.sort) q.set('sort', state.sort);
+
+    try{
+      const [{products}, wishData] = await Promise.all([apiFetch('/products?' + q.toString()), wishlistGet()]);
+      wishlistedIds = new Set(wishData.products.map(p=>p.id));
+      document.getElementById('resultCount').textContent = `${products.length} saree${products.length!==1?'s':''}`;
+      document.getElementById('productGrid').innerHTML = products.length ? products.map(productCardHTML).join('') :
+        `<div class="empty-state" style="grid-column:1/-1;">No sarees match these filters just yet. Try widening your search.</div>`;
+    }catch(e){
+      document.getElementById('resultCount').textContent = '';
+      document.getElementById('productGrid').innerHTML = `<p style="grid-column:1/-1;text-align:center;color:var(--ink-soft);">Could not load products — is the backend server running?</p>`;
+    }
+  }
+
+  async function init(){
+    setSort(state.sort);
+    document.getElementById('searchInput').value = state.search;
+    await loadTaxonomy();
+    renderFilterOptions();
+    loadProducts();
+  }
+  init();
+</script>
+</body>
+</html>

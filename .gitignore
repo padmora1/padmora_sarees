@@ -1,0 +1,21 @@
+node_modules/
+backend/.env
+backend/server.log
+
+# Claude Code's own local session/tooling config — not part of the deployed
+# site, and not meaningful outside this machine.
+.claude/
+
+# Leftover from the pre-Supabase SQLite era — the app no longer reads these,
+# kept out of git so a fresh clone doesn't confuse the two.
+backend/data/zaree.db
+backend/data/zaree.db-*
+backend/data/db.json
+
+# Runtime-generated, not source: JSON backup snapshots (utils/backup.js) and
+# uploaded product/return images (multer recreates the folder automatically
+# on boot if it's missing — see middleware/upload.js — so nothing here needs
+# a placeholder file to survive a fresh checkout).
+backend/data/backups/
+backend/uploads/*
+!backend/uploads/.gitkeep

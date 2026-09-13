@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>My Account — Padmora by Yashi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="account.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="page-banner">
+    <div class="container">
+      <p class="breadcrumb"><a href="/">Home</a> / My Account</p>
+      <h1 id="greetingHeading">My Account</h1>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:36px;">
+    <div class="container">
+      <div class="account-layout">
+        <nav class="account-nav">
+          <button class="active" data-tab="profile">Profile</button>
+          <button data-tab="address">Addresses</button>
+          <button data-tab="orders">Order History</button>
+          <button data-tab="returns">Returns</button>
+          <button data-tab="logout">Log Out</button>
+        </nav>
+
+        <div class="account-panel">
+          <div id="panel-profile">
+            <h2>Profile Details</h2>
+            <div class="form-error" id="profileError"></div>
+            <form id="profileForm">
+              <div class="form-row-2">
+                <div class="form-field"><label>Full Name</label><input type="text" id="pName"></div>
+                <div class="form-field"><label>Phone Number</label><input type="tel" id="pPhone" placeholder="+91 98765 43210"></div>
+              </div>
+              <div class="form-field"><label>Email Address</label><input type="email" id="pEmail" disabled></div>
+              <button type="submit" class="btn btn-primary">Save Changes</button>
+            </form>
+          </div>
+
+          <div id="panel-address" style="display:none;">
+            <h2>Saved Addresses</h2>
+            <div id="addressList" style="margin-bottom:22px;"></div>
+            <h3 style="font-size:15px;margin-bottom:14px;">Add a New Address</h3>
+            <div class="form-error" id="addressError"></div>
+            <form id="addressForm">
+              <div class="form-row-2">
+                <div class="form-field"><label>Label</label>
+                  <select id="aLabel"><option>Home</option><option>Work</option><option>Other</option></select>
+                </div>
+                <div class="form-field"><label>Full Name</label><input type="text" id="aName"></div>
+              </div>
+              <div class="form-field"><label>Address Line</label><input type="text" id="aLine1" placeholder="House no, street, area"></div>
+              <div class="form-row-2">
+                <div class="form-field"><label>City</label><input type="text" id="aCity"></div>
+                <div class="form-field"><label>Pincode</label><input type="text" id="aPincode"></div>
+              </div>
+              <div class="form-row-2">
+                <div class="form-field"><label>State</label>
+                  <select id="aState">
+                    <option>Maharashtra</option><option>Delhi</option><option>Karnataka</option>
+                    <option>Tamil Nadu</option><option>West Bengal</option><option>Gujarat</option>
+                  </select>
+                </div>
+                <div class="form-field"><label>Phone</label><input type="tel" id="aPhone"></div>
+              </div>
+              <button type="submit" class="btn btn-primary">Save Address</button>
+            </form>
+          </div>
+
+          <div id="panel-orders" style="display:none;">
+            <h2>Order History</h2>
+            <div id="ordersList"><div class="loading-state"><span class="zari-spinner"></span>Loading orders…</div></div>
+          </div>
+
+          <div id="panel-returns" style="display:none;">
+            <h2>Returns &amp; Refunds</h2>
+            <p style="font-size:13px;color:var(--ink-soft);margin-top:-8px;margin-bottom:18px;">Delivered an order you need to send back? Request it from that order in <a href="#" data-goto-orders style="color:var(--maroon);text-decoration:underline;">Order History</a> — every request you've submitted shows up here as it's processed.</p>
+            <div id="returnsList"><div class="loading-state"><span class="zari-spinner"></span>Loading…</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script src="js/guard.js"></script>
+<script>
+  function switchTab(tab){
+    if(tab === 'logout'){ logout(); return; }
+    document.querySelectorAll('.account-nav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+    ['profile','address','orders','returns'].forEach(t=>{
+      document.getElementById('panel-'+t).style.display = (t===tab) ? 'block' : 'none';
+    });
+    if(tab === 'orders') loadOrders();
+    if(tab === 'address') loadAddresses();
+    if(tab === 'returns') loadReturns();
+  }
+  document.querySelectorAll('.account-nav button').forEach(b=>b.addEventListener('click', ()=>switchTab(b.dataset.tab)));
+
+  async function loadProfile(){
+    try{
+      const { user } = await apiFetch('/auth/me');
+      setStoredUser(user);
+      document.getElementById('greetingHeading').textContent = 'Hello, ' + user.name.split(' ')[0];
+      document.getElementById('pName').value = user.name || '';
+      document.getElementById('pPhone').value = user.phone || '';
+      document.getElementById('pEmail').value = user.email || '';
+    }catch(e){
+      document.getElementById('profileError').textContent = e.message;
+      document.getElementById('profileError').classList.add('show');
+    }
+  }
+
+  document.getElementById('profileForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    try{
+      const { user } = await apiFetch('/auth/me', {
+        method:'PUT',
+        body: JSON.stringify({ name: document.getElementById('pName').value, phone: document.getElementById('pPhone').value })
+      });
+      setStoredUser(user);
+      toast('Profile updated');
+    }catch(err){ toast(err.message, 'error'); }
+  });
+
+  async function loadAddresses(){
+    const box = document.getElementById('addressList');
+    try{
+      const { addresses } = await apiFetch('/addresses');
+      box.innerHTML = addresses.length ? addresses.map(a=>`
+        <div class="order-card">
+          <div class="order-card-head">
+            <span><strong>${a.label}</strong>${a.is_default ? ' · Default' : ''}</span>
+            <span class="cancel-order-btn" data-del-addr="${a.id}" style="margin-top:0;">Delete</span>
+          </div>
+          <p style="font-size:13px;color:var(--ink-soft);">${a.name ? a.name+', ' : ''}${a.line1}, ${a.city}, ${a.state} ${a.pincode}${a.phone ? ' · '+a.phone : ''}</p>
+        </div>`).join('') : `<p style="color:var(--ink-soft);font-size:13px;">No saved addresses yet.</p>`;
+      document.querySelectorAll('[data-del-addr]').forEach(el=>el.addEventListener('click', async ()=>{
+        try{ await apiFetch('/addresses/' + el.dataset.delAddr, {method:'DELETE'}); loadAddresses(); toast('Address removed'); }
+        catch(e){ toast(e.message, 'error'); }
+      }));
+    }catch(e){
+      box.innerHTML = `<p style="color:var(--ink-soft);">Could not load addresses.</p>`;
+    }
+  }
+
+  document.getElementById('addressForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    try{
+      await apiFetch('/addresses', {
+        method:'POST',
+        body: JSON.stringify({
+          label: document.getElementById('aLabel').value,
+          name: document.getElementById('aName').value,
+          line1: document.getElementById('aLine1').value,
+          city: document.getElementById('aCity').value,
+          pincode: document.getElementById('aPincode').value,
+          state: document.getElementById('aState').value,
+          phone: document.getElementById('aPhone').value
+        })
+      });
+      toast('Address saved');
+      document.getElementById('addressForm').reset();
+      loadAddresses();
+    }catch(err){ toast(err.message, 'error'); }
+  });
+
+  const RETURN_STATUS_LABEL = {
+    Requested: 'Return requested — awaiting review', Approved: 'Return approved — ship it back to us',
+    Rejected: 'Return request rejected', Received: 'Received — refund being processed',
+    Refunded: 'Refunded'
+  };
+
+  let lastOrders = [];
+
+  async function loadOrders(){
+    const box = document.getElementById('ordersList');
+    try{
+      const { orders } = await apiFetch('/orders');
+      lastOrders = orders;
+      if(!orders.length){
+        box.innerHTML = `<p style="color:var(--ink-soft);">No orders yet. <a href="/shop" style="color:var(--maroon);text-decoration:underline;">Start shopping</a>.</p>`;
+        return;
+      }
+      box.innerHTML = orders.map(o=>`
+        <div class="order-card">
+          <div class="order-card-head">
+            <span>Order #${o.id} · ${new Date(o.placedAt).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'})}</span>
+            <span class="order-status ${o.status==='Cancelled'?'cancelled':''}">${o.status}</span>
+          </div>
+          ${o.status !== 'Cancelled' ? `
+          <div class="order-timeline">
+            ${o.timeline.map(t=>`<div class="tl-step ${t.done?'done':''}"><div class="tl-dot"></div><div class="tl-label">${t.status}</div></div>`).join('')}
+          </div>` : ''}
+          ${o.giftNote ? `<p style="font-size:12.5px;color:var(--ink-soft);margin:10px 0;">🎁 Gift note: “${o.giftNote}”</p>` : ''}
+          ${o.items.map(li=>`<div class="order-item-row"><span>${li.name} × ${li.qty}</span><span>${money(li.price*li.qty)}</span></div>`).join('')}
+          ${o.discount > 0 ? `<div class="order-item-row"><span>Discount ${o.couponCode ? '('+o.couponCode+')' : ''}</span><span>−${money(o.discount)}</span></div>` : ''}
+          <div class="order-item-row" style="font-weight:600;color:var(--ink);border-top:1px solid rgba(173,59,92,0.1);margin-top:8px;padding-top:8px;">
+            <span>Total</span><span>${money(o.total)}</span>
+          </div>
+          ${o.returnStatus ? `<p style="font-size:12.5px;color:var(--maroon);margin-top:10px;">↩ ${RETURN_STATUS_LABEL[o.returnStatus] || o.returnStatus}</p>` : ''}
+          <div class="order-actions">
+            ${o.status !== 'Cancelled' ? `<a href="/track-order?id=${o.id}" class="order-action-btn track"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 7h11v8H3z"/><path d="M14 10h4l3 3v2h-7z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17.5" cy="18" r="1.6"/></svg>Track Order</a>` : ''}
+            ${o.cancellable ? `<button type="button" class="order-action-btn cancel" data-cancel="${o.id}"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg>Cancel Order</button>` : `${o.status !== 'Cancelled' && o.status !== 'Confirmed' && o.status !== 'Packed' ? `<span class="order-locked-note">Shipped — can no longer be cancelled</span>` : ''}`}
+            ${o.canRequestReturn ? `<button type="button" class="order-action-btn return" data-return="${o.id}"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>Return / Refund</button>` : ''}
+          </div>
+          <div id="returnForm-${o.id}"></div>
+        </div>`).join('');
+      document.querySelectorAll('[data-cancel]').forEach(el=>el.addEventListener('click', ()=>cancelOrder(el.dataset.cancel)));
+      document.querySelectorAll('[data-return]').forEach(el=>el.addEventListener('click', ()=>openReturnForm(el.dataset.return)));
+    }catch(e){
+      box.innerHTML = `<p style="color:var(--ink-soft);">Could not load orders.</p>`;
+    }
+  }
+
+  // ---- Return / Refund request (expands inline under the order card) ----
+  async function openReturnForm(orderId){
+    const mount = document.getElementById('returnForm-' + orderId);
+    if(!mount) return;
+    if(mount.innerHTML){ mount.innerHTML = ''; return; } // toggle closed if already open
+
+    const order = lastOrders.find(o => o.id === orderId);
+    mount.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Checking eligibility…</div>`;
+    let elig;
+    try{ elig = await returnEligibility(orderId); }
+    catch(e){ mount.innerHTML = `<p style="color:var(--maroon);font-size:13px;">${e.message}</p>`; return; }
+    if(!elig.eligible){
+      const msg = elig.reason === 'window_closed' ? `The ${elig.policy.windowDays}-day return window for this order has closed.`
+        : elig.reason === 'already_requested' ? 'A return request already exists for this order.'
+        : 'This order isn\'t eligible for return.';
+      mount.innerHTML = `<p style="color:var(--ink-soft);font-size:13px;">${msg}</p>`;
+      return;
+    }
+
+    const reasonOptions = elig.reasons.map(r => `<option value="${r.key}" data-category="${r.category}">${r.label}</option>`).join('');
+    const itemRows = order.items.map(li => `
+      <label class="return-item-row">
+        <input type="checkbox" data-ret-item="${li.id}" data-ret-price="${li.price}" checked>
+        <span class="return-item-name">${li.name}${li.color ? ' — ' + li.color : ''}</span>
+        <span class="return-item-qty">Qty
+          <select data-ret-qty="${li.id}">${Array.from({length: li.qty}, (_, i) => `<option value="${i+1}" ${i+1===li.qty?'selected':''}>${i+1}</option>`).join('')}</select>
+          / ${li.qty}
+        </span>
+      </label>`).join('');
+
+    mount.innerHTML = `
+      <div class="return-request-panel">
+        <h4>Request a Return / Refund</h4>
+        <p style="font-size:12px;color:var(--ink-soft);">Select the item(s) you're returning, tell us why, and how you'd like the refund.</p>
+
+        <div class="return-item-list">${itemRows}</div>
+
+        <div class="form-field"><label>Reason</label>
+          <select id="retReason-${orderId}">${reasonOptions}</select>
+        </div>
+        <div class="form-field"><label>Anything else we should know? (optional unless "Other")</label>
+          <textarea id="retDetail-${orderId}" rows="2" placeholder="e.g. the pallu has a small tear near the border"></textarea>
+        </div>
+
+        <div class="form-field">
+          <label id="retPhotoLabel-${orderId}">Photos (optional)</label>
+          <input type="file" id="retPhotos-${orderId}" accept="image/jpeg,image/png,image/webp" multiple>
+          <p style="font-size:11.5px;color:var(--ink-soft);margin-top:4px;">Up to 5 photos, 8MB each. A clear shot of the issue helps us approve faster.</p>
+          <div class="return-photo-preview" id="retPhotoPreview-${orderId}"></div>
+        </div>
+
+        <div class="form-field"><label>Refund method</label>
+          <select id="retMethod-${orderId}">
+            ${order.payment !== 'COD' ? '<option value="original">Refund to original payment method</option>' : ''}
+            <option value="bank_transfer">Bank transfer / UPI</option>
+            <option value="store_credit">Store credit (fastest — a coupon for your next order)</option>
+          </select>
+        </div>
+        <div class="form-field" id="retAccountWrap-${orderId}" style="display:none;">
+          <label>UPI ID or Account number + IFSC</label>
+          <input type="text" id="retAccount-${orderId}" placeholder="yourname@okhdfcbank or 1234567890 / HDFC0001234">
+        </div>
+
+        <div class="form-error" id="retError-${orderId}"></div>
+        <div style="display:flex;gap:10px;margin-top:6px;">
+          <button type="button" class="btn btn-primary btn-sm" id="retSubmit-${orderId}">Submit Request</button>
+          <button type="button" class="btn btn-sm" id="retCancel-${orderId}">Cancel</button>
+        </div>
+      </div>`;
+
+    const methodSelect = document.getElementById('retMethod-' + orderId);
+    const accountWrap = document.getElementById('retAccountWrap-' + orderId);
+    methodSelect.addEventListener('change', () => {
+      accountWrap.style.display = methodSelect.value === 'bank_transfer' ? 'block' : 'none';
+    });
+
+    // Photos are only required when the claim is "you sent the wrong/damaged
+    // thing" — a plain change-of-mind doesn't need proof of anything. The
+    // label flips live as the shopper switches reasons.
+    const reasonSelect = document.getElementById('retReason-' + orderId);
+    const photoLabel = document.getElementById('retPhotoLabel-' + orderId);
+    const updatePhotoLabel = () => {
+      const category = reasonSelect.selectedOptions[0]?.dataset.category;
+      photoLabel.textContent = category === 'seller_fault' ? 'Photos (required — please attach evidence)' : 'Photos (optional)';
+    };
+    reasonSelect.addEventListener('change', updatePhotoLabel);
+    updatePhotoLabel();
+
+    const photoInput = document.getElementById('retPhotos-' + orderId);
+    const photoPreview = document.getElementById('retPhotoPreview-' + orderId);
+    photoInput.addEventListener('change', () => {
+      photoPreview.innerHTML = '';
+      Array.from(photoInput.files).slice(0, 5).forEach(file => {
+        const url = URL.createObjectURL(file);
+        const img = document.createElement('img');
+        img.src = url; img.alt = file.name; img.className = 'return-photo-thumb';
+        photoPreview.appendChild(img);
+      });
+    });
+
+    document.getElementById('retCancel-' + orderId).addEventListener('click', () => { mount.innerHTML = ''; });
+    document.getElementById('retSubmit-' + orderId).addEventListener('click', () => submitReturnRequest(orderId));
+  }
+
+  async function submitReturnRequest(orderId){
+    const errorBox = document.getElementById('retError-' + orderId);
+    errorBox.classList.remove('show'); errorBox.textContent = '';
+
+    const items = Array.from(document.querySelectorAll(`[data-ret-item]`))
+      .filter(cb => cb.checked)
+      .map(cb => ({
+        orderItemId: Number(cb.dataset.retItem),
+        qty: Number(document.querySelector(`[data-ret-qty="${cb.dataset.retItem}"]`).value)
+      }));
+    if(!items.length){
+      errorBox.textContent = 'Select at least one item to return.'; errorBox.classList.add('show'); return;
+    }
+
+    const reasonSelect = document.getElementById('retReason-' + orderId);
+    const reasonCategory = reasonSelect.selectedOptions[0]?.dataset.category;
+    const photoInput = document.getElementById('retPhotos-' + orderId);
+    const photoFiles = photoInput.files;
+
+    if(reasonCategory === 'seller_fault' && !photoFiles.length){
+      errorBox.textContent = 'Add at least one photo showing the issue — it helps us process your claim faster.';
+      errorBox.classList.add('show');
+      return;
+    }
+
+    const payload = {
+      orderId,
+      items,
+      reason: reasonSelect.value,
+      reasonDetail: document.getElementById('retDetail-' + orderId).value,
+      refundMethod: document.getElementById('retMethod-' + orderId).value,
+      refundAccountDetail: document.getElementById('retAccount-' + orderId) ? document.getElementById('retAccount-' + orderId).value : ''
+    };
+
+    try{
+      if(photoFiles.length){
+        const { urls } = await returnUploadPhotos(photoFiles);
+        payload.photoUrls = urls;
+      }
+      await returnCreate(payload);
+      toast('Return request submitted — we\'ll review it shortly');
+      loadOrders();
+    }catch(e){
+      errorBox.textContent = e.message; errorBox.classList.add('show');
+    }
+  }
+
+  async function loadReturns(){
+    const box = document.getElementById('returnsList');
+    try{
+      const { returns } = await returnsGet();
+      if(!returns.length){
+        box.innerHTML = `<p style="color:var(--ink-soft);font-size:13px;">No return requests yet.</p>`;
+        return;
+      }
+      box.innerHTML = returns.map(r => `
+        <div class="order-card">
+          <div class="order-card-head">
+            <span>Order #${r.orderId} · ${new Date(r.requestedAt).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'})}</span>
+            <span class="order-status ${r.status==='Rejected'?'cancelled':''}">${r.status}</span>
+          </div>
+          <p style="font-size:12.5px;color:var(--ink-soft);margin:6px 0;">${r.reasonLabel}${r.reasonDetail ? ' — “' + r.reasonDetail + '”' : ''}</p>
+          ${r.items.map(li=>`<div class="order-item-row"><span>${li.name}${li.color ? ' — '+li.color : ''} × ${li.qty}</span><span>${money(li.price*li.qty)}</span></div>`).join('')}
+          ${r.photos && r.photos.length ? `<div class="return-photo-preview">${r.photos.map(p=>`<a href="${p.url}" target="_blank" rel="noopener"><img src="${p.url}" alt="Return photo" class="return-photo-thumb"></a>`).join('')}</div>` : ''}
+          <div class="order-item-row" style="font-weight:600;color:var(--ink);border-top:1px solid rgba(173,59,92,0.1);margin-top:8px;padding-top:8px;">
+            <span>${r.status === 'Refunded' ? 'Refunded' : 'Estimated refund'}</span><span>${money(r.finalRefundAmount ?? r.computedRefundAmount)}</span>
+          </div>
+          ${r.status === 'Refunded' && r.couponCode ? `<p style="font-size:12.5px;color:var(--maroon);margin-top:8px;">Store credit code: <strong>${r.couponCode}</strong></p>` : ''}
+          ${r.adminNote ? `<p style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;background:rgba(173,59,92,0.05);padding:8px 10px;border-radius:6px;">Note from our team: ${r.adminNote}</p>` : ''}
+        </div>`).join('');
+    }catch(e){
+      box.innerHTML = `<p style="color:var(--ink-soft);">Could not load return requests.</p>`;
+    }
+  }
+
+  document.querySelector('[data-goto-orders]')?.addEventListener('click', (e)=>{ e.preventDefault(); switchTab('orders'); });
+
+  async function cancelOrder(orderId){
+    const ok = await showConfirmDialog(
+      'This will cancel your order and restock the items. This cannot be undone.',
+      { title: 'Cancel this order?', confirmLabel: 'Cancel Order', cancelLabel: 'Keep Order', danger: true }
+    );
+    if(!ok) return;
+    try{
+      await apiFetch('/orders/' + orderId + '/cancel', {method:'POST'});
+      toast('Order cancelled');
+      loadOrders();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  if(requireLogin()) loadProfile();
+</script>
+</body>
+</html>

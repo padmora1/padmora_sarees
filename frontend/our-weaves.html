@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Our Weaves — Loom-to-You Authenticity | Padmora by Yashi</title>
+<meta name="description" content="Meet the weavers behind our sarees — honest loom-to-you provenance, disclosing handloom vs. powerloom on every fabric we sell.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Our Weaves — Loom-to-You Authenticity">
+<meta property="og:description" content="Meet the weavers behind our sarees — honest loom-to-you provenance on every fabric we sell.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="our-weaves.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="page-banner">
+    <div class="container">
+      <p class="breadcrumb"><a href="/">Home</a> / Our Weaves</p>
+      <h1>Loom-to-You Authenticity</h1>
+      <p>Every region has its own weave, its own weavers, and its own truth. Here's ours, disclosed plainly.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:36px;">
+    <div class="container">
+      <div class="section-head"><p class="eyebrow">Handloom vs Powerloom</p><h2>Why We Say It Out Loud</h2></div>
+      <div class="story-band">
+        <div>
+          <p style="color:var(--ink-soft);font-size:14px;line-height:1.8;margin-bottom:14px;">Handloom silk takes a skilled weaver anywhere from 3 days to 3 months to complete a single saree, depending on the intricacy of the zari work. Powerloom sarees can be produced in under an hour on a machine — and are frequently sold online as "pure handloom silk" at handloom prices. It's the single biggest trust problem in this category.</p>
+          <p style="color:var(--ink-soft);font-size:14px;line-height:1.8;">On Padmora, every product page carries a Loom-to-You card naming the weaver or artisan house, their region, and an honest loom-type tag — Handloom, Handcrafted, or Powerloom. That's also why our catalog is deliberately small: we only add a craft once Yashi and team have verified it in person.</p>
+        </div>
+        <div class="story-art" style="background:linear-gradient(160deg,#7A2740,#B87F55);"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="section-head"><p class="eyebrow">Region by Region</p><h2>The Crafts We Curate</h2></div>
+      <div class="weave-grid" id="weaveGrid"></div>
+      <p style="text-align:center;color:var(--ink-soft);font-size:13px;margin-top:26px;">This is the full list — we'll add a new craft only after Yashi and team have verified the artisans behind it in person.</p>
+    </div>
+  </section>
+
+  <section class="promo-band">
+    <p class="eyebrow" style="color:var(--gold-soft);">See It On Every Product</p>
+    <h2>Check the Loom-to-You Card Before You Buy</h2>
+    <a href="/shop" class="btn btn-gold" style="margin-top:18px;">Shop With Confidence</a>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  // Admin-managed (Catalog → Fabrics) — the same region/story copy shown in
+  // the shop filters and product pages, so editing a fabric once updates it
+  // everywhere.
+  async function loadWeaves(){
+    try{
+      const {fabrics} = await apiFetch('/fabrics');
+      document.getElementById('weaveGrid').innerHTML = fabrics.map(f=>`
+        <div class="weave-card">
+          <div class="weave-art" style="${f.heroImage ? `background:url('${f.heroImage}') center/cover;` : `background:${swatchBg(f.swatch)};`}"></div>
+          <div class="weave-card-body"><span>${f.region}${f.state?', '+f.state:''}</span><h4>${f.name}</h4><p>${f.fullDesc || f.shortDesc} ${f.craftType}.</p></div>
+        </div>`).join('');
+    }catch(e){
+      document.getElementById('weaveGrid').innerHTML = `<p style="text-align:center;color:var(--ink-soft);grid-column:1/-1;">Could not load weaves — is the backend server running?</p>`;
+    }
+  }
+  loadWeaves();
+</script>
+</body>
+</html>

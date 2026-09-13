@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Admin Login — Padmora</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  /* Deliberately not the customer site chrome — this is a separate,
+     internal login screen, not a themed extension of the storefront. */
+  body{background:linear-gradient(160deg,var(--maroon-deep),#AD3B5C 70%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+  .admin-login-card{background:var(--ivory);border-radius:8px;box-shadow:0 24px 60px rgba(0,0,0,0.35);width:100%;max-width:380px;padding:40px 36px;}
+  .admin-login-brand{text-align:center;margin-bottom:28px;}
+  .admin-login-brand img{height:48px;margin:0 auto 10px;display:block;}
+  .admin-login-brand strong{display:block;font-family:var(--font-display);font-size:20px;color:var(--maroon-deep);}
+  .admin-login-brand span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--gold);margin-top:2px;}
+</style>
+</head>
+<body data-page="admin-login">
+
+<div class="admin-login-card">
+  <div class="admin-login-brand">
+    <img src="images/padmora-lotus.png" alt="">
+    <strong>Padmora</strong>
+    <span>Store Dashboard</span>
+  </div>
+  <div class="form-error" id="formError"></div>
+  <form id="adminLoginForm">
+    <div class="form-field">
+      <label>Admin Email</label>
+      <input type="email" id="email" placeholder="you@padmorasarees.com" required autocomplete="username">
+    </div>
+    <div class="form-field">
+      <label>Password</label>
+      <div class="password-field">
+        <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+        <button type="button" class="password-toggle" id="togglePassword" aria-label="Show password">Show</button>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary btn-block" style="justify-content:center;">Log In</button>
+  </form>
+  <p style="text-align:center;font-size:12px;color:var(--ink-soft);margin-top:20px;">This is a separate login from customer accounts.</p>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/admin-api.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  document.getElementById('adminLoginForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const errBox = document.getElementById('formError');
+    errBox.classList.remove('show');
+    try{
+      const { token, admin } = await adminApiFetch('/admin-auth/login', {
+        method:'POST',
+        body: JSON.stringify({
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value
+        })
+      });
+      setAdminToken(token);
+      setStoredAdmin(admin);
+      window.location.href = '/admin';
+    }catch(err){
+      errBox.textContent = err.message;
+      errBox.classList.add('show');
+    }
+  });
+
+  document.getElementById('togglePassword').addEventListener('click', (e)=>{
+    const input = document.getElementById('password');
+    const showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    e.target.textContent = showing ? 'Show' : 'Hide';
+  });
+
+  // Already signed in? skip straight to the dashboard.
+  if (isAdminLoggedIn()) window.location.href = '/admin';
+</script>
+</body>
+</html>

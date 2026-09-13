@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Padmora by Yashi — Handloom &amp; Heritage Sarees</title>
+<meta name="description" content="Handloom and heritage sarees sourced directly from India's weaving communities — Maheshwari, Ajrakh, Paithani and Narayanpet, with honest loom-to-you provenance on every piece.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Padmora by Yashi — Handloom &amp; Heritage Sarees">
+<meta property="og:description" content="Handloom and heritage sarees sourced directly from India's weaving communities, with honest loom-to-you provenance on every piece.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .hero{position:relative;overflow:hidden;background:linear-gradient(120deg,var(--ivory) 0%,var(--ivory-deep) 55%,var(--blush) 100%);padding:60px 0 0;}
+  .hero-inner{max-width:1240px;margin:0 auto;padding:0 28px;display:grid;grid-template-columns:1.05fr .95fr;gap:40px;align-items:center;}
+  .hero h1{font-size:clamp(36px,5vw,58px);line-height:1.08;margin:16px 0 18px;}
+  .hero h1 em{font-style:normal;color:var(--gold);}
+  .hero p{font-size:16px;color:var(--ink-soft);max-width:440px;margin-bottom:26px;}
+  .hero-ctas{display:flex;gap:16px;flex-wrap:wrap;}
+  .hero-drape{position:relative;height:460px;border-radius:4px;overflow:hidden;background:linear-gradient(160deg,#7A2740 0%,#AD3B5C 45%,#D9A97C 100%);box-shadow:var(--shadow);}
+  .hero-drape-label{position:absolute;bottom:22px;left:22px;color:var(--ivory);}
+  .hero-drape-label strong{font-family:var(--font-display);font-size:20px;display:block;margin-top:4px;}
+  .trust-strip{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid rgba(173,59,92,0.12);border-bottom:1px solid rgba(173,59,92,0.12);background:var(--white);}
+  .trust-item{display:flex;align-items:center;gap:12px;padding:20px 28px;border-right:1px solid rgba(173,59,92,0.1);}
+  .trust-item:last-child{border-right:none;}
+  .trust-item svg{width:22px;height:22px;stroke:var(--maroon);flex-shrink:0;}
+  .trust-item strong{display:block;font-size:13px;}
+  .trust-item span{font-size:11.5px;color:var(--ink-soft);}
+  /* Exactly 4 visible at a time — an admin adding a 5th+ fabric (Catalog →
+     Fabrics) doesn't wrap into a cramped second row, it scrolls, same rail
+     pattern as "Sarees in Motion" below. */
+  .cat-rail-wrap{position:relative;}
+  .cat-rail{display:flex;gap:22px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding-bottom:2px;}
+  .cat-rail::-webkit-scrollbar{display:none;}
+  .cat-item{flex:0 0 calc(25% - 16.5px);scroll-snap-align:start;text-align:center;cursor:pointer;}
+  .cat-swatch{width:100%;aspect-ratio:1;border-radius:50%;margin-bottom:12px;border:2px solid var(--gold-soft);padding:5px;}
+  .cat-swatch-inner{width:100%;height:100%;border-radius:50%;}
+  .cat-item strong{font-size:13px;font-weight:500;}
+  .cat-rail-wrap .reel-scroll-btn{display:none;}
+  .cat-rail-wrap.has-overflow .reel-scroll-btn{display:flex;}
+  @media (max-width:760px){ .cat-rail-wrap .reel-scroll-btn{display:none !important;} }
+  .occasion-grid{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:20px;}
+  .occasion-card{position:relative;min-height:260px;border-radius:4px;overflow:hidden;padding:24px;display:flex;flex-direction:column;justify-content:flex-end;color:var(--ivory);}
+  .occasion-card::before{content:'';position:absolute;inset:0;background:linear-gradient(180deg, transparent 30%, rgba(20,10,10,0.75));}
+  .occasion-card > *{position:relative;z-index:1;}
+  .occasion-card h3{color:var(--ivory);font-size:22px;margin-bottom:6px;}
+  .occasion-card span{font-size:12px;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--gold-soft);padding-bottom:3px;width:fit-content;}
+  .reel-rail-wrap{position:relative;}
+  .reel-rail{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;padding:6px 28px 28px;scrollbar-width:none;}
+  .reel-rail::-webkit-scrollbar{display:none;}
+  .reel-card{flex:0 0 auto;width:190px;aspect-ratio:9/16;border-radius:10px;overflow:hidden;position:relative;scroll-snap-align:start;box-shadow:var(--shadow);background:#1a0e10;display:block;}
+  .reel-media{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+  .reel-placeholder{animation:reelPan 9s ease-in-out infinite alternate;background-size:180% 180% !important;}
+  @keyframes reelPan{
+    0%{background-position:20% 30%;transform:scale(1.02);}
+    100%{background-position:80% 70%;transform:scale(1.12);}
+  }
+  .reel-play{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,0.35);color:var(--ivory);display:flex;align-items:center;justify-content:center;font-size:15px;backdrop-filter:blur(2px);pointer-events:none;transition:opacity .2s ease;}
+  .reel-card:hover .reel-play{opacity:0;}
+  .reel-duration{position:absolute;top:10px;right:10px;font-size:10.5px;color:var(--ivory);background:rgba(0,0,0,0.4);padding:2px 8px;border-radius:20px;letter-spacing:.03em;}
+  .reel-info{position:absolute;left:0;right:0;bottom:0;padding:14px 12px;background:linear-gradient(0deg, rgba(10,5,6,0.85) 0%, rgba(10,5,6,0.15) 70%, transparent 100%);}
+  .reel-info strong{display:block;color:var(--ivory);font-size:12.5px;font-weight:500;line-height:1.3;font-family:var(--font-body);}
+  .reel-info span{display:block;color:var(--gold-soft);font-size:11px;margin-top:3px;}
+  .reel-scroll-btn{position:absolute;top:calc(50% - 14px);width:38px;height:38px;border-radius:50%;background:var(--white);box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--maroon-deep);z-index:3;}
+  .reel-scroll-btn.left{left:2px;}
+  .reel-scroll-btn.right{right:2px;}
+  @media (max-width:760px){ .reel-scroll-btn{display:none;} }
+
+  @media (max-width:980px){
+    .hero-inner{grid-template-columns:1fr;}
+    .hero-drape{height:300px;}
+    .trust-strip{grid-template-columns:repeat(2,1fr);}
+    .cat-item{flex:0 0 calc(50% - 11px);}
+    .occasion-grid{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body data-page="index.html">
+
+<div id="site-header"></div>
+
+<main>
+  <section class="hero" id="heroSection" style="display:none;">
+    <div class="hero-inner"></div>
+    <div class="zari-border" style="margin-top:48px;"></div>
+  </section>
+
+  <div class="trust-strip">
+    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg><div><strong>Free Shipping</strong><span id="trustShippingLine">Above ₹1,999</span></div></div>
+    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M4 4h16v16H4z"/><path d="M4 9h16"/></svg><div><strong>Easy Returns</strong><span>7-day exchange</span></div></div>
+    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><div><strong>Secure Payments</strong><span>Cards &amp; UPI</span></div></div>
+    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="9"/></svg><div><strong>Handloom Certified</strong><span>Direct from weavers</span></div></div>
+  </div>
+
+  <section class="section" style="padding-bottom:0;">
+    <div class="container">
+      <div class="section-head"><p class="eyebrow">Watch Before You Buy</p><h2>Sarees in Motion</h2></div>
+    </div>
+    <div class="reel-rail-wrap">
+      <button class="reel-scroll-btn left" id="reelScrollLeft" aria-label="Scroll left">‹</button>
+      <div class="reel-rail" id="reelRail"></div>
+      <button class="reel-scroll-btn right" id="reelScrollRight" aria-label="Scroll right">›</button>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="section-head"><p class="eyebrow">Curated Weaves</p><h2>Shop by Fabric</h2></div>
+    </div>
+    <div class="cat-rail-wrap" id="catRailWrap">
+      <button class="reel-scroll-btn left" id="catScrollLeft" aria-label="Scroll left">‹</button>
+      <div class="container"><div class="cat-rail" id="catRail"></div></div>
+      <button class="reel-scroll-btn right" id="catScrollRight" aria-label="Scroll right">›</button>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top:0;">
+    <div class="container">
+      <div class="occasion-grid" id="occasionGrid"></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="section-head"><p class="eyebrow">The Collection</p><h2>Bestselling Sarees</h2></div>
+      <div class="product-grid" id="bestsellerGrid"></div>
+      <div class="load-more-wrap"><a href="/shop" class="btn btn-outline">View Full Menu</a></div>
+    </div>
+  </section>
+
+  <section class="promo-band" id="promoBandSection" style="display:none;"></section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  // Hero banner is admin-managed (Storefront → Hero) — heading is split into
+  // pre/em/post so the gold-emphasized word in the middle survives being
+  // editable content instead of hand-authored HTML.
+  async function renderHero(){
+    const section = document.getElementById('heroSection');
+    try{
+      const {hero: h} = await apiFetch('/content/hero');
+      if(!h || h.active === false){ section.style.display = 'none'; return; }
+      const drapeStyle = h.desktopImage ? `background:url('${h.desktopImage}') center/cover;` : '';
+      document.querySelector('#heroSection .hero-inner').innerHTML = `
+        <div>
+          <p class="eyebrow">${h.eyebrow || ''}</p>
+          <h1>${h.headingPre || ''} <em>${h.headingEm || ''}</em> ${h.headingPost || ''}</h1>
+          <p>${h.subheading || ''}</p>
+          <div class="hero-ctas">
+            <a href="${h.ctaLink || '/shop'}" class="btn btn-primary">${h.ctaText || 'Shop Now'}</a>
+          </div>
+        </div>
+        <div class="hero-drape" style="${drapeStyle}">
+          ${h.badgeLabel ? `<div class="hero-drape-label"><p class="eyebrow" style="color:var(--gold-soft);">${h.badgeLabel}</p><strong>${h.badgeValue || ''}</strong></div>` : ''}
+        </div>`;
+      section.style.display = '';
+    }catch(e){ section.style.display = 'none'; }
+  }
+
+  // Promo band is admin-managed (Storefront → Promo Band), including its own
+  // active window — the API already resolves start/end dates into a plain
+  // active flag, so the frontend just has to obey it.
+  async function renderPromoBand(){
+    const section = document.getElementById('promoBandSection');
+    try{
+      const {promoBand: b} = await apiFetch('/content/promo-band');
+      if(!b || !b.active){ section.style.display = 'none'; return; }
+      const message = (b.message || '').replace('{CODE}', `<strong>${b.couponCode || ''}</strong>`);
+      section.innerHTML = `
+        <p class="eyebrow" style="color:var(--gold-soft);">${b.eyebrow || ''}</p>
+        <h2>${b.heading || ''}</h2>
+        <p>${message}</p>
+        <a href="${b.ctaLink || '/shop'}" class="btn btn-gold">${b.ctaText || 'Shop Now'}</a>`;
+      section.style.display = '';
+    }catch(e){ section.style.display = 'none'; }
+  }
+
+  // Both rails are admin-managed now (Catalog → Fabrics / Occasions) — add a
+  // fifth fabric or feature a new occasion from admin and it shows up here
+  // with no frontend changes.
+  async function renderCatRail(){
+    try{
+      const {fabrics} = await apiFetch('/fabrics');
+      const rail = document.getElementById('catRail');
+      rail.innerHTML = fabrics.map(f=>`
+        <a class="cat-item" href="/shop?fabric=${encodeURIComponent(f.name)}">
+          <div class="cat-swatch"><div class="cat-swatch-inner" style="background:${swatchBg(f.swatch)};"></div></div>
+          <strong>${f.name}</strong>
+        </a>`).join('');
+      // Only show scroll arrows once there's actually more to scroll to —
+      // 4 or fewer fabrics fit the row exactly and need no affordance.
+      const wrap = document.getElementById('catRailWrap');
+      requestAnimationFrame(()=> wrap.classList.toggle('has-overflow', rail.scrollWidth > rail.clientWidth + 4));
+    }catch(e){ /* leave rail empty if the backend is unreachable */ }
+  }
+
+  const OCCASION_CARD_GRADIENTS = [
+    'linear-gradient(160deg,#7A2740,#AD3B5C)', 'linear-gradient(160deg,#AD3B5C,#F2B9BB)', 'linear-gradient(160deg,#7A2740,#B87F55)'
+  ];
+  async function renderOccasionCards(){
+    try{
+      const {occasions} = await apiFetch('/occasions');
+      const featured = occasions.filter(o=>o.featuredOnHome);
+      document.getElementById('occasionGrid').innerHTML = featured.map((o,i)=>`
+        <a class="occasion-card" style="background:${o.image ? `url('${o.image}') center/cover` : OCCASION_CARD_GRADIENTS[i % OCCASION_CARD_GRADIENTS.length]};" href="/shop?occasion=${encodeURIComponent(o.name)}">
+          <h3>${o.homeCardTitle || o.name}</h3><span>Shop Now →</span>
+        </a>`).join('');
+    }catch(e){ /* leave the grid empty if the backend is unreachable */ }
+  }
+
+  let wishlistedIds = new Set();
+
+  function productCardHTML(p){
+    const off = Math.round((1 - p.price/p.mrp)*100);
+    // A product with no badge set (p.badge is null/'') must show no badge at
+    // all — the old fallthrough ternary defaulted anything that wasn't
+    // 'sale'/'new' to 'Bestseller', which mislabeled every plain product.
+    const badgeLabel = p.badge==='sale'?'Sale':p.badge==='new'?'New':p.badge==='bestseller'?'Bestseller':'';
+    const isWished = wishlistedIds.has(p.id);
+    const soldOut = p.stock <= 0;
+    return `
+    <div class="product-card ${soldOut?'sold-out':''}">
+      <a href="/product?id=${p.id}" class="product-media" style="background:${swatchBg(p.swatch)};display:block;">
+        ${soldOut ? `<div class="sold-out-ribbon"><span class="ribbon-lotus">${LOTUS_GLYPH_SVG}</span>Sold Out</div>` : (badgeLabel ? `<span class="product-badge ${p.badge}">${badgeLabel}</span>` : '')}
+        <button class="wishlist-toggle ${isWished?'active':''}" data-wish="${p.id}" aria-label="${isWished?'Remove from wishlist':'Add to wishlist'}" onclick="event.preventDefault();quickWish(${p.id}, this);">
+          <svg viewBox="0 0 24 24" stroke-width="1.6"><path d="M12 21s-7.5-4.7-10-9.3C.3 8 2 4.5 5.6 4.1c2-.2 3.8.8 4.4 2.5.6-1.7 2.4-2.7 4.4-2.5C18 4.5 19.7 8 22 11.7 19.5 16.3 12 21 12 21z"/></svg>
+        </button>
+        ${soldOut ? `<span class="quick-add">Pre Book</span>` : ''}
+      </a>
+      <div class="product-info">
+        <div class="product-fabric">${p.fabric}</div>
+        <a href="/product?id=${p.id}" class="product-name">${p.name}</a>
+        <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews})</div>
+        <div class="product-price">
+          <span class="price-now">${money(p.price)}</span>
+          <span class="price-mrp">${money(p.mrp)}</span>
+          <span class="price-off">${off}% off</span>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  async function quickWish(id, btn){
+    const nowActive = !wishlistedIds.has(id);
+    try{
+      if(nowActive){ await wishlistAdd(id); wishlistedIds.add(id); toast('Added to wishlist ♡'); }
+      else{ await wishlistRemove(id); wishlistedIds.delete(id); toast('Removed from wishlist'); }
+      if(btn){ btn.classList.toggle('active', nowActive); btn.setAttribute('aria-label', nowActive?'Remove from wishlist':'Add to wishlist'); }
+      refreshBadgeCounts();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function loadBestsellers(){
+    try{
+      const [{products}, wishData] = await Promise.all([apiFetch('/products?sort=popular'), wishlistGet()]);
+      wishlistedIds = new Set(wishData.products.map(p=>p.id));
+      document.getElementById('bestsellerGrid').innerHTML = products.slice(0,6).map(productCardHTML).join('');
+    }catch(e){
+      document.getElementById('bestsellerGrid').innerHTML = `<p style="grid-column:1/-1;text-align:center;color:var(--ink-soft);">Could not load products — is the backend server running?</p>`;
+    }
+  }
+
+  function reelCardHTML(p){
+    const mediaHTML = p.reelVideo
+      ? `<video class="reel-media" src="${p.reelVideo}" ${p.reelThumbnail?`poster="${p.reelThumbnail}"`:''} muted loop playsinline preload="metadata"></video>`
+      : p.reelThumbnail
+        ? `<div class="reel-media" style="background:url('${p.reelThumbnail}') center/cover;"></div>`
+        : `<div class="reel-media reel-placeholder" style="background:${swatchBg(p.swatch)};"></div>`;
+    return `
+    <a class="reel-card" href="/product?id=${p.id}">
+      ${mediaHTML}
+      <span class="reel-play">▶</span>
+      <span class="reel-duration">0:${8 + (p.id % 4) * 3}</span>
+      <div class="reel-info">
+        <strong>${p.name}</strong>
+        <span>${p.fabric} · ${money(p.price)}</span>
+      </div>
+    </a>`;
+  }
+
+  // Videos stay paused (showing their poster/first frame) until the shopper
+  // actually hovers the card — clicking anywhere on the card still just
+  // follows the link to the product page as normal.
+  function bindReelHoverPlay(){
+    document.querySelectorAll('#reelRail .reel-card').forEach(card=>{
+      const video = card.querySelector('video.reel-media');
+      if(!video) return;
+      card.addEventListener('mouseenter', ()=>{ video.currentTime = 0; video.play().catch(()=>{}); });
+      card.addEventListener('mouseleave', ()=>{ video.pause(); video.currentTime = 0; });
+    });
+  }
+
+  async function loadReels(){
+    try{
+      const {products} = await apiFetch('/products/reels');
+      document.getElementById('reelRail').innerHTML = products.map(reelCardHTML).join('');
+      bindReelHoverPlay();
+    }catch(e){
+      document.getElementById('reelRail').innerHTML = '';
+    }
+  }
+
+  document.getElementById('reelScrollLeft').addEventListener('click', ()=>{
+    document.getElementById('reelRail').scrollBy({left: -320, behavior: 'smooth'});
+  });
+  document.getElementById('reelScrollRight').addEventListener('click', ()=>{
+    document.getElementById('reelRail').scrollBy({left: 320, behavior: 'smooth'});
+  });
+
+  document.getElementById('catScrollLeft').addEventListener('click', ()=>{
+    const rail = document.getElementById('catRail');
+    rail.scrollBy({left: -rail.clientWidth, behavior: 'smooth'});
+  });
+  document.getElementById('catScrollRight').addEventListener('click', ()=>{
+    const rail = document.getElementById('catRail');
+    rail.scrollBy({left: rail.clientWidth, behavior: 'smooth'});
+  });
+  window.addEventListener('resize', ()=>{
+    const rail = document.getElementById('catRail');
+    const wrap = document.getElementById('catRailWrap');
+    if(rail && wrap) wrap.classList.toggle('has-overflow', rail.scrollWidth > rail.clientWidth + 4);
+  });
+
+  renderHero();
+  renderPromoBand();
+  renderCatRail();
+  renderOccasionCards();
+  loadBestsellers();
+  loadReels();
+
+  // Trust-strip claim should match the admin's real Phase 7 shipping
+  // threshold, not a hardcoded number (the topbar already does this in
+  // components.js — this is the second, separate spot with the same claim).
+  apiFetch('/settings/shipping').then(({shipping})=>{
+    if(shipping && shipping.freeShippingThreshold != null){
+      document.getElementById('trustShippingLine').textContent = 'Above ' + money(shipping.freeShippingThreshold);
+    }
+  }).catch(()=>{});
+</script>
+</body>
+</html>

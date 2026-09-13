@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Saree Details — Padmora by Yashi</title>
+<meta name="description" id="metaDescription" content="Handloom and heritage sarees from Padmora by Yashi — authentic weaves sourced directly from India's weaving communities.">
+<meta property="og:type" content="product">
+<meta property="og:title" id="ogTitle" content="Padmora by Yashi">
+<meta property="og:description" id="ogDescription" content="Handloom and heritage sarees, sourced directly from India's weaving communities.">
+<meta property="og:image" id="ogImage" content="">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="shop.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="container" style="padding-top:28px;">
+    <p class="breadcrumb"><a href="/">Home</a> / <a href="/shop">Menu</a> / <span id="crumbName">Saree</span></p>
+  </div>
+
+  <section class="section" style="padding-top:14px;" id="pdWrap">
+    <div class="container">
+      <div class="loading-state"><span class="zari-spinner"></span>Loading saree details…</div>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top:0;">
+    <div class="container" style="max-width:820px;">
+      <div class="section-head" style="margin-bottom:20px;"><p class="eyebrow">Ratings &amp; Reviews</p><h2>What Customers Say</h2></div>
+      <div class="review-summary" id="reviewSummary"></div>
+      <div id="reviewFormWrap"></div>
+      <div id="reviewsList"></div>
+    </div>
+  </section>
+
+  <section class="section" id="relatedSection" style="display:none;">
+    <div class="container">
+      <div class="section-head"><p class="eyebrow">You May Also Like</p><h2>More From This Edit</h2></div>
+      <div class="product-grid" id="relatedGrid"></div>
+    </div>
+  </section>
+
+  <section class="section" id="otherWeavesSection" style="display:none;">
+    <div class="container">
+      <div class="section-head"><p class="eyebrow">Explore Something Different</p><h2>Discover Other Weaves</h2></div>
+      <div class="product-grid" id="otherWeavesGrid"></div>
+      <div class="load-more-wrap"><a href="/shop" class="btn btn-outline">View Full Menu</a></div>
+    </div>
+  </section>
+</main>
+
+<!-- Size & Fit guide — same general content for every saree (drape length,
+     blouse piece, petticoat) since it's genuine category-wide sizing
+     knowledge, not a per-product spec we don't actually have. -->
+<div class="confirm-backdrop" id="sizeGuideBackdrop"></div>
+<div class="size-guide-dialog" id="sizeGuideDialog" role="dialog" aria-modal="true">
+  <button class="sg-close" id="sizeGuideClose" aria-label="Close">&times;</button>
+  <h3>Saree Sizing &amp; Fit Guide</h3>
+  <p style="margin-top:2px;">General guidance that applies across our sarees — check the individual product for its exact length.</p>
+
+  <h4>Saree length</h4>
+  <p>Most of our sarees are woven to the standard 5.5–6.5m length (this one: 6.3m of body + a separate blouse piece). That drapes comfortably for most heights up to about 5'8"; if you're petite, your tailor can pleat the pallu shorter without altering the fabric.</p>
+
+  <h4>Blouse piece</h4>
+  <p>The blouse piece ships as <strong>unstitched fabric</strong> (typically 0.8m) — it needs a local tailor to stitch it to your blouse size. 0.8m comfortably covers most sizes up to a 40" bust; if you're above that, ask your tailor whether a panel insert is needed before cutting.</p>
+
+  <h4>Petticoat</h4>
+  <p>Not included with any of our sarees. For the cleanest drape, choose a petticoat close to the saree's base colour, and have it fitted to sit just above your ankles.</p>
+
+  <h4>Care</h4>
+  <p>Dry clean only, unless the product page says otherwise — handloom and block-printed fabrics can bleed or lose their finish in a home wash.</p>
+
+  <table>
+    <thead><tr><th>Height</th><th>Suggested pleat depth</th></tr></thead>
+    <tbody>
+      <tr><td>Under 5'2"</td><td>Deeper pleats, shorter pallu drop</td></tr>
+      <tr><td>5'2"–5'6"</td><td>Standard pleating</td></tr>
+      <tr><td>Above 5'6"</td><td>Shallower pleats to use the full length</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Pre Book — sold-out variants stay real, actionable products instead of a
+     dead end. Guests type an email; logged-in customers just confirm. -->
+<div class="confirm-backdrop" id="preBookBackdrop"></div>
+<div class="size-guide-dialog prebook-dialog" id="preBookDialog" role="dialog" aria-modal="true">
+  <button class="sg-close" id="preBookClose" aria-label="Close">&times;</button>
+  <h3><span class="ribbon-lotus" style="color:var(--gold);display:inline-flex;width:16px;height:16px;vertical-align:-2px;margin-right:4px;"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 20 C10 15 9.3 10 12 5 C14.7 10 14 15 12 20 Z"/><path d="M12 19 C8 16.5 6 13 6.6 9 C10 11 11.6 15 12 19 Z"/><path d="M12 19 C16 16.5 18 13 17.4 9 C14 11 12.4 15 12 19 Z"/><path d="M11.5 18 C7.8 16 5.3 13.3 5.7 10.3 C8.7 11.8 10.7 14.6 11.5 18 Z"/><path d="M12.5 18 C16.2 16 18.7 13.3 18.3 10.3 C15.3 11.8 13.3 14.6 12.5 18 Z"/></svg></span>Pre Book This Saree</h3>
+  <p style="margin-top:2px;">This colour is out of stock right now. Leave your email and we'll write to you the moment it's back — no payment needed today, and it's first-come, first-served once it is.</p>
+  <div class="form-field" id="preBookEmailField">
+    <label>Email Address</label>
+    <input type="email" id="preBookEmail" placeholder="you@example.com">
+  </div>
+  <div class="form-error" id="preBookError"></div>
+  <button class="btn btn-primary btn-block" id="preBookSubmit" style="justify-content:center;">Notify Me When Available</button>
+  <p id="preBookSuccess" style="display:none;color:#2E7D45;font-size:13.5px;font-weight:600;margin-top:12px;">✓ You're on the list — we'll email you the moment it's back.</p>
+</div>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  const productId = Number(new URLSearchParams(window.location.search).get('id')) || 1;
+  let currentProduct = null;
+  let selectedVariant = null;
+  let qty = 1;
+
+  function variantMediaBg(v){
+    const primary = v && v.media && (v.media.find(m => m.isPrimary) || v.media[0]);
+    if (primary && primary.type === 'image') return `background-image:url('${primary.url}');background-size:cover;background-position:center;`;
+    return `background:${swatchBg(v ? v.swatch : 'maroon')};`;
+  }
+
+  function productCardHTML(p){
+    const off = Math.round((1 - p.price/p.mrp)*100);
+    // A product with no badge set (p.badge is null/'') must show no badge at
+    // all — the old fallthrough ternary defaulted anything that wasn't
+    // 'sale'/'new' to 'Bestseller', which mislabeled every plain product.
+    const badgeLabel = p.badge==='sale'?'Sale':p.badge==='new'?'New':p.badge==='bestseller'?'Bestseller':'';
+    const soldOut = p.stock <= 0;
+    return `
+    <div class="product-card ${soldOut?'sold-out':''}">
+      <a href="/product?id=${p.id}" class="product-media" style="background:${swatchBg(p.swatch)};display:block;">
+        ${soldOut ? `<div class="sold-out-ribbon"><span class="ribbon-lotus">${LOTUS_GLYPH_SVG}</span>Sold Out</div>` : (badgeLabel ? `<span class="product-badge ${p.badge}">${badgeLabel}</span>` : '')}
+        ${soldOut ? `<span class="quick-add">Pre Book</span>` : ''}
+      </a>
+      <div class="product-info">
+        <div class="product-fabric">${p.fabric}</div>
+        <a href="/product?id=${p.id}" class="product-name">${p.name}</a>
+        <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews})</div>
+        <div class="product-price">
+          <span class="price-now">${money(p.price)}</span>
+          <span class="price-mrp">${money(p.mrp)}</span>
+          <span class="price-off">${off}% off</span>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // Real per-product SEO/social tags, filled in once the product actually
+  // loads — a plain <meta> in the <head> can't know the product yet, and a
+  // fake generic description would be worse than none. JSON-LD Product
+  // schema is genuinely populated from live API data (price, stock, rating),
+  // never placeholder numbers, so it stays honest if Google actually reads it.
+  function updateProductSEO(p, variant){
+    const desc = (variant.desc || p.desc || '').slice(0, 155);
+    document.getElementById('metaDescription').setAttribute('content', desc || `${p.name} — ${p.fabric} saree from Padmora by Yashi.`);
+    document.getElementById('ogTitle').setAttribute('content', p.name + ' — Padmora by Yashi');
+    document.getElementById('ogDescription').setAttribute('content', desc);
+    const media = variant.media && (variant.media.find(m=>m.isPrimary) || variant.media[0]);
+    if(media && media.type === 'image') document.getElementById('ogImage').setAttribute('content', new URL(media.url, window.location.href).href);
+
+    let ld = document.getElementById('productLdJson');
+    if(!ld){ ld = document.createElement('script'); ld.type = 'application/ld+json'; ld.id = 'productLdJson'; document.head.appendChild(ld); }
+    ld.textContent = JSON.stringify({
+      '@context': 'https://schema.org/',
+      '@type': 'Product',
+      name: p.name,
+      description: desc,
+      image: media && media.type === 'image' ? new URL(media.url, window.location.href).href : undefined,
+      brand: { '@type': 'Brand', name: 'Padmora by Yashi' },
+      aggregateRating: p.reviews > 0 ? { '@type': 'AggregateRating', ratingValue: p.rating, reviewCount: p.reviews } : undefined,
+      offers: {
+        '@type': 'Offer',
+        priceCurrency: 'INR',
+        price: variant.price,
+        availability: variant.stock > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+        url: window.location.href
+      }
+    });
+  }
+
+  function renderProduct(p){
+    currentProduct = p;
+    const variants = (p.variants && p.variants.length) ? p.variants : [{
+      id: null, colorName: p.swatch, swatch: p.swatch, price: p.price, mrp: p.mrp, stock: p.stock, desc: p.desc, media: [], isDefault: true
+    }];
+    selectedVariant = variants.find(v => v.isDefault) || variants[0];
+
+    document.getElementById('crumbName').textContent = p.name;
+    document.title = p.name + ' — Padmora by Yashi';
+    updateProductSEO(p, selectedVariant);
+
+    document.getElementById('pdWrap').innerHTML = `
+      <div class="container">
+        <div class="pd-grid">
+          <div class="pd-media" id="pdMedia" style="${variantMediaBg(selectedVariant)}"></div>
+          <div class="pd-info">
+            <div class="product-fabric">${p.fabric} · ${p.occasion}</div>
+            <h1>${p.name}</h1>
+            <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews} reviews)</div>
+            <div class="product-price" style="margin-top:10px;" id="pdPrice"></div>
+            <p class="pd-desc" id="pdDesc"></p>
+            <div class="authenticity-card">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="1.4"><path d="M12 2l8 4v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg>
+              <div>
+                <h4>Loom-to-You Authenticity</h4>
+                <p>Woven by <strong>${p.weaverName || 'an independent weaver partner'}</strong> in ${p.weaverRegion || 'India'}. Loom type disclosed honestly — no fabric here is sold as handloom unless it truly is.</p>
+                <span class="loom-tag">${p.loomType || 'Handloom'}</span>
+              </div>
+            </div>
+            <p class="stock-note" id="pdStockNote"></p>
+            <div>
+              <label style="font-size:12px;color:var(--ink-soft);">Choose colour<span id="pdShadeLabel" style="color:var(--ink);font-weight:600;"></span></label>
+              <div class="swatch-row" id="pdSwatches"></div>
+            </div>
+            <div id="pdPreAddQty">
+              <label style="font-size:12px;color:var(--ink-soft);">Quantity</label>
+              <div class="qty-stepper" style="margin-top:8px;">
+                <button id="qtyDec">−</button><span id="qtyVal">1</span><button id="qtyInc">+</button>
+              </div>
+            </div>
+            <div class="pd-meta">
+              <span><strong>Blouse:</strong> Unstitched piece included</span>
+              <span><strong>Length:</strong> 6.3m + 0.8m blouse</span>
+              <span><strong>Wash:</strong> Dry clean only</span>
+              <span><strong>Delivery:</strong> 4-7 business days</span>
+            </div>
+            <button type="button" class="size-guide-link" id="openSizeGuide">📏 Size &amp; Fit Guide</button>
+            <div class="pd-actions">
+              <div id="pdCartControl"></div>
+              <button class="btn btn-outline" id="pdWish">♡ Wishlist</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="sticky-add-bar">
+        <div><strong id="pdStickyPrice"></strong><span>${p.name}</span></div>
+        <div id="stickyCartControl"></div>
+      </div>`;
+
+    document.getElementById('pdSwatches').innerHTML = variants.map(v=>`
+      <span class="swatch-dot ${v.id===selectedVariant.id?'active':''}" data-variant="${v.id}" title="${v.colorName}" style="background:${swatchBg(v.swatch)};"></span>`).join('');
+    document.querySelectorAll('#pdSwatches .swatch-dot').forEach(dot=>dot.addEventListener('click',()=>{
+      const v = variants.find(x => String(x.id) === dot.dataset.variant);
+      if(!v || v.id === selectedVariant.id) return;
+      selectedVariant = v;
+      document.querySelectorAll('#pdSwatches .swatch-dot').forEach(d=>d.classList.remove('active'));
+      dot.classList.add('active');
+      document.getElementById('pdMedia').setAttribute('style', variantMediaBg(v));
+      // The pre-add qty stepper's count belongs to whichever colour is
+      // selected — a "5" picked while browsing Wine shouldn't silently
+      // carry over to Mustard if Mustard only has 3 left.
+      qty = Math.min(qty, Math.max(1, v.stock || 1));
+      const qtyValEl = document.getElementById('qtyVal');
+      if(qtyValEl) qtyValEl.textContent = qty;
+      renderVariantDetails();
+      syncCartControls();
+    }));
+
+    document.getElementById('qtyInc').addEventListener('click', ()=>{
+      if(qty >= selectedVariant.stock){ toast(`Only ${selectedVariant.stock} left in ${selectedVariant.colorName}.`); return; }
+      qty++; document.getElementById('qtyVal').textContent = qty;
+    });
+    document.getElementById('qtyDec').addEventListener('click', ()=>{ qty = Math.max(1, qty-1); document.getElementById('qtyVal').textContent = qty; });
+
+    document.getElementById('pdWish').addEventListener('click', wishCurrent);
+    document.getElementById('openSizeGuide').addEventListener('click', openSizeGuide);
+
+    renderVariantDetails();
+    refreshWishButtonLabel();
+    syncCartControls();
+    loadRelated(p);
+    loadOtherWeaves(p);
+    renderReviewForm();
+    loadReviews();
+  }
+
+  // Everything that changes when the shopper picks a different colour: price,
+  // MRP, discount %, the variant's own description (falls back to the
+  // product's), and the scarcity note — all driven by real per-variant data.
+  function renderVariantDetails(){
+    const v = selectedVariant;
+    const off = Math.round((1 - v.price/v.mrp)*100);
+    document.getElementById('pdPrice').innerHTML = `
+      <span class="price-now">${money(v.price)}</span>
+      <span class="price-mrp">${money(v.mrp)}</span>
+      <span class="price-off">${off}% off</span>`;
+    document.getElementById('pdDesc').textContent = v.desc || currentProduct.desc;
+    document.getElementById('pdShadeLabel').textContent = ' — ' + v.colorName;
+    const stockNote = document.getElementById('pdStockNote');
+    stockNote.className = 'stock-note ' + (v.stock <= 10 ? 'low' : 'ok');
+    stockNote.textContent = v.stock <= 0 ? 'Out of stock in this colour.'
+      : v.stock <= 10 ? `Only ${v.stock} left in ${v.colorName} — this piece is not mass-produced.`
+      : `In stock · ${v.stock} available`;
+    document.getElementById('pdStickyPrice').textContent = money(v.price);
+    updateProductSEO(currentProduct, v);
+  }
+
+  // ---- Add-to-Bag control: swaps between "Add to Bag", a live qty stepper,
+  // and — when the selected colour is out of stock — "Pre Book" ----
+  function addToCartButtonHTML(id){
+    return `<button class="btn btn-primary" id="${id}">Add to Bag</button>`;
+  }
+  function preBookButtonHTML(id){
+    return `<button class="btn btn-primary prebook-btn" id="${id}"><span class="ribbon-lotus">${LOTUS_GLYPH_SVG}</span>Pre Book</button>`;
+  }
+  function qtyStepperControlHTML(id, lineQty){
+    return `<div class="qty-stepper cart-control-stepper" id="${id}">
+      <button data-pd-dec>−</button><span>${lineQty}</span><button data-pd-inc>+</button>
+    </div>`;
+  }
+
+  async function syncCartControls(){
+    const mainWrap = document.getElementById('pdCartControl');
+    const stickyWrap = document.getElementById('stickyCartControl');
+    // The "pick how many to add" selector above only means anything before
+    // there's an Add to Bag button to submit it to — once this variant is
+    // already in the cart, that selector does nothing (there's no add
+    // action left for it to feed into) and just reads as a second, dead
+    // quantity control sitting next to the real one. Hide it in that case;
+    // the live cart-line stepper below becomes the only quantity control.
+    const preAddQty = document.getElementById('pdPreAddQty');
+    if(!mainWrap) return;
+
+    if(selectedVariant.stock <= 0){
+      mainWrap.innerHTML = preBookButtonHTML('pdPreBook');
+      stickyWrap.innerHTML = preBookButtonHTML('stickyPreBook');
+      document.getElementById('pdPreBook').addEventListener('click', openPreBookForm);
+      document.getElementById('stickyPreBook').addEventListener('click', openPreBookForm);
+      if(preAddQty) preAddQty.hidden = true;
+      return;
+    }
+
+    let line = null;
+    try{
+      const cart = await cartGet();
+      line = cart.items.find(i => i.productId === currentProduct.id && i.variantId === selectedVariant.id) || null;
+    }catch(e){ /* fall through to Add to Bag */ }
+
+    if(!line){
+      mainWrap.innerHTML = addToCartButtonHTML('pdAddCart');
+      stickyWrap.innerHTML = addToCartButtonHTML('stickyAddCart');
+      document.getElementById('pdAddCart').addEventListener('click', addCurrentToCart);
+      document.getElementById('stickyAddCart').addEventListener('click', addCurrentToCart);
+      if(preAddQty) preAddQty.hidden = false;
+      return;
+    }
+
+    mainWrap.innerHTML = qtyStepperControlHTML('pdQtyControl', line.qty);
+    stickyWrap.innerHTML = qtyStepperControlHTML('stickyQtyControl', line.qty);
+    bindCartControlStepper(line.id, line.qty);
+    if(preAddQty) preAddQty.hidden = true;
+  }
+
+  function bindCartControlStepper(lineId, currentQty){
+    document.querySelectorAll('[data-pd-inc]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      if(currentQty >= selectedVariant.stock){
+        toast(`Only ${selectedVariant.stock} left in ${selectedVariant.colorName}.`);
+        return;
+      }
+      try{
+        const res = await cartUpdateQty(lineId, currentQty + 1);
+        if(res && res.message) toast(res.message);
+        refreshBadgeCounts(); syncCartControls();
+      }catch(e){ toast(e.message, 'error'); }
+    }));
+    document.querySelectorAll('[data-pd-dec]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      try{
+        if(currentQty <= 1){ await cartRemoveItem(lineId); toast('Removed from bag'); }
+        else{ await cartUpdateQty(lineId, currentQty - 1); }
+        refreshBadgeCounts(); syncCartControls();
+      }catch(e){ toast(e.message, 'error'); }
+    }));
+  }
+
+  let selectedStars = 0;
+
+  function renderReviewForm(){
+    const wrap = document.getElementById('reviewFormWrap');
+    if(!isLoggedIn()){
+      const redirectBack = encodeURIComponent(`/product?id=${productId}`);
+      wrap.innerHTML = `<p style="font-size:13px;color:var(--ink-soft);margin-bottom:20px;"><a href="/login?redirect=${redirectBack}" style="color:var(--maroon);text-decoration:underline;">Log in</a> to write a review.</p>`;
+      return;
+    }
+    wrap.innerHTML = `
+      <div class="review-form">
+        <h4 style="font-size:14px;margin-bottom:10px;">Write a Review</h4>
+        <div class="star-input" id="starInput">${[1,2,3,4,5].map(n=>`<button type="button" data-star="${n}">★</button>`).join('')}</div>
+        <div class="form-field"><input type="text" id="reviewTitle" placeholder="Title (optional)"></div>
+        <div class="form-field"><textarea id="reviewBody" rows="3" placeholder="Share how the drape, fabric and color felt in hand..."></textarea></div>
+        <div class="form-error" id="reviewError"></div>
+        <button class="btn btn-primary btn-sm" id="submitReview">Submit Review</button>
+      </div>`;
+    selectedStars = 0;
+    document.querySelectorAll('#starInput button').forEach(b=>b.addEventListener('click', ()=>{
+      selectedStars = Number(b.dataset.star);
+      document.querySelectorAll('#starInput button').forEach(x=>x.classList.toggle('active', Number(x.dataset.star)<=selectedStars));
+    }));
+    document.getElementById('submitReview').addEventListener('click', submitReview);
+  }
+
+  async function submitReview(){
+    const errBox = document.getElementById('reviewError');
+    errBox.classList.remove('show');
+    const body = document.getElementById('reviewBody').value.trim();
+    if(!selectedStars){ errBox.textContent = 'Please choose a star rating.'; errBox.classList.add('show'); return; }
+    if(!body){ errBox.textContent = 'Please write a short review.'; errBox.classList.add('show'); return; }
+    try{
+      await apiFetch(`/products/${productId}/reviews`, {
+        method:'POST',
+        body: JSON.stringify({ rating: selectedStars, title: document.getElementById('reviewTitle').value.trim(), body })
+      });
+      toast('Thanks for your review!');
+      renderReviewForm();
+      loadReviews();
+      const {product} = await apiFetch('/products/' + productId);
+      currentProduct.rating = product.rating; currentProduct.reviews = product.reviews;
+    }catch(e){ errBox.textContent = e.message; errBox.classList.add('show'); }
+  }
+
+  async function loadReviews(){
+    try{
+      const {reviews} = await apiFetch(`/products/${productId}/reviews`);
+      document.getElementById('reviewSummary').innerHTML = `
+        <span class="big-rating">${currentProduct.rating.toFixed(1)}</span>
+        <div><span class="stars">★★★★★</span><br><span style="font-size:12.5px;color:var(--ink-soft);">${currentProduct.reviews} reviews</span></div>`;
+      const list = document.getElementById('reviewsList');
+      if(!reviews.length){
+        list.innerHTML = `<p style="font-size:13.5px;color:var(--ink-soft);">Be the first to review this saree.</p>`;
+        return;
+      }
+      list.innerHTML = reviews.map(r=>`
+        <div class="review-card">
+          <div class="review-card-head">
+            <strong>${r.userName}</strong>
+            ${r.verified ? '<span class="verified-tag">Verified Purchase</span>' : ''}
+            <span style="color:var(--ink-soft);font-size:12px;">${new Date(r.createdAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span>
+          </div>
+          <span class="stars">${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</span>
+          ${r.title ? `<p style="font-weight:600;color:var(--ink);margin-top:6px;">${r.title}</p>` : ''}
+          <p>${r.body}</p>
+        </div>`).join('');
+    }catch(e){ /* ignore */ }
+  }
+
+  async function refreshWishButtonLabel(){
+    try{
+      const {products} = await wishlistGet();
+      const btn = document.getElementById('pdWish');
+      const isWished = products.some(x=>x.id===currentProduct.id);
+      if(btn){
+        btn.textContent = isWished ? '♥ Wishlisted' : '♡ Wishlist';
+        btn.classList.toggle('wishlisted', isWished);
+      }
+    }catch(e){ /* ignore */ }
+  }
+
+  async function addCurrentToCart(){
+    try{
+      await cartAdd(currentProduct.id, qty, selectedVariant.swatch, selectedVariant.id);
+      toast(currentProduct.name + ' added to bag');
+      refreshBadgeCounts();
+      syncCartControls();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function wishCurrent(){
+    try{
+      const btn = document.getElementById('pdWish');
+      const isWished = btn.classList.contains('wishlisted');
+      if(isWished){ await wishlistRemove(currentProduct.id); toast('Removed from wishlist'); }
+      else{ await wishlistAdd(currentProduct.id); toast('Added to wishlist ♡'); }
+      refreshBadgeCounts();
+      refreshWishButtonLabel();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function loadRelated(p){
+    try{
+      const {products} = await apiFetch('/products?fabric=' + encodeURIComponent(p.fabric));
+      const related = products.filter(x=>x.id!==p.id).slice(0,3);
+      if(!related.length) return;
+      document.getElementById('relatedSection').style.display = 'block';
+      document.getElementById('relatedGrid').innerHTML = related.map(productCardHTML).join('');
+    }catch(e){ /* ignore */ }
+  }
+
+  async function loadOtherWeaves(p){
+    try{
+      const {products} = await apiFetch('/products?sort=rating');
+      const others = products.filter(x=>x.fabric!==p.fabric);
+      // Spread picks across the other crafts (up to 2 each) instead of
+      // letting one fabric dominate, so this genuinely reads as "different".
+      const byFabric = {};
+      others.forEach(x=>{ (byFabric[x.fabric] = byFabric[x.fabric] || []).push(x); });
+      const picks = Object.values(byFabric).flatMap(arr=>arr.slice(0,2)).slice(0,6);
+      if(!picks.length) return;
+      document.getElementById('otherWeavesSection').style.display = 'block';
+      document.getElementById('otherWeavesGrid').innerHTML = picks.map(productCardHTML).join('');
+    }catch(e){ /* ignore */ }
+  }
+
+  function openSizeGuide(){
+    document.getElementById('sizeGuideBackdrop').classList.add('open');
+    document.getElementById('sizeGuideDialog').classList.add('open');
+  }
+  function closeSizeGuide(){
+    document.getElementById('sizeGuideBackdrop').classList.remove('open');
+    document.getElementById('sizeGuideDialog').classList.remove('open');
+  }
+  document.getElementById('sizeGuideClose').addEventListener('click', closeSizeGuide);
+  document.getElementById('sizeGuideBackdrop').addEventListener('click', closeSizeGuide);
+  document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') { closeSizeGuide(); closePreBookForm(); } });
+
+  // Pre Book — a logged-in customer's own email is used automatically (no
+  // extra typing for something we already know); a guest types theirs.
+  function openPreBookForm(){
+    const user = getStoredUser();
+    const emailField = document.getElementById('preBookEmailField');
+    const submitBtn = document.getElementById('preBookSubmit');
+    emailField.style.display = (isLoggedIn() && user && user.email) ? 'none' : 'block';
+    document.getElementById('preBookEmail').value = '';
+    document.getElementById('preBookError').classList.remove('show');
+    document.getElementById('preBookSuccess').style.display = 'none';
+    submitBtn.style.display = 'block';
+    document.getElementById('preBookBackdrop').classList.add('open');
+    document.getElementById('preBookDialog').classList.add('open');
+  }
+  function closePreBookForm(){
+    document.getElementById('preBookBackdrop').classList.remove('open');
+    document.getElementById('preBookDialog').classList.remove('open');
+  }
+  document.getElementById('preBookClose').addEventListener('click', closePreBookForm);
+  document.getElementById('preBookBackdrop').addEventListener('click', closePreBookForm);
+
+  document.getElementById('preBookSubmit').addEventListener('click', async ()=>{
+    const user = getStoredUser();
+    const email = (isLoggedIn() && user && user.email) ? user.email : document.getElementById('preBookEmail').value.trim();
+    const errBox = document.getElementById('preBookError');
+    errBox.classList.remove('show');
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+      errBox.textContent = 'Enter a valid email address.';
+      errBox.classList.add('show');
+      return;
+    }
+    try{
+      await apiFetch('/products/' + currentProduct.id + '/prebook', {
+        method: 'POST',
+        body: JSON.stringify({ variantId: selectedVariant.id, email, name: (user && user.name) || undefined })
+      });
+      document.getElementById('preBookSubmit').style.display = 'none';
+      document.getElementById('preBookEmailField').style.display = 'none';
+      document.getElementById('preBookSuccess').style.display = 'block';
+      toast("You're on the list — we'll email you when it's back");
+    }catch(e){
+      errBox.textContent = e.message;
+      errBox.classList.add('show');
+    }
+  });
+
+  async function init(){
+    try{
+      const {product} = await apiFetch('/products/' + productId);
+      renderProduct(product);
+    }catch(e){
+      document.getElementById('pdWrap').innerHTML = `<div class="container"><p style="text-align:center;color:var(--ink-soft);">Could not load this saree. <a href="/shop">Back to shop</a></p></div>`;
+    }
+  }
+  init();
+</script>
+</body>
+</html>

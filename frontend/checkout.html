@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Checkout — Padmora by Yashi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="checkout.html">
+
+<div id="site-header"></div>
+
+<main>
+  <section class="section">
+    <div class="container" style="max-width:680px;">
+      <div class="checkout-steps">
+        <div class="step active" data-step="1"><span class="step-num">1</span><span class="step-label">Address</span></div>
+        <div class="step" data-step="2"><span class="step-num">2</span><span class="step-label">Payment</span></div>
+        <div class="step" data-step="3"><span class="step-num">3</span><span class="step-label">Confirm</span></div>
+      </div>
+
+      <div id="checkoutStep1">
+        <div class="form-error" id="addrError"></div>
+        <div id="savedAddresses" style="display:none;margin-bottom:20px;">
+          <label style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:8px;">Saved addresses</label>
+          <div class="pay-options" id="savedAddressList"></div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-field"><label>First Name</label><input type="text" id="fName" placeholder="Ananya"></div>
+          <div class="form-field"><label>Last Name</label><input type="text" id="lName" placeholder="Sharma"></div>
+        </div>
+        <div class="form-field" id="guestEmailField"><label>Email Address</label><input type="email" id="guestEmail" placeholder="you@example.com"><span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:6px;">We'll send your order confirmation here — no account needed.</span></div>
+        <div class="form-field"><label>Address</label><input type="text" id="line1" placeholder="House no, street, area"></div>
+        <div class="form-row-2">
+          <div class="form-field"><label>City</label><input type="text" id="city" placeholder="Thane"></div>
+          <div class="form-field"><label>Pincode</label><input type="text" id="pincode" placeholder="400601"></div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-field"><label>State</label>
+            <select id="state"><option>Maharashtra</option><option>Delhi</option><option>Karnataka</option><option>Tamil Nadu</option><option>West Bengal</option></select>
+          </div>
+          <div class="form-field"><label>Phone Number</label><input type="tel" id="phone" placeholder="+91 98765 43210"></div>
+        </div>
+        <div class="form-field"><label>Gift note (optional) — sending this as a gift?</label><textarea id="giftNote" rows="2" placeholder="e.g. Happy Anniversary, Ma! With love, Ananya"></textarea></div>
+        <label class="filter-option" id="saveAddressField" style="margin-bottom:16px;"><input type="checkbox" id="saveAddress"> Save this address for next time</label>
+        <p id="guestAccountNudge" style="display:none;font-size:12.5px;color:var(--ink-soft);margin-bottom:16px;">Checking out as a guest. <a href="/login?redirect=/checkout" style="color:var(--maroon);text-decoration:underline;">Log in</a> to save this address and track orders from your account.</p>
+        <button class="btn btn-primary btn-block" style="justify-content:center;" id="toStep2">Continue to Payment</button>
+      </div>
+
+      <div id="checkoutStep2" style="display:none;">
+        <div class="pay-subpanel" style="text-align:center;">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" style="width:36px;height:36px;color:var(--maroon);margin:0 auto 12px;display:block;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <p style="font-size:13.5px;color:var(--ink-soft);margin:0;">You'll pay securely on Razorpay's checkout — UPI, cards, or netbanking, whichever you prefer. We never see or store your payment details.</p>
+        </div>
+
+        <div class="summary-card" style="position:static;">
+          <div class="summary-row"><span>Subtotal</span><span id="coSubtotal">₹0</span></div>
+          <div class="summary-row" id="coDiscountRow" style="display:none;"><span>Discount</span><span id="coDiscount">−₹0</span></div>
+          <div class="summary-row"><span>Shipping</span><span id="coShipping">Free</span></div>
+          <div class="summary-row" id="coTaxRow" style="display:none;"><span id="coTaxLabel">GST</span><span id="coTax">₹0</span></div>
+          <div class="summary-row total"><span>Total Payable</span><span id="coTotal">₹0</span></div>
+        </div>
+        <div class="form-error" id="payError"></div>
+        <button class="btn btn-primary btn-block" style="justify-content:center;margin-top:18px;" id="toStep3">Pay Now</button>
+      </div>
+
+      <div id="checkoutStep3" style="display:none;">
+        <div class="success-box">
+          <div class="success-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg></div>
+          <h2>Order Confirmed!</h2>
+          <p style="color:var(--ink-soft);margin:12px 0 6px;">Thank you for shopping with Padmora.</p>
+          <p style="color:var(--ink-soft);font-size:13px;">Order ID: <strong id="orderId">#ZR00000</strong></p>
+          <p id="guestTrackNote" style="display:none;color:var(--ink-soft);font-size:12.5px;margin-top:4px;">Track it anytime at Track Order using this Order ID and the email or phone you gave us.</p>
+          <div style="display:flex;gap:12px;justify-content:center;margin-top:26px;flex-wrap:wrap;">
+            <a href="/account" class="btn btn-outline" id="viewOrderLink">View Order</a>
+            <a href="/shop" class="btn btn-primary">Continue Shopping</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script src="js/guard.js"></script>
+<script>
+  let cart = { items: [], subtotal: 0, discount: 0, total: 0, coupon: null };
+  let savedAddresses = [];
+
+  function fillAddressForm(a){
+    const [first, ...rest] = (a.name || '').split(' ');
+    document.getElementById('fName').value = first || '';
+    document.getElementById('lName').value = rest.join(' ') || '';
+    document.getElementById('line1').value = a.line1 || '';
+    document.getElementById('city').value = a.city || '';
+    document.getElementById('pincode').value = a.pincode || '';
+    if(a.state) document.getElementById('state').value = a.state;
+    document.getElementById('phone').value = a.phone || '';
+  }
+
+  async function loadSavedAddresses(){
+    try{
+      const { addresses } = await apiFetch('/addresses');
+      savedAddresses = addresses;
+      if(!addresses.length) return;
+      document.getElementById('savedAddresses').style.display = 'block';
+      document.getElementById('savedAddressList').innerHTML = addresses.map((a,i)=>`
+        <label class="pay-option ${i===0?'active':''}">
+          <input type="radio" name="savedAddr" value="${a.id}" ${i===0?'checked':''}>
+          <strong>${a.label}</strong> — ${a.line1}, ${a.city} ${a.pincode}
+        </label>`).join('');
+      document.querySelectorAll('input[name="savedAddr"]').forEach(r=>r.addEventListener('change', ()=>{
+        document.querySelectorAll('#savedAddressList .pay-option').forEach(l=>l.classList.remove('active'));
+        r.closest('.pay-option').classList.add('active');
+        fillAddressForm(savedAddresses.find(a=>String(a.id)===r.value));
+      }));
+      fillAddressForm(addresses[0]);
+    }catch(e){ /* guests / errors: just show the blank form */ }
+  }
+
+  function goToStep(n){
+    [1,2,3].forEach(i => document.getElementById('checkoutStep'+i).style.display = (i===n) ? 'block' : 'none');
+    document.querySelectorAll('.step').forEach(s => s.classList.toggle('active', Number(s.dataset.step) <= n));
+  }
+
+  document.getElementById('toStep2').addEventListener('click', ()=>{
+    const errBox = document.getElementById('addrError');
+    if(!document.getElementById('line1').value || !document.getElementById('city').value || !document.getElementById('pincode').value){
+      errBox.textContent = 'Please fill in your address, city and pincode.';
+      errBox.classList.add('show');
+      return;
+    }
+    if(!isLoggedIn()){
+      const email = document.getElementById('guestEmail').value.trim();
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+        errBox.textContent = 'Enter a valid email address so we can send your order confirmation.';
+        errBox.classList.add('show');
+        return;
+      }
+    }
+    errBox.classList.remove('show');
+    document.getElementById('coSubtotal').textContent = money(cart.subtotal);
+    if(cart.discount > 0){
+      document.getElementById('coDiscountRow').style.display = 'flex';
+      document.getElementById('coDiscount').textContent = '−' + money(cart.discount);
+    }
+    document.getElementById('coShipping').textContent = cart.shippingFee > 0 ? money(cart.shippingFee) : 'Free';
+    if(cart.taxAmount > 0){
+      document.getElementById('coTaxRow').style.display = 'flex';
+      document.getElementById('coTaxLabel').textContent = `${cart.taxLabel || 'GST'} (${cart.taxRate}%)`;
+      document.getElementById('coTax').textContent = money(cart.taxAmount);
+    }
+    document.getElementById('coTotal').textContent = money(cart.total);
+    document.getElementById('toStep3').textContent = 'Pay ' + money(cart.total);
+    goToStep(2);
+  });
+
+  function currentAddress(){
+    return {
+      name: document.getElementById('fName').value + ' ' + document.getElementById('lName').value,
+      line1: document.getElementById('line1').value,
+      city: document.getElementById('city').value,
+      pincode: document.getElementById('pincode').value,
+      state: document.getElementById('state').value,
+      phone: document.getElementById('phone').value
+    };
+  }
+
+  function showConfirmedOrder(order, { isGuest }){
+    if(isGuest){
+      setGuestCart([]);
+      setGuestCoupon(null);
+      document.getElementById('viewOrderLink').href = '/track-order?id=' + encodeURIComponent(order.id);
+      document.getElementById('guestTrackNote').style.display = 'block';
+    }else{
+      document.getElementById('viewOrderLink').href = '/account';
+      document.getElementById('guestTrackNote').style.display = 'none';
+    }
+    document.getElementById('orderId').textContent = '#' + order.id;
+    goToStep(3);
+    refreshBadgeCounts();
+    fireConfetti();
+  }
+
+  // Razorpay's widget collects the actual payment details itself (UPI/card/
+  // netbanking) — we never see or handle them. "order" locks in the real,
+  // server-computed total and opens a Razorpay Order for it; the widget's
+  // success handler then calls "verify", which is the only step that
+  // actually places the store order (see routes/payments.js).
+  document.getElementById('toStep3').addEventListener('click', async ()=>{
+    const errBox = document.getElementById('payError');
+    errBox.classList.remove('show');
+    const btn = document.getElementById('toStep3');
+    const address = currentAddress();
+    const giftNote = document.getElementById('giftNote').value.trim() || undefined;
+    const loggedIn = isLoggedIn();
+
+    btn.disabled = true; btn.textContent = 'Starting payment…';
+    try{
+      let session;
+      if(loggedIn){
+        session = await apiFetch('/payments/razorpay/order', { method:'POST', body: JSON.stringify({ address, giftNote, couponCode: cart.coupon }) });
+      }else{
+        const email = document.getElementById('guestEmail').value.trim();
+        const items = cart.items.map(i => ({ productId: i.productId, variantId: i.variantId, qty: i.qty }));
+        session = await apiFetch('/payments/razorpay/guest-order', { method:'POST', body: JSON.stringify({ address, giftNote, couponCode: cart.coupon, items, email }) });
+      }
+
+      const user = getStoredUser();
+      const rzp = new Razorpay({
+        key: session.keyId,
+        amount: Math.round(session.amount * 100),
+        currency: session.currency,
+        order_id: session.razorpayOrderId,
+        name: 'Padmora by Yashi',
+        description: 'Order payment',
+        image: '/images/padmora-lotus.png',
+        prefill: {
+          name: address.name.trim(),
+          email: loggedIn ? (user && user.email || '') : document.getElementById('guestEmail').value.trim(),
+          contact: address.phone
+        },
+        theme: { color: '#AD3B5C' },
+        handler: async function(response){
+          try{
+            const { order } = await apiFetch('/payments/razorpay/verify', { method:'POST', body: JSON.stringify(response) });
+            if(loggedIn && document.getElementById('saveAddress').checked){
+              apiFetch('/addresses', { method:'POST', body: JSON.stringify({ label:'Home', ...address }) }).catch(()=>{});
+            }
+            showConfirmedOrder(order, { isGuest: !loggedIn });
+          }catch(err){
+            errBox.textContent = err.message;
+            errBox.classList.add('show');
+          }
+        },
+        modal: {
+          ondismiss: function(){ /* customer closed the widget — just let them try again */ }
+        }
+      });
+      rzp.on('payment.failed', function(response){
+        errBox.textContent = (response.error && response.error.description) || 'Payment failed. Please try again.';
+        errBox.classList.add('show');
+      });
+      rzp.open();
+    }catch(err){
+      errBox.textContent = err.message;
+      errBox.classList.add('show');
+    }finally{
+      btn.disabled = false; btn.textContent = 'Pay ' + money(cart.total);
+    }
+  });
+
+  async function init(){
+    // Guest checkout: browsing, cart and now checkout itself all work without
+    // an account — only /account/order-history genuinely need a login,
+    // since guest orders are looked up by Order ID + contact instead.
+    if(isLoggedIn()){
+      document.getElementById('guestEmailField').style.display = 'none';
+      document.getElementById('guestAccountNudge').style.display = 'none';
+      loadSavedAddresses();
+    }else{
+      document.getElementById('saveAddressField').style.display = 'none';
+      document.getElementById('guestAccountNudge').style.display = 'block';
+    }
+    try{
+      cart = await cartGet();
+      if(!cart.items.length){
+        document.querySelector('main .container').innerHTML = `
+          <div class="empty-state">
+            <p>Your bag is empty — add a saree before checking out.</p>
+            <a href="/shop" class="btn btn-primary" style="margin-top:16px;">Browse Sarees</a>
+          </div>`;
+        return;
+      }
+    }catch(e){ toast('Could not load your bag.'); }
+  }
+  init();
+</script>
+</body>
+</html>
