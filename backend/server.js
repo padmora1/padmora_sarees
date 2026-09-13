@@ -82,7 +82,7 @@ function withQuery(req, cleanPath) {
 }
 CLEAN_PAGES.forEach(name => {
   app.get(`/${name}`, (req, res) => res.sendFile(path.join(FRONTEND_DIR, `${name}.html`)));
-  app.get(`/${name}.html`, (req, res) => res.redirect(301, withQuery(req, `/${name}`));
+  app.get(`/${name}.html`, (req, res) => res.redirect(301, withQuery(req, `/${name}`)));
 });
 app.get('/index.html', (req, res) => res.redirect(301, withQuery(req, '/')));
 
