@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Track Your Order — Padmora by Yashi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="track-order.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="page-banner">
+    <div class="container">
+      <p class="breadcrumb"><a href="/">Home</a> / Track Order</p>
+      <h1>Track Your Order</h1>
+      <p>Follow your saree's journey from our looms to your doorstep.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:36px;">
+    <div class="container" style="max-width:820px;">
+
+      <div class="track-search-row">
+        <input type="text" id="orderIdInput" placeholder="Enter Order ID (e.g. ZR12345)">
+        <input type="text" id="contactInput" placeholder="Email or phone used at checkout" style="display:none;">
+        <button class="btn btn-primary" id="trackBtn">Track</button>
+      </div>
+      <p id="guestTrackHint" style="display:none;font-size:12px;color:var(--ink-soft);margin:-10px 0 18px;">Checking on a guest order? Enter the Order ID plus the email or phone you used at checkout — no login needed.</p>
+
+      <div id="orderPicker"></div>
+      <div id="trackResult"></div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script src="js/guard.js"></script>
+<script>
+  const STAGE_ICONS = {
+    'Confirmed': '<path d="M5 13l4 4L19 7"/>',
+    'Packed': '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+    'Shipped': '<path d="M3 7h11v8H3z"/><path d="M14 10h4l3 3v2h-7z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17.5" cy="18" r="1.6"/>',
+    'Out for Delivery': '<circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/><path d="M4 18h-1v-5l2-4h9l4 4h2v5h-2"/><path d="M9 9V6h4l3 3"/>',
+    'Delivered': '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M9.5 21v-6h5v6"/>',
+    'Cancelled': '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>'
+  };
+
+  let pollTimer = null;
+  let celebrated = false;
+  let firstRenderDoneFor = null;
+
+  function stageIcon(status){
+    return `<svg viewBox="0 0 24 24" fill="none" stroke-width="1.7">${STAGE_ICONS[status] || ''}</svg>`;
+  }
+
+  function fmtDateTime(iso){
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-IN', { day:'numeric', month:'short' }) + ' · ' + d.toLocaleTimeString('en-IN', { hour:'numeric', minute:'2-digit' });
+  }
+
+  function renderTracker(order){
+    const wrap = document.getElementById('trackResult');
+    const isNewOrder = firstRenderDoneFor !== order.id;
+    firstRenderDoneFor = order.id;
+
+    if(order.status === 'Cancelled'){
+      wrap.innerHTML = `
+        <div class="tracker-card">
+          <div class="cancelled-banner">
+            <span class="tracker-icon-circle cancelled">${stageIcon('Cancelled')}</span>
+            <div><strong>Order Cancelled</strong><span>This order was cancelled and will not be delivered.</span></div>
+          </div>
+          ${orderSummaryHTML(order)}
+        </div>`;
+      return;
+    }
+
+    const stages = order.timeline;
+    const currentIndex = stages.reduce((acc,s,i)=> s.done ? i : acc, 0);
+    const isDelivered = order.status === 'Delivered';
+
+    wrap.innerHTML = `
+      <div class="tracker-card ${isNewOrder ? 'entering' : ''}">
+        <div class="tracker-top">
+          <div class="live-badge"><span class="live-dot"></span>${isDelivered || order.status==='Cancelled' ? 'Live tracking' : 'Live tracking · updates every 20s'}</div>
+          <div class="tracker-order-id">Order #${order.id}</div>
+        </div>
+        ${!isDelivered ? `<p class="eta-line">Expected by <strong>${fmtDateTime(stages[stages.length-1].at)}</strong></p>` : `<p class="eta-line delivered-line">Delivered on <strong>${fmtDateTime(stages[stages.length-1].at)}</strong> 🎉</p>`}
+
+        <div class="tracker-path">
+          ${stages.map((s,i)=>`
+            <div class="tracker-node ${s.done ? 'done' : ''} ${i===currentIndex && !isDelivered ? 'current' : ''}">
+              <span class="tracker-icon-circle">${stageIcon(s.status)}${i===currentIndex && !isDelivered ? '<span class="pulse-ring"></span>' : ''}</span>
+              <div class="tracker-node-label">
+                <strong>${s.status}</strong>
+                <span>${s.done ? fmtDateTime(s.at) : 'Expected ' + fmtDateTime(s.at)}</span>
+              </div>
+              ${i < stages.length-1 ? `<span class="tracker-connector ${stages[i+1].done ? 'filled' : ''}"><span class="connector-shine"></span></span>` : ''}
+            </div>`).join('')}
+        </div>
+
+        <h3 class="updates-heading">Recent Updates</h3>
+        <div class="updates-feed">
+          ${[...stages].filter(s=>s.done).reverse().map((s,i)=>`
+            <div class="update-item" style="animation-delay:${i*0.08}s;">
+              <span class="update-dot"></span>
+              <div><strong>${s.status}</strong><span>${fmtDateTime(s.at)}</span></div>
+            </div>`).join('')}
+        </div>
+
+        ${orderSummaryHTML(order)}
+      </div>`;
+
+    if(isDelivered && !celebrated){
+      celebrated = true;
+      launchConfetti();
+    }
+  }
+
+  function orderSummaryHTML(order){
+    return `
+      <h3 class="updates-heading">Order Summary</h3>
+      <div class="summary-card" style="position:static;">
+        ${order.items.map(li=>`<div class="order-item-row"><span>${li.name} × ${li.qty}</span><span>${money(li.price*li.qty)}</span></div>`).join('')}
+        ${order.discount > 0 ? `<div class="order-item-row"><span>Discount ${order.couponCode ? '('+order.couponCode+')' : ''}</span><span>−${money(order.discount)}</span></div>` : ''}
+        ${order.shippingFee > 0 ? `<div class="order-item-row"><span>Shipping</span><span>${money(order.shippingFee)}</span></div>` : ''}
+        ${order.taxAmount > 0 ? `<div class="order-item-row"><span>Tax</span><span>${money(order.taxAmount)}</span></div>` : ''}
+        <div class="summary-row total"><span>Total</span><span>${money(order.total)}</span></div>
+        <p style="font-size:12.5px;color:var(--ink-soft);margin-top:14px;">Shipping to: ${order.address.line1}, ${order.address.city}, ${order.address.state} ${order.address.pincode}</p>
+        ${order.giftNote ? `<p style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;">🎁 Gift note: “${order.giftNote}”</p>` : ''}
+      </div>`;
+  }
+
+  function launchConfetti(){
+    const colors = ['#AD3B5C','#7A2740','#D9A97C','#F2B9BB'];
+    const layer = document.createElement('div');
+    layer.className = 'confetti-layer';
+    for(let i=0;i<40;i++){
+      const piece = document.createElement('span');
+      piece.className = 'confetti-piece';
+      piece.style.left = Math.random()*100 + '%';
+      piece.style.background = colors[i % colors.length];
+      piece.style.animationDelay = (Math.random()*0.6) + 's';
+      piece.style.animationDuration = (2 + Math.random()*1.5) + 's';
+      layer.appendChild(piece);
+    }
+    document.body.appendChild(layer);
+    setTimeout(()=> layer.remove(), 4000);
+  }
+
+  async function loadOrder(id, {silent, contact} = {}){
+    if(!silent) document.getElementById('trackResult').innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Looking up your order…</div>`;
+    try{
+      // Guest orders are looked up by Order ID + the email/phone given at
+      // checkout (no session) — logged-in customers use their own /orders/:id
+      // which is scoped to their account regardless of who they tell it to.
+      const path = isLoggedIn()
+        ? '/orders/' + encodeURIComponent(id)
+        : '/orders/guest/' + encodeURIComponent(id) + '?contact=' + encodeURIComponent(contact || '');
+      const { order } = await apiFetch(path);
+      renderTracker(order);
+      history.replaceState(null, '', '/track-order?id=' + encodeURIComponent(id));
+      if(pollTimer) clearInterval(pollTimer);
+      // Once an order reaches a terminal state, nothing will ever change
+      // again — keep polling only while it's genuinely still in transit.
+      const isTerminal = order.status === 'Delivered' || order.status === 'Cancelled';
+      if(!isTerminal){
+        pollTimer = setInterval(()=> loadOrder(id, {silent:true, contact}), 20000);
+      }
+    }catch(e){
+      document.getElementById('trackResult').innerHTML = `<div class="empty-state"><p>${e.message || 'Order not found.'}</p></div>`;
+    }
+  }
+
+  document.getElementById('trackBtn').addEventListener('click', ()=>{
+    const id = document.getElementById('orderIdInput').value.trim();
+    if(!id) return;
+    if(isLoggedIn()){
+      loadOrder(id);
+    }else{
+      const contact = document.getElementById('contactInput').value.trim();
+      if(!contact){ toast('Enter the email or phone you used at checkout.', 'error'); return; }
+      loadOrder(id, { contact });
+    }
+  });
+  document.getElementById('orderIdInput').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter') document.getElementById('trackBtn').click();
+  });
+
+  async function renderPicker(){
+    try{
+      const { orders } = await apiFetch('/orders');
+      if(!orders.length){
+        document.getElementById('orderPicker').innerHTML = `<div class="empty-state"><p>No orders yet. <a href="/shop" style="color:var(--maroon);text-decoration:underline;">Start shopping</a>.</p></div>`;
+        return;
+      }
+      document.getElementById('orderPicker').innerHTML = `
+        <p style="font-size:12px;color:var(--ink-soft);margin-bottom:10px;">Or pick a recent order:</p>
+        <div class="picker-chip-row">
+          ${orders.slice(0,6).map(o=>`<button class="picker-chip" data-pick="${o.id}">#${o.id} · ${o.status}</button>`).join('')}
+        </div>`;
+      document.querySelectorAll('[data-pick]').forEach(b=>b.addEventListener('click', ()=>{
+        document.getElementById('orderIdInput').value = b.dataset.pick;
+        loadOrder(b.dataset.pick);
+      }));
+    }catch(e){ /* ignore */ }
+  }
+
+  async function init(){
+    if(isLoggedIn()){
+      const idFromUrl = new URLSearchParams(window.location.search).get('id');
+      renderPicker();
+      if(idFromUrl){
+        document.getElementById('orderIdInput').value = idFromUrl;
+        loadOrder(idFromUrl);
+      }else{
+        try{
+          const { orders } = await apiFetch('/orders');
+          const active = orders.find(o=>o.status!=='Cancelled') || orders[0];
+          if(active){ document.getElementById('orderIdInput').value = active.id; loadOrder(active.id); }
+          else document.getElementById('trackResult').innerHTML = `<div class="empty-state"><p>No orders yet. <a href="/shop" style="color:var(--maroon);text-decoration:underline;">Start shopping</a>.</p></div>`;
+        }catch(e){ /* ignore */ }
+      }
+    }else{
+      document.getElementById('contactInput').style.display = 'block';
+      document.getElementById('guestTrackHint').style.display = 'block';
+      const idFromUrl = new URLSearchParams(window.location.search).get('id');
+      if(idFromUrl){
+        document.getElementById('orderIdInput').value = idFromUrl;
+        document.getElementById('contactInput').focus();
+      }
+      document.getElementById('trackResult').innerHTML = `<div class="empty-state"><p>Enter your Order ID and the email or phone you used at checkout to track it.</p></div>`;
+    }
+  }
+  init();
+</script>
+</body>
+</html>

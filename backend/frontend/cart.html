@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Your Bag — Padmora by Yashi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="cart.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="page-banner">
+    <div class="container">
+      <p class="breadcrumb"><a href="/">Home</a> / Your Bag</p>
+      <h1>Your Bag</h1>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:36px;">
+    <div class="container">
+      <div id="cartContent"><div class="loading-state"><span class="zari-spinner"></span>Loading your bag…</div></div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  let cart = { items: [], subtotal: 0, discount: 0, total: 0, coupon: null };
+
+  function renderCart(){
+    const wrap = document.getElementById('cartContent');
+    const items = cart.items;
+    if(!items.length){
+      wrap.innerHTML = `<div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.3"><path d="M6 6h15l-1.5 9h-12z"/><path d="M6 6L4.5 3H2"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg>
+        <p>Your bag is empty.<br>Time to find a saree you love.</p>
+        <a href="/shop" class="btn btn-primary" style="margin-top:20px;">Browse Sarees</a>
+      </div>`;
+      return;
+    }
+
+    wrap.innerHTML = `
+      ${!isLoggedIn() ? `<div class="form-error show" style="background:rgba(31,75,74,0.08);color:var(--teal);">Shopping as a guest — <a href="/login?redirect=/cart" style="color:var(--teal);text-decoration:underline;">log in</a> to save your bag across devices and check out.</div>` : ''}
+      <div class="cart-layout">
+        <div>
+          ${items.map((item)=>`
+            <div class="cart-line">
+              <div class="cart-thumb" style="background:${swatchBg(item.color)};"></div>
+              <div class="cart-line-info">
+                <h4>${item.product.name}</h4>
+                <span>${item.product.fabric}</span>
+                <div class="qty-stepper">
+                  <button data-dec="${item.id}">−</button><span>${item.qty}</span><button data-inc="${item.id}">+</button>
+                </div>
+                <div class="remove-line" data-remove="${item.id}">Remove</div>
+              </div>
+              <div class="cart-line-price">${money(item.product.price * item.qty)}</div>
+            </div>`).join('')}
+        </div>
+        <div class="summary-card">
+          <h3>Order Summary</h3>
+          <div class="promo-row">
+            <input type="text" placeholder="Promo code (try PADMORA40)" id="promoInput" value="${cart.coupon || ''}">
+            <button id="promoApply">${cart.coupon ? 'Remove' : 'Apply'}</button>
+          </div>
+          <div class="summary-row"><span>Subtotal</span><span>${money(cart.subtotal)}</span></div>
+          ${cart.discount > 0 ? `<div class="summary-row"><span>Discount ${cart.coupon ? '(' + cart.coupon + ')' : ''}</span><span>−${money(cart.discount)}</span></div>` : ''}
+          <div class="summary-row"><span>Shipping</span><span>${cart.shippingFee > 0 ? money(cart.shippingFee) : 'Free'}</span></div>
+          ${cart.taxAmount > 0 ? `<div class="summary-row"><span>${cart.taxLabel || 'GST'} (${cart.taxRate}%)</span><span>${money(cart.taxAmount)}</span></div>` : ''}
+          <div class="summary-row total"><span>Total</span><span>${money(cart.total)}</span></div>
+          <a href="/checkout" class="btn btn-primary btn-block" style="margin-top:16px;justify-content:center;">Proceed to Checkout</a>
+        </div>
+      </div>`;
+
+    document.querySelectorAll('[data-inc]').forEach(b=>b.addEventListener('click', ()=>changeQty(b.dataset.inc, 1)));
+    document.querySelectorAll('[data-dec]').forEach(b=>b.addEventListener('click', ()=>changeQty(b.dataset.dec, -1)));
+    document.querySelectorAll('[data-remove]').forEach(b=>b.addEventListener('click', ()=>removeItem(b.dataset.remove)));
+    document.getElementById('promoApply').addEventListener('click', applyPromo);
+  }
+
+  async function changeQty(itemId, delta){
+    const item = cart.items.find(i=>i.id===itemId);
+    const newQty = item.qty + delta;
+    if(newQty <= 0) return removeItem(itemId);
+    if(delta > 0 && item.product && newQty > item.product.stock){
+      toast(`Only ${item.product.stock} left in stock.`);
+      return;
+    }
+    try{
+      cart = await cartUpdateQty(itemId, newQty);
+      if(cart.message) toast(cart.message);
+      renderCart(); refreshBadgeCounts();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+  async function removeItem(itemId){
+    try{
+      cart = await cartRemoveItem(itemId);
+      renderCart(); refreshBadgeCounts();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+  async function applyPromo(){
+    if(cart.coupon){
+      try{ cart = await cartRemoveCoupon(); toast('Promo code removed'); renderCart(); }
+      catch(e){ toast(e.message, 'error'); }
+      return;
+    }
+    const code = document.getElementById('promoInput').value.trim();
+    if(!code) return;
+    try{
+      cart = await cartApplyCoupon(code);
+      toast(`Promo code applied — ${money(cart.discount)} off!`);
+      renderCart();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function init(){
+    try{
+      cart = await cartGet();
+      renderCart();
+    }catch(e){
+      document.getElementById('cartContent').innerHTML = `<p style="text-align:center;color:var(--ink-soft);">Could not load your bag. Please try again.</p>`;
+    }
+  }
+  init();
+</script>
+</body>
+</html>

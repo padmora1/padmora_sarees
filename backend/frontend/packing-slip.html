@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Packing Slip — Padmora</title>
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{ --maroon:#AD3B5C; --maroon-deep:#7A2740; --gold:#B87F55; --ink:#3D2229; --ink-soft:#8C5A63; }
+  *{box-sizing:border-box;}
+  body{font-family:'Jost',sans-serif;color:var(--ink);max-width:720px;margin:0 auto;padding:24px 32px 40px;background:#fff;}
+  h1{font-family:'Marcellus',serif;font-size:24px;color:var(--maroon-deep);margin:0;}
+  .slip{padding-top:16px;}
+  .slip + .slip{margin-top:8px;border-top:2px dashed #e5dcd6;}
+  .slip-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid var(--maroon);padding-bottom:16px;margin-bottom:24px;}
+  .slip-head .brand-sub{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--gold);margin-top:2px;}
+  .slip-head .order-meta{text-align:right;font-size:13px;color:var(--ink-soft);}
+  .slip-head .order-meta strong{display:block;font-size:16px;color:var(--ink);}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;}
+  .block h4{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--maroon);margin:0 0 8px;}
+  .block p{font-size:13.5px;line-height:1.6;margin:0;}
+  table{width:100%;border-collapse:collapse;margin-bottom:20px;}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid #e5dcd6;font-size:13px;}
+  th{text-transform:uppercase;font-size:10.5px;letter-spacing:.05em;color:var(--ink-soft);border-bottom:2px solid var(--maroon);}
+  td.num, th.num{text-align:right;}
+  .totals{margin-left:auto;width:260px;font-size:13.5px;}
+  .totals div{display:flex;justify-content:space-between;padding:4px 0;}
+  .totals .grand{font-weight:700;font-size:15px;border-top:2px solid var(--maroon);padding-top:8px;margin-top:4px;}
+  .gift-note{margin-top:20px;padding:12px 14px;background:#faf3ee;border-left:3px solid var(--gold);font-size:13px;font-style:italic;}
+  .actions{position:sticky;top:0;background:#fff;padding:14px 0;margin-bottom:8px;display:flex;gap:12px;align-items:center;border-bottom:1px solid #e5dcd6;z-index:1;}
+  .actions button, .actions a{font-family:inherit;font-size:13px;padding:10px 20px;border-radius:2px;border:1px solid var(--maroon);background:#fff;color:var(--maroon);cursor:pointer;text-decoration:none;}
+  .actions button.primary{background:var(--maroon);color:#fff;}
+  .actions span{font-size:12px;color:var(--ink-soft);}
+  .loading, .error{padding:60px 0;text-align:center;color:var(--ink-soft);}
+  @media print{
+    body{padding:0;max-width:none;}
+    .actions{display:none;}
+    .slip{page-break-after:always;padding-top:0;}
+    .slip:last-child{page-break-after:auto;}
+  }
+</style>
+</head>
+<body>
+
+<div class="actions" id="actionsBar" style="display:none;">
+  <button class="primary" onclick="window.print()">Print</button>
+  <a href="/admin">Back to Dashboard</a>
+  <span id="slipCount"></span>
+</div>
+<div id="slipRoot"><div class="loading">Loading order…</div></div>
+
+<script src="js/api.js"></script>
+<script src="js/admin-api.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const singleId = params.get('id');
+  const bulkIds = (params.get('ids') || '').split(',').map(s=>s.trim()).filter(Boolean);
+
+  async function init(){
+    if(!requireAdminLogin()) return;
+    const ids = singleId ? [singleId] : bulkIds;
+    if(!ids.length){
+      document.getElementById('slipRoot').innerHTML = '<div class="error">No order ID given.</div>';
+      return;
+    }
+    try{
+      let orders;
+      if(ids.length === 1){
+        const { order } = await adminApiFetch('/admin/orders/' + encodeURIComponent(ids[0]));
+        orders = [order];
+      }else{
+        const { orders: fetched } = await adminApiFetch('/admin/orders/bulk?ids=' + ids.map(encodeURIComponent).join(','));
+        orders = fetched;
+      }
+      if(!orders.length){
+        document.getElementById('slipRoot').innerHTML = '<div class="error">None of those orders could be found.</div>';
+        return;
+      }
+      document.getElementById('slipRoot').innerHTML = orders.map(slipHTML).join('');
+      document.getElementById('actionsBar').style.display = 'flex';
+      document.getElementById('slipCount').textContent = orders.length > 1 ? `${orders.length} orders` : '';
+      if(ids.length > orders.length){
+        document.getElementById('slipCount').textContent += ` (${ids.length - orders.length} not found)`;
+      }
+    }catch(e){
+      document.getElementById('slipRoot').innerHTML = `<div class="error">${e.message}</div>`;
+    }
+  }
+
+  function money(n){ return '₹' + Number(n).toLocaleString('en-IN'); }
+
+  function slipHTML(o){
+    return `
+    <div class="slip">
+      <div class="slip-head">
+        <div>
+          <h1>Padmora</h1>
+          <div class="brand-sub">Handloom &amp; Heritage Sarees</div>
+        </div>
+        <div class="order-meta">
+          <strong>#${o.id}</strong>
+          Placed ${new Date(o.placedAt).toLocaleDateString('en-IN', {day:'numeric', month:'long', year:'numeric'})}<br>
+          Payment: ${o.payment}
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="block">
+          <h4>Ship To</h4>
+          <p><strong>${o.address.name}</strong><br>
+          ${o.address.line1}<br>
+          ${o.address.city}, ${o.address.state} ${o.address.pincode}<br>
+          ${o.address.phone || ''}</p>
+        </div>
+        <div class="block">
+          <h4>Customer</h4>
+          <p>${o.customerName}<br>${o.customerEmail || ''}<br>${o.customerPhone || ''}</p>
+        </div>
+      </div>
+
+      <table>
+        <thead><tr><th>Item</th><th>Colour</th><th class="num">Qty</th><th class="num">Price</th></tr></thead>
+        <tbody>
+          ${o.items.map(i=>`<tr><td>${i.name}</td><td>${i.color||'—'}</td><td class="num">${i.qty}</td><td class="num">${money(i.price)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+
+      <div class="totals">
+        <div><span>Subtotal</span><span>${money(o.subtotal)}</span></div>
+        ${o.discount ? `<div><span>Discount${o.couponCode?' ('+o.couponCode+')':''}</span><span>−${money(o.discount)}</span></div>` : ''}
+        ${o.shippingFee ? `<div><span>Shipping</span><span>${money(o.shippingFee)}</span></div>` : ''}
+        ${o.taxAmount ? `<div><span>Tax</span><span>${money(o.taxAmount)}</span></div>` : ''}
+        <div class="grand"><span>Total</span><span>${money(o.total)}</span></div>
+      </div>
+
+      ${o.giftNote ? `<div class="gift-note">🎁 Gift note: "${o.giftNote}"</div>` : ''}
+    </div>`;
+  }
+
+  init();
+</script>
+</body>
+</html>

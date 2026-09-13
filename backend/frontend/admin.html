@@ -1,0 +1,2240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Store Dashboard — Padmora Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="admin.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="page-banner">
+    <div class="container">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+        <div>
+          <p class="breadcrumb">Admin</p>
+          <h1>Store Dashboard</h1>
+          <p>Manage products, orders, and customer messages.</p>
+        </div>
+        <div style="text-align:right;padding-top:6px;" id="adminIdentityBar"></div>
+      </div>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:36px;">
+    <div class="container">
+      <div class="account-layout">
+        <nav class="account-nav">
+          <button class="active" data-tab="overview">Overview</button>
+          <button data-tab="products">Products</button>
+          <button data-tab="catalog">Catalog</button>
+          <button data-tab="storefront">Storefront</button>
+          <button data-tab="orders">Orders</button>
+          <button data-tab="returns">Returns</button>
+          <button data-tab="inventory">Inventory</button>
+          <button data-tab="coupons">Coupons</button>
+          <button data-tab="customers">Customers</button>
+          <button data-tab="reviews">Reviews</button>
+          <button data-tab="analytics">Analytics</button>
+          <button data-tab="messages">Messages</button>
+          <button data-tab="settings">Settings</button>
+          <button data-tab="adminusers">Admin Users</button>
+          <button data-tab="activitylog">Activity Log</button>
+        </nav>
+
+        <div class="account-panel">
+          <div id="panel-overview">
+            <h2>Overview</h2>
+            <div class="stat-grid" id="statGrid"></div>
+            <p id="lastBackupNote" style="font-size:12px;color:var(--ink-soft);margin-top:10px;"></p>
+            <h3 style="font-size:15px;margin:26px 0 12px;">Low Stock (10 or fewer)</h3>
+            <div id="lowStockList"></div>
+          </div>
+
+          <div id="panel-products" style="display:none;">
+            <h2>Products</h2>
+            <button class="btn btn-sm btn-outline" id="showAddProduct" style="margin-bottom:16px;">+ Add Product</button>
+            <div class="admin-form" id="addProductForm" style="display:none;">
+              <div class="form-row-2">
+                <div class="form-field"><label>Name</label><input type="text" id="npName"></div>
+                <div class="form-field"><label>Fabric</label><input type="text" id="npFabric"></div>
+              </div>
+              <div class="form-row-2">
+                <div class="form-field"><label>Occasion</label><input type="text" id="npOccasion" placeholder="Wedding / Festive / Party / Casual / Office"></div>
+                <div class="form-field"><label>Swatch key</label><input type="text" id="npSwatch" placeholder="maroon, teal, indigo..."></div>
+              </div>
+              <div class="form-row-2">
+                <div class="form-field"><label>Price (₹)</label><input type="number" id="npPrice"></div>
+                <div class="form-field"><label>MRP (₹)</label><input type="number" id="npMrp"></div>
+              </div>
+              <div class="form-row-2">
+                <div class="form-field"><label>Stock</label><input type="number" id="npStock" value="20"></div>
+                <div class="form-field"><label>Badge</label>
+                  <select id="npBadge"><option value="">None</option><option value="new">New</option><option value="bestseller">Bestseller</option><option value="sale">Sale</option></select>
+                </div>
+              </div>
+              <div class="form-field"><label>Description</label><textarea id="npDesc" rows="2"></textarea></div>
+              <div class="form-row-2">
+                <div class="form-field"><label>Weaver Name</label><input type="text" id="npWeaverName"></div>
+                <div class="form-field"><label>Weaver Region</label><input type="text" id="npWeaverRegion"></div>
+              </div>
+              <div class="form-field"><label>Loom Type</label><input type="text" id="npLoomType" placeholder="Handloom / Powerloom / Handcrafted"></div>
+              <button class="btn btn-primary btn-sm" id="createProduct">Create Product</button>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="admin-table" id="productsTable"></table>
+            </div>
+            <div id="productEditor" style="display:none;"></div>
+          </div>
+
+          <div id="panel-catalog" style="display:none;">
+            <h2>Catalog</h2>
+            <div class="editor-tabs" id="catalogTabs">
+              <button data-ctab="fabrics" class="active">Fabrics</button>
+              <button data-ctab="occasions">Occasions</button>
+              <button data-ctab="badges">Badges</button>
+              <button data-ctab="collections">Collections</button>
+            </div>
+            <div id="catalogTabBody"></div>
+          </div>
+
+          <div id="panel-storefront" style="display:none;">
+            <h2>Storefront</h2>
+            <div class="editor-tabs" id="storefrontTabs">
+              <button data-stab="hero" class="active">Hero</button>
+              <button data-stab="promo">Promo Band</button>
+              <button data-stab="reels">Sarees in Motion</button>
+              <button data-stab="faq">FAQ</button>
+            </div>
+            <div id="storefrontTabBody"></div>
+          </div>
+
+          <div id="panel-coupons" style="display:none;">
+            <h2>Coupons</h2>
+            <button class="btn btn-sm btn-outline" id="showAddCoupon" style="margin-bottom:16px;">+ Add Coupon</button>
+            <div class="admin-form" id="addCouponForm" style="display:none;"></div>
+            <div style="overflow-x:auto;">
+              <table class="admin-table" id="couponsTable"></table>
+            </div>
+          </div>
+
+          <div id="panel-orders" style="display:none;">
+            <h2>Orders</h2>
+            <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+              <button class="btn btn-outline btn-sm" id="exportOrdersCsv">Export CSV</button>
+              <button class="btn btn-outline btn-sm" id="printSelectedSlips" style="display:none;">Print Packing Slips (<span id="selectedSlipCount">0</span>)</button>
+            </div>
+            <div class="order-filter-row" id="orderStatusFilters"></div>
+            <div style="overflow-x:auto;">
+              <table class="admin-table" id="ordersTable"></table>
+            </div>
+            <div id="orderDetail" style="display:none;"></div>
+          </div>
+
+          <div id="panel-returns" style="display:none;">
+            <h2>Returns &amp; Refunds</h2>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Requested → Approved/Rejected → Received → Refunded. Refunds can only be processed once an item is marked Received — never before the saree is actually back in hand.</p>
+            <div class="order-filter-row" id="returnStatusFilters"></div>
+            <div style="overflow-x:auto;">
+              <table class="admin-table" id="returnsTable"></table>
+            </div>
+            <div id="returnDetail" style="display:none;"></div>
+          </div>
+
+          <div id="panel-inventory" style="display:none;">
+            <h2>Inventory</h2>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Stock lives on each colour variant. Adjust with a reason — every change is kept in that variant's history.</p>
+
+            <div class="detail-block" style="margin-bottom:16px;">
+              <h5>Bulk price/stock via CSV</h5>
+              <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.6;margin-bottom:10px;">
+                Columns: <strong>variantId</strong> (required — never add or remove rows, this is what matches a row to the right variant), <strong>productName</strong> &amp; <strong>colorName</strong> &amp; <strong>sku</strong> (shown for reference, not read on import), <strong>price</strong>, <strong>mrp</strong>, <strong>stock</strong> (what actually gets updated). New to this? Download the template below to see one real row in the right shape — or just click Export CSV, that file already has every current variant and is itself a valid file to edit and re-upload.
+              </p>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                <button class="btn btn-outline btn-sm" id="downloadVariantsTemplate">Download Template</button>
+                <button class="btn btn-outline btn-sm" id="exportVariantsCsv">Export CSV</button>
+                <button class="btn btn-outline btn-sm" id="importVariantsCsvBtn">Import CSV</button>
+                <input type="file" id="importVariantsCsvFile" accept=".csv" style="display:none;">
+              </div>
+            </div>
+            <div id="csvImportResult" style="display:none;margin-bottom:16px;"></div>
+            <div style="overflow-x:auto;">
+              <table class="admin-table" id="inventoryTable"></table>
+            </div>
+            <div id="inventoryDetail" style="display:none;"></div>
+
+            <h3 style="font-size:15px;margin:28px 0 6px;">Pre-Book Requests</h3>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Real demand for sold-out colours — a customer left their email on the product page instead of hitting a dead end. Everyone on a list is emailed automatically the moment that variant's stock goes above zero.</p>
+            <div style="overflow-x:auto;">
+              <table class="admin-table" id="prebooksTable"></table>
+            </div>
+          </div>
+
+          <div id="panel-customers" style="display:none;">
+            <h2>Customers</h2>
+            <div style="overflow-x:auto;">
+              <table class="admin-table" id="customersTable"></table>
+            </div>
+            <div id="customerDetail" style="display:none;"></div>
+          </div>
+
+          <div id="panel-reviews" style="display:none;">
+            <h2>Reviews</h2>
+            <div class="order-filter-row" id="reviewStatusFilters"></div>
+            <div style="overflow-x:auto;">
+              <table class="admin-table" id="reviewsTable"></table>
+            </div>
+          </div>
+
+          <div id="panel-analytics" style="display:none;">
+            <h2>Analytics</h2>
+            <div class="editor-tabs" id="analyticsTabs">
+              <button data-atab="wishlist" class="active">Wishlist</button>
+              <button data-atab="search">Search</button>
+            </div>
+            <div id="analyticsTabBody"></div>
+          </div>
+
+          <div id="panel-messages" style="display:none;">
+            <h2>Customer Messages</h2>
+            <div id="messagesList"></div>
+          </div>
+
+          <div id="panel-settings" style="display:none;">
+            <h2>Settings</h2>
+
+            <h3 style="font-size:15px;margin-bottom:6px;">Store Info</h3>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Brand identity and contact details used across the storefront footer and header.</p>
+            <div class="admin-form" id="storeSettingsForm"></div>
+
+            <h3 style="font-size:15px;margin:28px 0 6px;">Shipping</h3>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Flat shipping fee, the order value that waives it, delivery regions and estimated delivery time.</p>
+            <div class="admin-form" id="shippingSettingsForm"></div>
+
+            <h3 style="font-size:15px;margin:28px 0 6px;">Tax (GST)</h3>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Applied to every order's discounted subtotal and shown as a separate line item in cart, checkout and order confirmations.</p>
+            <div class="admin-form" id="taxSettingsForm"></div>
+
+            <h3 style="font-size:15px;margin:28px 0 6px;">Returns &amp; Refunds Policy</h3>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">How many days after delivery a customer can request a return. This is the one place that number lives — the Shipping &amp; Returns page and every eligibility check read it from here.</p>
+            <div class="admin-form" id="returnPolicyForm"></div>
+
+            <h3 style="font-size:15px;margin:28px 0 6px;">Tracking Timing</h3>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Hours after an order is placed before its automatic status advances to each stage. An admin's manual override on an individual order always takes priority over this.</p>
+            <div class="admin-form" id="trackingSettingsForm"></div>
+
+            <h3 style="font-size:15px;margin:28px 0 6px;">Order Confirmation Notifications</h3>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Every order automatically triggers a confirmation email and SMS attempt. Delivery only goes out for real once an SMTP account and SMS provider are configured on the server (backend/.env: SMTP_HOST/SMTP_USER/SMTP_PASS and TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_FROM_NUMBER) — until then every attempt is logged here as "skipped, not configured" rather than silently pretending to send.</p>
+            <div id="notifyConfigStatus" style="display:flex;gap:10px;margin-bottom:14px;"></div>
+            <div style="overflow-x:auto;">
+              <table class="admin-table" id="notificationsLogTable"></table>
+            </div>
+
+            <h3 style="font-size:15px;margin:28px 0 6px;">Database Backups</h3>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">A safe, point-in-time snapshot of the whole store database, taken automatically every 6 hours and kept for the last 30. Download one before a risky change, or to move it to your own cloud storage.</p>
+            <button class="btn btn-outline btn-sm" id="runBackupBtn" style="margin-bottom:14px;">Back Up Now</button>
+            <div style="overflow-x:auto;">
+              <table class="admin-table" id="backupsTable"></table>
+            </div>
+          </div>
+
+          <div id="panel-adminusers" style="display:none;">
+            <h2>Admin Users</h2>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Only a Super Admin can see this tab. Each role's access is enforced on the server, not just hidden in this UI.</p>
+            <button class="btn btn-sm btn-outline" id="showAddAdminUser" style="margin-bottom:16px;">+ Add Admin User</button>
+            <div class="admin-form" id="addAdminUserForm" style="display:none;"></div>
+            <div style="overflow-x:auto;">
+              <table class="admin-table" id="adminUsersTable"></table>
+            </div>
+          </div>
+
+          <div id="panel-activitylog" style="display:none;">
+            <h2>Activity Log</h2>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">The last 200 admin actions across the whole team, most recent first.</p>
+            <div id="activityLogList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script src="js/admin-api.js"></script>
+<script>
+  const STAGE_NAMES = ['Confirmed','Packed','Shipped','Out for Delivery','Delivered'];
+
+  function switchTab(tab){
+    document.querySelectorAll('.account-nav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+    ['overview','products','catalog','storefront','orders','returns','inventory','coupons','customers','reviews','analytics','messages','settings','adminusers','activitylog'].forEach(t=>{
+      document.getElementById('panel-'+t).style.display = (t===tab) ? 'block' : 'none';
+    });
+    if(tab==='overview') loadOverview();
+    if(tab==='products') loadProducts();
+    if(tab==='catalog') renderCatalogTab();
+    if(tab==='storefront') renderStorefrontTab();
+    if(tab==='orders') loadOrders();
+    if(tab==='returns') loadReturns();
+    if(tab==='inventory'){ loadInventory(); loadPrebooks(); }
+    if(tab==='coupons') loadCoupons();
+    if(tab==='customers') loadCustomers();
+    if(tab==='reviews') loadReviews();
+    if(tab==='analytics') renderAnalyticsTab();
+    if(tab==='messages') loadMessages();
+    if(tab==='settings'){ loadStoreSettings(); loadShippingSettings(); loadTaxSettings(); loadReturnPolicySettings(); loadSettings(); loadNotificationsLog(); loadBackups(); }
+    if(tab==='adminusers') loadAdminUsers();
+    if(tab==='activitylog') loadActivityLog();
+  }
+  document.querySelectorAll('.account-nav button').forEach(b=>b.addEventListener('click', ()=>switchTab(b.dataset.tab)));
+
+  async function loadOverview(){
+    try{
+      const {stats, lowStock} = await adminApiFetch('/admin/stats');
+      document.getElementById('statGrid').innerHTML = `
+        <div class="stat-card"><strong>${money(stats.revenue)}</strong><span>Total Revenue</span></div>
+        <div class="stat-card"><strong>${stats.totalOrders}</strong><span>Active Orders</span></div>
+        <div class="stat-card"><strong>${stats.cancelledOrders}</strong><span>Cancelled Orders</span></div>
+        <div class="stat-card"><strong>${stats.userCount}</strong><span>Customers</span></div>
+        <div class="stat-card"><strong>${stats.unreadMessages}</strong><span>Unread Messages</span></div>
+        <div class="stat-card"><strong>${stats.todayOrders}</strong><span>Orders Today</span></div>
+        <div class="stat-card"><strong>${money(stats.todayRevenue)}</strong><span>Revenue Today</span></div>
+        <div class="stat-card"><strong>${money(stats.avgOrderValue)}</strong><span>Avg Order Value</span></div>
+        <div class="stat-card"><strong>${stats.guestOrderCount}</strong><span>Guest Orders</span></div>
+        <div class="stat-card ${stats.abandonedCarts > 0 ? 'stat-card-warn' : ''}"><strong>${stats.abandonedCarts}</strong><span>Abandoned Carts</span></div>`;
+      document.getElementById('lowStockList').innerHTML = lowStock.length
+        ? lowStock.map(p=>`<div class="order-item-row"><span>${p.name}</span><span style="color:var(--maroon);font-weight:600;">${p.stock} left</span></div>`).join('')
+        : `<p style="color:var(--ink-soft);font-size:13px;">Nothing low on stock right now.</p>`;
+      const backupNote = document.getElementById('lastBackupNote');
+      backupNote.textContent = stats.lastBackupAt
+        ? `Last database backup: ${new Date(stats.lastBackupAt).toLocaleString('en-IN')}`
+        : 'No backup has run yet.';
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  let allProducts = [];
+  let openProductId = null;
+  let editorTab = 'general';
+
+  async function loadProducts(){
+    try{
+      const {products} = await adminApiFetch('/admin/products');
+      allProducts = products;
+      document.getElementById('productsTable').innerHTML = `
+        <thead><tr><th>Name</th><th>Fabric</th><th>Variants</th><th>Total Stock</th><th>Badge</th><th>Status</th><th></th></tr></thead>
+        <tbody>${products.map(p=>`
+          <tr data-id="${p.id}">
+            <td>${p.name}</td>
+            <td>${p.fabric}</td>
+            <td>${p.variantCount}</td>
+            <td style="${p.totalStock<=10?'color:var(--maroon);font-weight:600;':''}">${p.totalStock}</td>
+            <td>${p.badge || '—'}</td>
+            <td>${p.status || 'active'}</td>
+            <td style="white-space:nowrap;">
+              <button class="btn btn-sm btn-outline" data-edit="${p.id}">Edit</button>
+              <button class="btn btn-sm" style="color:var(--maroon);" data-delete="${p.id}">Delete</button>
+            </td>
+          </tr>`).join('')}</tbody>`;
+
+      document.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click', ()=>{
+        openProductId = Number(btn.dataset.edit);
+        editorTab = 'general';
+        renderProductEditor();
+      }));
+      document.querySelectorAll('[data-delete]').forEach(btn=>btn.addEventListener('click', async ()=>{
+        const ok = await showConfirmDialog('This cannot be undone unless the product has past orders (then it’s archived instead).', {title:'Delete this product?', confirmLabel:'Delete', danger:true});
+        if(!ok) return;
+        try{
+          const result = await adminApiFetch('/admin/products/' + btn.dataset.delete, {method:'DELETE'});
+          toast(result.message || 'Product removed');
+          if(openProductId === Number(btn.dataset.delete)){ openProductId = null; document.getElementById('productEditor').style.display = 'none'; }
+          loadProducts();
+        }catch(e){ toast(e.message, 'error'); }
+      }));
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  // ---- Product editor: General + Variants tabs ----
+  function renderProductEditor(){
+    const wrap = document.getElementById('productEditor');
+    const p = allProducts.find(x => x.id === openProductId);
+    if(!p){ wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+
+    wrap.innerHTML = `
+      <div class="editor-card">
+        <div class="editor-tabs">
+          <button data-tab="general" class="${editorTab==='general'?'active':''}">General</button>
+          <button data-tab="variants" class="${editorTab==='variants'?'active':''}">Variants (${p.variants.length})</button>
+        </div>
+        <div id="editorTabBody"></div>
+      </div>`;
+
+    wrap.querySelectorAll('.editor-tabs button').forEach(b=>b.addEventListener('click', ()=>{ editorTab = b.dataset.tab; renderProductEditor(); }));
+
+    if(editorTab === 'general') renderGeneralTab(p); else renderVariantsTab(p);
+  }
+
+  function renderGeneralTab(p){
+    document.getElementById('editorTabBody').innerHTML = `
+      <div class="form-row-2">
+        <div class="form-field"><label>Name</label><input type="text" id="egName" value="${p.name}"></div>
+        <div class="form-field"><label>Fabric</label><input type="text" id="egFabric" value="${p.fabric}"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-field"><label>Occasion</label><input type="text" id="egOccasion" value="${p.occasion}"></div>
+        <div class="form-field"><label>Badge</label>
+          <select id="egBadge">
+            <option value="" ${!p.badge?'selected':''}>None</option>
+            <option value="new" ${p.badge==='new'?'selected':''}>New</option>
+            <option value="bestseller" ${p.badge==='bestseller'?'selected':''}>Bestseller</option>
+            <option value="sale" ${p.badge==='sale'?'selected':''}>Sale</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-field"><label>Description</label><textarea id="egDesc" rows="2">${p.desc || ''}</textarea></div>
+      <div class="form-row-2">
+        <div class="form-field"><label>Weaver Name</label><input type="text" id="egWeaverName" value="${p.weaverName || ''}"></div>
+        <div class="form-field"><label>Weaver Region</label><input type="text" id="egWeaverRegion" value="${p.weaverRegion || ''}"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-field"><label>Loom Type</label><input type="text" id="egLoomType" value="${p.loomType || ''}"></div>
+        <div class="form-field"><label>Status</label>
+          <select id="egStatus">
+            <option value="active" ${p.status!=='archived'?'selected':''}>Active</option>
+            <option value="archived" ${p.status==='archived'?'selected':''}>Archived</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" id="egSave">Save General Info</button>`;
+
+    document.getElementById('egSave').addEventListener('click', async ()=>{
+      try{
+        await adminApiFetch('/admin/products/' + p.id, { method:'PUT', body: JSON.stringify({
+          name: document.getElementById('egName').value, fabric: document.getElementById('egFabric').value,
+          occasion: document.getElementById('egOccasion').value, badge: document.getElementById('egBadge').value,
+          desc: document.getElementById('egDesc').value, weaverName: document.getElementById('egWeaverName').value,
+          weaverRegion: document.getElementById('egWeaverRegion').value, loomType: document.getElementById('egLoomType').value,
+          status: document.getElementById('egStatus').value
+        })});
+        toast('Product details saved');
+        await loadProducts();
+        renderProductEditor();
+      }catch(e){ toast(e.message, 'error'); }
+    });
+  }
+
+  function mediaThumbHTML(m){
+    const inner = m.type === 'video'
+      ? `<video src="${m.url}" muted></video>`
+      : `<img src="${m.url}" alt="${m.alt||''}">`;
+    return `<div class="media-thumb ${m.isPrimary?'is-primary':''}">
+      ${inner}
+      <div class="media-del" data-del-media="${m.id}">×</div>
+      ${!m.isPrimary?`<div class="media-primary-btn" data-primary-media="${m.id}">Set primary</div>`:''}
+    </div>`;
+  }
+
+  function renderVariantsTab(p){
+    const body = document.getElementById('editorTabBody');
+    body.innerHTML = `
+      ${p.variants.map(v=>`
+        <div class="variant-card" data-variant-id="${v.id}">
+          <div class="variant-card-head">
+            <h4><span class="variant-swatch-dot" style="background:${swatchBg(v.swatch)};"></span>${v.colorName}${v.isDefault?'<span class="default-tag">Default</span>':''}</h4>
+            <div>
+              ${!v.isDefault?`<button class="btn btn-sm btn-outline" data-set-default="${v.id}">Make Default</button>`:''}
+              <button class="btn btn-sm" style="color:var(--maroon);" data-del-variant="${v.id}">Remove</button>
+            </div>
+          </div>
+          <div class="variant-fields">
+            <div class="form-field"><label>Colour Name</label><input type="text" class="admin-input" style="width:100%;" data-vf="colorName" value="${v.colorName}"></div>
+            <div class="form-field"><label>Swatch Key</label><input type="text" class="admin-input" style="width:100%;" data-vf="swatch" value="${v.swatch}" placeholder="maroon, emerald..."></div>
+            <div class="form-field"><label>SKU</label><input type="text" class="admin-input" style="width:100%;" data-vf="sku" value="${v.sku || ''}"></div>
+            <div class="form-field"><label>Low Stock At</label><input type="number" class="admin-input" style="width:100%;" data-vf="lowStockThreshold" value="${v.lowStockThreshold}"></div>
+            <div class="form-field"><label>Price (₹)</label><input type="number" class="admin-input" style="width:100%;" data-vf="price" value="${v.price}"></div>
+            <div class="form-field"><label>MRP (₹)</label><input type="number" class="admin-input" style="width:100%;" data-vf="mrp" value="${v.mrp}"></div>
+            <div class="form-field"><label>Stock</label><input type="number" class="admin-input" style="width:100%;${v.stock<=v.lowStockThreshold?'border-color:var(--maroon);color:var(--maroon);':''}" data-vf="stock" value="${v.stock}"></div>
+          </div>
+          <div class="form-field"><label>Variant Description (optional override)</label><textarea class="admin-input" style="width:100%;" rows="2" data-vf="desc">${v.desc || ''}</textarea></div>
+          <button class="btn btn-sm btn-primary" data-save-variant="${v.id}">Save Variant</button>
+
+          <div style="margin-top:16px;">
+            <label style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;">Media</label>
+            <div class="variant-media-strip">
+              ${v.media.map(mediaThumbHTML).join('')}
+              <label class="upload-label">+<input type="file" accept="image/*,video/*" style="display:none;" data-upload-media="${v.id}"></label>
+            </div>
+          </div>
+        </div>`).join('')}
+
+      <div class="variant-card" style="border-style:dashed;">
+        <h4 style="margin-bottom:12px;">+ Add New Colour Variant</h4>
+        <div class="variant-fields">
+          <div class="form-field"><label>Colour Name</label><input type="text" class="admin-input" style="width:100%;" id="nvColorName" placeholder="e.g. Emerald Green"></div>
+          <div class="form-field"><label>Swatch Key</label><input type="text" class="admin-input" style="width:100%;" id="nvSwatch" placeholder="emerald"></div>
+          <div class="form-field"><label>SKU</label><input type="text" class="admin-input" style="width:100%;" id="nvSku"></div>
+          <div class="form-field"><label>Stock</label><input type="number" class="admin-input" style="width:100%;" id="nvStock" value="10"></div>
+          <div class="form-field"><label>Price (₹)</label><input type="number" class="admin-input" style="width:100%;" id="nvPrice"></div>
+          <div class="form-field"><label>MRP (₹)</label><input type="number" class="admin-input" style="width:100%;" id="nvMrp"></div>
+        </div>
+        <button class="btn btn-sm btn-outline" id="addVariantBtn">Add Variant</button>
+      </div>`;
+
+    body.querySelectorAll('[data-save-variant]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const card = btn.closest('.variant-card');
+      const payload = {};
+      card.querySelectorAll('[data-vf]').forEach(inp => payload[inp.dataset.vf] = inp.value);
+      try{
+        await adminApiFetch('/admin/variants/' + btn.dataset.saveVariant, { method:'PUT', body: JSON.stringify(payload) });
+        toast('Variant saved');
+        await loadProducts();
+        renderProductEditor();
+      }catch(e){ toast(e.message, 'error'); }
+    }));
+
+    body.querySelectorAll('[data-set-default]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      try{
+        await adminApiFetch('/admin/variants/' + btn.dataset.setDefault, { method:'PUT', body: JSON.stringify({ isDefault: true }) });
+        toast('Default variant updated');
+        await loadProducts();
+        renderProductEditor();
+      }catch(e){ toast(e.message, 'error'); }
+    }));
+
+    body.querySelectorAll('[data-del-variant]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const ok = await showConfirmDialog('Removes this colour option from the storefront.', {title:'Remove this variant?', confirmLabel:'Remove', danger:true});
+      if(!ok) return;
+      try{
+        const result = await adminApiFetch('/admin/variants/' + btn.dataset.delVariant, { method:'DELETE' });
+        toast(result.message || 'Variant removed');
+        await loadProducts();
+        renderProductEditor();
+      }catch(e){ toast(e.message, 'error'); }
+    }));
+
+    body.querySelectorAll('[data-del-media]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      try{
+        await adminApiFetch('/admin/media/' + btn.dataset.delMedia, { method:'DELETE' });
+        await loadProducts();
+        renderProductEditor();
+      }catch(e){ toast(e.message, 'error'); }
+    }));
+    body.querySelectorAll('[data-primary-media]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      try{
+        await adminApiFetch('/admin/media/' + btn.dataset.primaryMedia + '/primary', { method:'PUT' });
+        await loadProducts();
+        renderProductEditor();
+      }catch(e){ toast(e.message, 'error'); }
+    }));
+    body.querySelectorAll('[data-upload-media]').forEach(input=>input.addEventListener('change', async (e)=>{
+      const file = e.target.files[0];
+      if(!file) return;
+      const fd = new FormData();
+      fd.append('file', file);
+      try{
+        await fetch('/api/admin/variants/' + input.dataset.uploadMedia + '/media', {
+          method:'POST', headers: { Authorization: 'Bearer ' + getToken() }, body: fd
+        }).then(async r => { if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.message || 'Upload failed'); } });
+        toast('Media uploaded');
+        await loadProducts();
+        renderProductEditor();
+      }catch(err){ toast(err.message, 'error'); }
+    }));
+
+    document.getElementById('addVariantBtn').addEventListener('click', async ()=>{
+      const price = document.getElementById('nvPrice').value, mrp = document.getElementById('nvMrp').value;
+      const colorName = document.getElementById('nvColorName').value;
+      if(!colorName || !price || !mrp){ toast('Colour name, price and MRP are required.', 'error'); return; }
+      try{
+        await adminApiFetch('/admin/products/' + p.id + '/variants', { method:'POST', body: JSON.stringify({
+          colorName, swatch: document.getElementById('nvSwatch').value || 'maroon', sku: document.getElementById('nvSku').value,
+          stock: document.getElementById('nvStock').value, price, mrp
+        })});
+        toast('Variant added');
+        await loadProducts();
+        renderProductEditor();
+      }catch(e){ toast(e.message, 'error'); }
+    });
+  }
+
+  // The form itself is static HTML (toggled via display:none, not re-rendered
+  // from scratch each time) — without an explicit reset, whatever an admin
+  // typed for one product would silently still be sitting in every field the
+  // next time "+ Add Product" was opened, ready to be submitted again by
+  // mistake. Reset every field back to its blank/default state.
+  function resetAddProductForm(){
+    ['npName','npFabric','npOccasion','npSwatch','npPrice','npMrp','npDesc','npWeaverName','npWeaverRegion','npLoomType']
+      .forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('npStock').value = '20';
+    document.getElementById('npBadge').value = '';
+  }
+
+  document.getElementById('showAddProduct').addEventListener('click', ()=>{
+    const form = document.getElementById('addProductForm');
+    const opening = form.style.display === 'none';
+    form.style.display = opening ? 'block' : 'none';
+    if(opening) resetAddProductForm();
+  });
+  document.getElementById('createProduct').addEventListener('click', async ()=>{
+    try{
+      await adminApiFetch('/admin/products', {
+        method:'POST',
+        body: JSON.stringify({
+          name: document.getElementById('npName').value,
+          fabric: document.getElementById('npFabric').value,
+          occasion: document.getElementById('npOccasion').value,
+          swatch: document.getElementById('npSwatch').value || 'maroon',
+          price: document.getElementById('npPrice').value,
+          mrp: document.getElementById('npMrp').value,
+          stock: document.getElementById('npStock').value,
+          badge: document.getElementById('npBadge').value,
+          desc: document.getElementById('npDesc').value,
+          weaverName: document.getElementById('npWeaverName').value,
+          weaverRegion: document.getElementById('npWeaverRegion').value,
+          loomType: document.getElementById('npLoomType').value
+        })
+      });
+      toast('Product created');
+      document.getElementById('addProductForm').style.display = 'none';
+      resetAddProductForm();
+      loadProducts();
+    }catch(e){ toast(e.message, 'error'); }
+  });
+
+  let orderFilter = 'all';
+  let openOrderId = null;
+  let selectedOrderIds = new Set();
+  const ORDER_FILTERS = ['all', 'Confirmed', 'Packed', 'Shipped', 'Out for Delivery', 'Delivered', 'Cancelled'];
+
+  document.getElementById('exportOrdersCsv').addEventListener('click', async ()=>{
+    try{ await adminDownloadFile('/admin/orders/export.csv', 'padmora-orders.csv'); }
+    catch(e){ toast(e.message, 'error'); }
+  });
+  document.getElementById('printSelectedSlips').addEventListener('click', ()=>{
+    if(!selectedOrderIds.size) return;
+    window.open('/packing-slip?ids=' + Array.from(selectedOrderIds).map(encodeURIComponent).join(','), '_blank');
+  });
+
+  function updateSelectedSlipUI(){
+    const btn = document.getElementById('printSelectedSlips');
+    btn.style.display = selectedOrderIds.size ? 'inline-flex' : 'none';
+    document.getElementById('selectedSlipCount').textContent = selectedOrderIds.size;
+  }
+
+  async function loadOrders(){
+    document.getElementById('orderStatusFilters').innerHTML = ORDER_FILTERS.map(f=>
+      `<button data-filter="${f}" class="${orderFilter===f?'active':''}">${f==='all'?'All':f}</button>`).join('');
+    document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click', ()=>{ orderFilter = b.dataset.filter; loadOrders(); }));
+
+    try{
+      const q = orderFilter !== 'all' ? ('?status=' + encodeURIComponent(orderFilter)) : '';
+      const {orders} = await adminApiFetch('/admin/orders' + q);
+      // Selection shouldn't silently hold onto orders that scrolled out of the
+      // current filter view — keep only what's still visible.
+      const visibleIds = new Set(orders.map(o=>o.id));
+      selectedOrderIds = new Set(Array.from(selectedOrderIds).filter(id=>visibleIds.has(id)));
+
+      document.getElementById('ordersTable').innerHTML = `
+        <thead><tr><th><input type="checkbox" id="selectAllOrders" aria-label="Select all"></th><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead>
+        <tbody>${orders.length ? orders.map(o=>`
+          <tr>
+            <td><input type="checkbox" class="order-select-box" data-select-order="${o.id}" ${selectedOrderIds.has(o.id)?'checked':''}></td>
+            <td>#${o.id}<br><span style="font-size:11px;color:var(--ink-soft);">${new Date(o.placedAt).toLocaleDateString('en-IN')}</span></td>
+            <td>${o.customerName}<br><span style="font-size:11px;color:var(--ink-soft);">${o.customerEmail}</span></td>
+            <td style="font-size:12.5px;">${o.items.map(i=>`${i.name}${i.color?' ('+i.color+')':''} ×${i.qty}`).join('<br>')}</td>
+            <td>${money(o.total)}</td>
+            <td>
+              ${o.status === 'Cancelled' ? '<span class="order-status cancelled">Cancelled</span>' : `
+              <select class="admin-input" data-order-status="${o.id}">
+                <option value="auto" ${!o.manualStatus?'selected':''}>Auto (${o.status})</option>
+                ${STAGE_NAMES.map(s=>`<option value="${s}" ${o.manualStatus===s?'selected':''}>${s}</option>`).join('')}
+              </select>${o.manualStatus?'<span class="manual-override-flag">Override</span>':''}`}
+            </td>
+            <td><button class="btn btn-sm btn-outline" data-view-order="${o.id}">View</button></td>
+          </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:24px;">No orders in this status.</td></tr>`}</tbody>`;
+
+      document.querySelectorAll('[data-order-status]').forEach(sel=>sel.addEventListener('change', async ()=>{
+        try{
+          await adminApiFetch('/admin/orders/' + sel.dataset.orderStatus + '/status', {method:'PUT', body: JSON.stringify({status: sel.value})});
+          toast('Order status updated');
+          loadOrders();
+        }catch(e){ toast(e.message, 'error'); }
+      }));
+      document.querySelectorAll('[data-view-order]').forEach(btn=>btn.addEventListener('click', ()=>{
+        openOrderId = btn.dataset.viewOrder;
+        renderOrderDetail();
+      }));
+      document.querySelectorAll('[data-select-order]').forEach(box=>box.addEventListener('change', ()=>{
+        if(box.checked) selectedOrderIds.add(box.dataset.selectOrder);
+        else selectedOrderIds.delete(box.dataset.selectOrder);
+        document.getElementById('selectAllOrders').checked = orders.length > 0 && selectedOrderIds.size === orders.length;
+        updateSelectedSlipUI();
+      }));
+      document.getElementById('selectAllOrders').addEventListener('change', (e)=>{
+        selectedOrderIds = new Set(e.target.checked ? orders.map(o=>o.id) : []);
+        document.querySelectorAll('.order-select-box').forEach(box=>box.checked = e.target.checked);
+        updateSelectedSlipUI();
+      });
+      updateSelectedSlipUI();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function renderOrderDetail(){
+    const wrap = document.getElementById('orderDetail');
+    if(!openOrderId){ wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    wrap.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading order…</div>`;
+
+    try{
+      const {order: o} = await adminApiFetch('/admin/orders/' + openOrderId);
+      wrap.innerHTML = `
+        <div class="editor-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <h3 style="font-family:var(--font-body);font-size:16px;">Order #${o.id} ${o.manualStatus?'<span class="manual-override-flag">MANUAL OVERRIDE ACTIVE</span>':''}</h3>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-sm btn-outline" id="printPackingSlip">Print Packing Slip</button>
+              <button class="btn btn-sm" id="closeOrderDetail">Close ×</button>
+            </div>
+          </div>
+          ${o.status !== 'Cancelled' ? `<div class="mini-timeline">${o.timeline.map(t=>`<span class="${t.done?'done':''}">${t.status}</span>`).join('')}</div>` : ''}
+
+          <div class="detail-grid">
+            <div class="detail-block">
+              <h5>Customer</h5>
+              <p><strong>${o.customerName}</strong><br>${o.customerEmail}<br>${o.customerPhone || ''}</p>
+            </div>
+            <div class="detail-block">
+              <h5>Delivery Address</h5>
+              <p>${o.address.name}<br>${o.address.line1}<br>${o.address.city}, ${o.address.state} ${o.address.pincode}<br>${o.address.phone}</p>
+              ${o.giftNote ? `<p style="margin-top:8px;"><em>Gift note: ${o.giftNote}</em></p>` : ''}
+            </div>
+            <div class="detail-block">
+              <h5>Items</h5>
+              ${o.items.map(i=>`<p>${i.name}${i.color?' — '+i.color:''} × ${i.qty} — ${money(i.price*i.qty)}</p>`).join('')}
+            </div>
+            <div class="detail-block">
+              <h5>Payment &amp; Totals</h5>
+              <p>Method: <strong>${o.payment}</strong></p>
+              <p>Subtotal: ${money(o.subtotal)}</p>
+              ${o.discount ? `<p>Discount${o.couponCode?' ('+o.couponCode+')':''}: −${money(o.discount)}</p>` : ''}
+              ${o.shippingFee ? `<p>Shipping: ${money(o.shippingFee)}</p>` : ''}
+              ${o.taxAmount ? `<p>Tax: ${money(o.taxAmount)}</p>` : ''}
+              <p><strong>Total: ${money(o.total)}</strong></p>
+            </div>
+            <div class="detail-block">
+              <h5>Confirmation Sent</h5>
+              ${(o.notifications && o.notifications.length) ? o.notifications.map(n=>`
+                <p><span class="status-pill status-${n.status==='sent'?'confirmed':(n.status==='failed'?'cancelled':'pending')}">${n.channel.toUpperCase()}: ${n.status.replace(/_/g,' ')}</span></p>
+              `).join('') : `<p style="color:var(--ink-soft);font-size:13px;">No notification attempts recorded.</p>`}
+            </div>
+          </div>
+
+          ${o.status === 'Cancelled' ? `
+          <div class="detail-block" style="border-color:var(--maroon);">
+            <h5>Cancellation</h5>
+            <p>Reason: ${o.cancelReason || '—'}<br>Cancelled: ${o.cancelledAt ? new Date(o.cancelledAt).toLocaleString('en-IN') : '—'}</p>
+            <div class="form-row-2" style="margin-top:10px;max-width:340px;">
+              <div class="form-field">
+                <label>Refund Status</label>
+                <select class="admin-input" style="width:100%;" id="refundStatusSelect">
+                  ${['Not Applicable','Pending','Processed'].map(s=>`<option value="${s}" ${o.refundStatus===s?'selected':''}>${s}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+          </div>` : `
+          <div style="margin-top:10px;">
+            <label style="font-size:12px;color:var(--ink-soft);">Status</label><br>
+            <select class="admin-input" style="margin-top:6px;" data-order-status="${o.id}">
+              <option value="auto" ${!o.manualStatus?'selected':''}>Auto (${o.status})</option>
+              ${STAGE_NAMES.map(s=>`<option value="${s}" ${o.manualStatus===s?'selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>`}
+        </div>`;
+
+      document.getElementById('closeOrderDetail').addEventListener('click', ()=>{ openOrderId = null; renderOrderDetail(); });
+      document.getElementById('printPackingSlip').addEventListener('click', ()=>{
+        window.open('/packing-slip?id=' + encodeURIComponent(o.id), '_blank');
+      });
+      const refundSel = document.getElementById('refundStatusSelect');
+      if(refundSel) refundSel.addEventListener('change', async ()=>{
+        try{ await adminApiFetch('/admin/orders/' + o.id + '/refund', {method:'PUT', body: JSON.stringify({refundStatus: refundSel.value})}); toast('Refund status updated'); }
+        catch(e){ toast(e.message, 'error'); }
+      });
+      const statusSel = wrap.querySelector('[data-order-status]');
+      if(statusSel) statusSel.addEventListener('change', async ()=>{
+        try{
+          await adminApiFetch('/admin/orders/' + o.id + '/status', {method:'PUT', body: JSON.stringify({status: statusSel.value})});
+          toast('Order status updated');
+          renderOrderDetail();
+          loadOrders();
+        }catch(e){ toast(e.message, 'error'); }
+      });
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  // ---- Returns & Refunds ----
+  const RETURN_FILTERS = ['all','Requested','Approved','Rejected','Received','Refunded'];
+  const REFUND_METHOD_LABEL = { original: 'Original payment method', bank_transfer: 'Bank transfer / UPI', store_credit: 'Store credit' };
+  let returnFilter = 'all';
+  let openReturnId = null;
+
+  async function loadReturns(){
+    document.getElementById('returnStatusFilters').innerHTML = RETURN_FILTERS.map(f=>
+      `<button data-rfilter="${f}" class="${returnFilter===f?'active':''}">${f==='all'?'All':f}</button>`).join('');
+    document.querySelectorAll('[data-rfilter]').forEach(b=>b.addEventListener('click', ()=>{ returnFilter = b.dataset.rfilter; loadReturns(); }));
+
+    try{
+      const q = returnFilter !== 'all' ? ('?status=' + encodeURIComponent(returnFilter)) : '';
+      const {returns} = await adminApiFetch('/admin/returns' + q);
+      document.getElementById('returnsTable').innerHTML = `
+        <thead><tr><th>Return</th><th>Order</th><th>Customer</th><th>Reason</th><th>Refund</th><th>Status</th><th></th></tr></thead>
+        <tbody>${returns.length ? returns.map(r=>`
+          <tr>
+            <td>#${r.id}<br><span style="font-size:11px;color:var(--ink-soft);">${new Date(r.requestedAt).toLocaleDateString('en-IN')}</span></td>
+            <td>#${r.orderId}</td>
+            <td>${r.customerName}<br><span style="font-size:11px;color:var(--ink-soft);">${r.customerEmail}</span></td>
+            <td style="font-size:12.5px;">${r.reasonLabel}</td>
+            <td>${money(r.finalRefundAmount ?? r.computedRefundAmount)}</td>
+            <td><span class="status-pill status-${r.status==='Rejected'?'cancelled':(r.status==='Refunded'?'confirmed':'pending')}">${r.status}</span></td>
+            <td><button class="btn btn-sm btn-outline" data-view-return="${r.id}">View</button></td>
+          </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:24px;">No return requests in this status.</td></tr>`}</tbody>`;
+      document.querySelectorAll('[data-view-return]').forEach(btn=>btn.addEventListener('click', ()=>{
+        openReturnId = btn.dataset.viewReturn;
+        renderReturnDetail();
+      }));
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function renderReturnDetail(){
+    const wrap = document.getElementById('returnDetail');
+    if(!openReturnId){ wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    wrap.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+
+    try{
+      const {return: r} = await adminApiFetch('/admin/returns/' + openReturnId);
+      const itemsValue = r.items.reduce((s,i)=>s+i.price*i.qty, 0);
+
+      let actionHTML = '';
+      if(r.status === 'Requested'){
+        actionHTML = `
+          <div class="detail-block" style="border-color:var(--gold);">
+            <h5>Decision</h5>
+            <div class="form-field"><label>Note (required to reject, optional to approve — the customer sees this)</label>
+              <textarea class="admin-input" id="retDecisionNote" rows="2"></textarea>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:8px;">
+              <button class="btn btn-primary btn-sm" id="retApproveBtn">Approve Return</button>
+              <button class="btn btn-sm" style="color:var(--maroon);" id="retRejectBtn">Reject</button>
+            </div>
+          </div>`;
+      } else if(r.status === 'Approved'){
+        actionHTML = `
+          <div class="detail-block" style="border-color:var(--gold);">
+            <h5>Mark Received</h5>
+            <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:8px;">Check off which items are resellable — unused, tags intact — to add them back to stock. Leave unchecked for anything damaged or not fit to resell.</p>
+            ${r.items.map(i=>`
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0;">
+                <input type="checkbox" data-restock-item="${i.returnItemId}" ${r.reasonCategory==='customer_preference'?'checked':''}>
+                ${i.name}${i.color?' — '+i.color:''} × ${i.qty}
+              </label>`).join('')}
+            <button class="btn btn-primary btn-sm" id="retReceiveBtn" style="margin-top:8px;">Confirm Received</button>
+          </div>`;
+      } else if(r.status === 'Received'){
+        actionHTML = `
+          <div class="detail-block" style="border-color:var(--gold);">
+            <h5>Process Refund</h5>
+            <div class="form-row-2">
+              <div class="form-field"><label>Method</label>
+                <select class="admin-input" id="retRefundMethod">
+                  ${['original','bank_transfer','store_credit'].map(m=>`<option value="${m}" ${r.refundMethod===m?'selected':''}>${REFUND_METHOD_LABEL[m]}</option>`).join('')}
+                </select>
+              </div>
+              <div class="form-field"><label>Amount (₹)</label>
+                <input class="admin-input" type="number" id="retRefundAmount" value="${r.computedRefundAmount}">
+              </div>
+            </div>
+            ${r.refundAccountDetail ? `<p style="font-size:12.5px;color:var(--ink-soft);">Customer's bank/UPI details: <strong>${r.refundAccountDetail}</strong></p>` : ''}
+            <button class="btn btn-primary btn-sm" id="retRefundBtn" style="margin-top:8px;">Process Refund</button>
+          </div>`;
+      }
+
+      wrap.innerHTML = `
+        <div class="editor-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <h3 style="font-family:var(--font-body);font-size:16px;">Return #${r.id} — Order #${r.orderId}</h3>
+            <button class="btn btn-sm" id="closeReturnDetail">Close ×</button>
+          </div>
+          <div class="detail-grid">
+            <div class="detail-block">
+              <h5>Customer</h5>
+              <p><strong>${r.customerName}</strong><br>${r.customerEmail}<br>${r.customerPhone || ''}</p>
+            </div>
+            <div class="detail-block">
+              <h5>Reason</h5>
+              <p>${r.reasonLabel} <span style="font-size:11px;color:var(--ink-soft);">(${r.reasonCategory==='seller_fault'?'our fault':'customer preference'})</span></p>
+              ${r.reasonDetail ? `<p style="margin-top:6px;"><em>“${r.reasonDetail}”</em></p>` : ''}
+            </div>
+            <div class="detail-block">
+              <h5>Customer's Photos</h5>
+              ${(r.photos && r.photos.length) ? `<div class="return-photo-preview">${r.photos.map(p=>`<a href="${p.url}" target="_blank" rel="noopener"><img src="${p.url}" alt="Return evidence photo" class="return-photo-thumb admin-return-photo"></a>`).join('')}</div>`
+                : `<p style="color:var(--ink-soft);font-size:13px;">${r.reasonCategory==='seller_fault' ? 'None attached — unusual for this reason, worth a follow-up.' : 'None attached.'}</p>`}
+            </div>
+            <div class="detail-block">
+              <h5>Items being returned</h5>
+              ${r.items.map(i=>`<p>${i.name}${i.color?' — '+i.color:''} × ${i.qty} — ${money(i.price*i.qty)}</p>`).join('')}
+              <p style="margin-top:6px;"><strong>Items value: ${money(itemsValue)}</strong></p>
+            </div>
+            <div class="detail-block">
+              <h5>Refund</h5>
+              <p>Requested method: <strong>${REFUND_METHOD_LABEL[r.refundMethod] || r.refundMethod}</strong></p>
+              <p>Computed refund: <strong>${money(r.computedRefundAmount)}</strong></p>
+              ${r.finalRefundAmount != null ? `<p>Final refund: <strong>${money(r.finalRefundAmount)}</strong></p>` : ''}
+              ${r.couponCode ? `<p>Store credit code: <strong>${r.couponCode}</strong></p>` : ''}
+              ${r.restock !== null ? `<p>Restocked: <strong>${r.restock ? 'Yes' : 'No'}</strong></p>` : ''}
+            </div>
+            ${r.adminNote ? `<div class="detail-block"><h5>Note to customer</h5><p>${r.adminNote}</p></div>` : ''}
+          </div>
+          ${actionHTML}
+        </div>`;
+
+      document.getElementById('closeReturnDetail').addEventListener('click', ()=>{ openReturnId = null; renderReturnDetail(); });
+
+      const approveBtn = document.getElementById('retApproveBtn');
+      if(approveBtn) approveBtn.addEventListener('click', async ()=>{
+        try{
+          await adminApiFetch('/admin/returns/' + r.id + '/decision', {method:'PUT', body: JSON.stringify({approve:true, adminNote: document.getElementById('retDecisionNote').value})});
+          toast('Return approved'); renderReturnDetail(); loadReturns();
+        }catch(e){ toast(e.message, 'error'); }
+      });
+      const rejectBtn = document.getElementById('retRejectBtn');
+      if(rejectBtn) rejectBtn.addEventListener('click', async ()=>{
+        const note = document.getElementById('retDecisionNote').value;
+        if(!note.trim()){ toast('Add a note explaining the rejection', 'error'); return; }
+        const ok = await showConfirmDialog('This cannot be undone — the customer will see your note.', {title:'Reject this return?', confirmLabel:'Reject', danger:true});
+        if(!ok) return;
+        try{
+          await adminApiFetch('/admin/returns/' + r.id + '/decision', {method:'PUT', body: JSON.stringify({approve:false, adminNote: note})});
+          toast('Return rejected'); renderReturnDetail(); loadReturns();
+        }catch(e){ toast(e.message, 'error'); }
+      });
+      const receiveBtn = document.getElementById('retReceiveBtn');
+      if(receiveBtn) receiveBtn.addEventListener('click', async ()=>{
+        const itemRestock = {};
+        document.querySelectorAll('[data-restock-item]').forEach(cb=>{ itemRestock[cb.dataset.restockItem] = cb.checked; });
+        try{
+          await adminApiFetch('/admin/returns/' + r.id + '/receive', {method:'PUT', body: JSON.stringify({itemRestock})});
+          toast('Marked received'); renderReturnDetail(); loadReturns();
+        }catch(e){ toast(e.message, 'error'); }
+      });
+      const refundBtn = document.getElementById('retRefundBtn');
+      if(refundBtn) refundBtn.addEventListener('click', async ()=>{
+        const ok = await showConfirmDialog('This finalizes the refund — issuing store credit creates a real one-time coupon immediately.', {title:'Process this refund?', confirmLabel:'Process Refund'});
+        if(!ok) return;
+        try{
+          await adminApiFetch('/admin/returns/' + r.id + '/refund', {method:'PUT', body: JSON.stringify({
+            refundMethod: document.getElementById('retRefundMethod').value,
+            finalAmount: Number(document.getElementById('retRefundAmount').value)
+          })});
+          toast('Refund processed'); renderReturnDetail(); loadReturns();
+        }catch(e){ toast(e.message, 'error'); }
+      });
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  // ---- Inventory ----
+  document.getElementById('downloadVariantsTemplate').addEventListener('click', async ()=>{
+    try{ await adminDownloadFile('/admin/variants/template.csv', 'padmora-variants-import-template.csv'); }
+    catch(e){ toast(e.message, 'error'); }
+  });
+  document.getElementById('exportVariantsCsv').addEventListener('click', async ()=>{
+    try{ await adminDownloadFile('/admin/variants/export.csv', 'padmora-variants.csv'); }
+    catch(e){ toast(e.message, 'error'); }
+  });
+  document.getElementById('importVariantsCsvBtn').addEventListener('click', ()=>{
+    document.getElementById('importVariantsCsvFile').click();
+  });
+  document.getElementById('importVariantsCsvFile').addEventListener('change', async (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    try{
+      const csv = await file.text();
+      const {updated, skipped, errors} = await adminApiFetch('/admin/variants/import', {method:'POST', body: JSON.stringify({csv})});
+      const box = document.getElementById('csvImportResult');
+      box.style.display = 'block';
+      box.innerHTML = `
+        <div class="detail-block">
+          <p><strong>${updated}</strong> variant${updated===1?'':'s'} updated${skipped ? `, <strong>${skipped}</strong> skipped` : ''}.</p>
+          ${errors.length ? `<ul style="font-size:12px;color:var(--maroon);margin-top:6px;">${errors.map(er=>`<li>Row ${er.row}: ${er.reason}</li>`).join('')}</ul>` : ''}
+        </div>`;
+      toast(`${updated} variant${updated===1?'':'s'} updated`);
+      loadInventory();
+    }catch(err){ toast(err.message, 'error'); }
+    finally{ e.target.value = ''; }
+  });
+
+  async function loadInventory(){
+    try{
+      const {inventory} = await adminApiFetch('/admin/inventory');
+      document.getElementById('inventoryTable').innerHTML = `
+        <thead><tr><th>Product</th><th>Colour</th><th>SKU</th><th>Stock</th><th>Status</th><th></th></tr></thead>
+        <tbody>${inventory.map(v=>`
+          <tr>
+            <td>${v.productName}</td>
+            <td>${v.colorName}</td>
+            <td style="font-size:11.5px;color:var(--ink-soft);">${v.sku || '—'}</td>
+            <td>${v.stock}</td>
+            <td><span class="order-status ${v.status==='Out of Stock'?'cancelled':v.status==='Low Stock'?'low':'ok'}">${v.status}</span></td>
+            <td><button class="btn btn-sm btn-outline" data-adjust="${v.variantId}">Adjust</button></td>
+          </tr>`).join('')}</tbody>`;
+
+      document.querySelectorAll('[data-adjust]').forEach(btn=>btn.addEventListener('click', ()=>openInventoryAdjust(Number(btn.dataset.adjust))));
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function loadPrebooks(){
+    try{
+      const {groups} = await adminApiFetch('/admin/prebooks');
+      const table = document.getElementById('prebooksTable');
+      if(!groups.length){
+        table.innerHTML = `<tr><td style="color:var(--ink-soft);padding:14px 0;">No pre-book requests yet.</td></tr>`;
+        return;
+      }
+      table.innerHTML = `
+        <thead><tr><th>Product</th><th>Colour</th><th>Requests</th><th>Status</th><th></th></tr></thead>
+        <tbody>${groups.map((g,i)=>`
+          <tr>
+            <td>${g.productName}</td>
+            <td>${g.colorName}</td>
+            <td>${g.requests.length}</td>
+            <td>${g.stock > 0 ? '<span class="order-status ok">Back in stock</span>' : '<span class="order-status cancelled">Still out of stock</span>'}</td>
+            <td><button class="btn btn-sm btn-outline" data-prebook-toggle="${i}">View emails</button></td>
+          </tr>
+          <tr id="prebookDetail-${i}" style="display:none;"><td colspan="5">
+            <div style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;">
+              ${g.requests.map(r=>`${r.email}${r.name?' ('+r.name+')':''} — ${new Date(r.createdAt).toLocaleDateString('en-IN')} ${r.notified?'<span class="status-pill status-confirmed">notified</span>':''}`).join('<br>')}
+            </div>
+          </td></tr>`).join('')}</tbody>`;
+      document.querySelectorAll('[data-prebook-toggle]').forEach(btn=>btn.addEventListener('click', ()=>{
+        const row = document.getElementById('prebookDetail-' + btn.dataset.prebookToggle);
+        row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+      }));
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function openInventoryAdjust(variantId){
+    const wrap = document.getElementById('inventoryDetail');
+    wrap.style.display = 'block';
+    wrap.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading history…</div>`;
+    try{
+      const {history} = await adminApiFetch('/admin/inventory/' + variantId + '/history');
+      wrap.innerHTML = `
+        <div class="editor-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <h4 style="font-family:var(--font-body);font-size:14px;">Adjust Stock</h4>
+            <button class="btn btn-sm" id="closeInvDetail">Close ×</button>
+          </div>
+          <div class="form-row-2" style="margin-top:12px;">
+            <div class="form-field"><label>Quantity change (use − to subtract)</label><input type="number" id="adjQty" placeholder="e.g. 10 or -3"></div>
+            <div class="form-field"><label>Reason</label>
+              <select id="adjReason">
+                <option>New stock</option><option>Returned</option><option>Damaged</option>
+                <option>Manual correction</option><option>Lost</option><option>Other</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm" id="adjSubmit">Apply Adjustment</button>
+
+          <h5 style="font-size:11px;text-transform:uppercase;color:var(--ink-soft);margin:20px 0 8px;">History</h5>
+          ${history.length ? history.map(h=>`
+            <div class="order-item-row"><span>${new Date(h.created_at).toLocaleString('en-IN')} — ${h.reason} (${h.changed_by})</span><span>${h.before_stock} → ${h.after_stock}</span></div>
+          `).join('') : '<p style="font-size:13px;color:var(--ink-soft);">No adjustments recorded yet.</p>'}
+        </div>`;
+
+      document.getElementById('closeInvDetail').addEventListener('click', ()=>{ wrap.style.display = 'none'; });
+      document.getElementById('adjSubmit').addEventListener('click', async ()=>{
+        const change = Number(document.getElementById('adjQty').value);
+        if(!change){ toast('Enter a non-zero quantity change', 'error'); return; }
+        try{
+          await adminApiFetch('/admin/inventory/adjust', {method:'POST', body: JSON.stringify({variantId, change, reason: document.getElementById('adjReason').value})});
+          toast('Stock adjusted');
+          await loadInventory();
+          openInventoryAdjust(variantId);
+        }catch(e){ toast(e.message, 'error'); }
+      });
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  // ---- Settings ----
+  async function loadStoreSettings(){
+    try{
+      const {store} = await adminApiFetch('/admin/settings/store');
+      document.getElementById('storeSettingsForm').innerHTML = `
+        <div class="form-row-2">
+          <div class="form-field"><label>Brand Name</label><input class="admin-input" style="width:100%;" id="stBrandName" value="${store.brandName||''}"></div>
+          <div class="form-field"><label>Contact Email</label><input class="admin-input" style="width:100%;" id="stContactEmail" value="${store.contactEmail||''}"></div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-field"><label>Contact Phone</label><input class="admin-input" style="width:100%;" id="stContactPhone" value="${store.contactPhone||''}"></div>
+          <div class="form-field"><label>WhatsApp Number</label><input class="admin-input" style="width:100%;" id="stWhatsapp" value="${store.whatsapp||''}"></div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-field"><label>Instagram URL</label><input class="admin-input" style="width:100%;" id="stInstagram" value="${store.instagram||''}"></div>
+          <div class="form-field"><label>YouTube URL</label><input class="admin-input" style="width:100%;" id="stYoutube" value="${store.youtube||''}"></div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-field"><label>Logo URL</label><input class="admin-input" style="width:100%;" id="stLogoUrl" value="${store.logoUrl||''}"></div>
+          <div class="form-field"><label>Favicon URL</label><input class="admin-input" style="width:100%;" id="stFaviconUrl" value="${store.faviconUrl||''}"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="saveStoreSettings">Save Store Info</button>`;
+      document.getElementById('saveStoreSettings').addEventListener('click', async ()=>{
+        try{
+          await adminApiFetch('/admin/settings/store', {method:'PUT', body: JSON.stringify({
+            brandName: document.getElementById('stBrandName').value,
+            contactEmail: document.getElementById('stContactEmail').value,
+            contactPhone: document.getElementById('stContactPhone').value,
+            whatsapp: document.getElementById('stWhatsapp').value,
+            instagram: document.getElementById('stInstagram').value,
+            youtube: document.getElementById('stYoutube').value,
+            logoUrl: document.getElementById('stLogoUrl').value,
+            faviconUrl: document.getElementById('stFaviconUrl').value
+          })});
+          toast('Store info saved');
+        }catch(e){ toast(e.message, 'error'); }
+      });
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function loadShippingSettings(){
+    try{
+      const {shipping} = await adminApiFetch('/admin/settings/shipping');
+      document.getElementById('shippingSettingsForm').innerHTML = `
+        <div class="form-row-2">
+          <div class="form-field"><label>Shipping Fee (₹)</label><input type="number" min="0" class="admin-input" style="width:100%;" id="shFee" value="${shipping.fee}"></div>
+          <div class="form-field"><label>Free Shipping Above (₹)</label><input type="number" min="0" class="admin-input" style="width:100%;" id="shThreshold" value="${shipping.freeShippingThreshold}"></div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-field"><label>Delivery Regions (comma-separated)</label><input class="admin-input" style="width:100%;" id="shRegions" value="${(shipping.regions||[]).join(', ')}"></div>
+          <div class="form-field"><label>Estimated Delivery Time</label><input class="admin-input" style="width:100%;" id="shEstimatedDays" value="${shipping.estimatedDays||''}"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="saveShippingSettings">Save Shipping</button>`;
+      document.getElementById('saveShippingSettings').addEventListener('click', async ()=>{
+        try{
+          await adminApiFetch('/admin/settings/shipping', {method:'PUT', body: JSON.stringify({
+            fee: Number(document.getElementById('shFee').value),
+            freeShippingThreshold: Number(document.getElementById('shThreshold').value),
+            regions: document.getElementById('shRegions').value.split(',').map(s=>s.trim()).filter(Boolean),
+            estimatedDays: document.getElementById('shEstimatedDays').value
+          })});
+          toast('Shipping settings saved');
+        }catch(e){ toast(e.message, 'error'); }
+      });
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function loadTaxSettings(){
+    try{
+      const {tax} = await adminApiFetch('/admin/settings/tax');
+      document.getElementById('taxSettingsForm').innerHTML = `
+        <label class="filter-option" style="margin-bottom:16px;"><input type="checkbox" id="txEnabled" ${tax.enabled?'checked':''}> Charge tax on orders</label>
+        <div class="form-row-2">
+          <div class="form-field"><label>GST Rate (%)</label><input type="number" min="0" max="100" step="0.1" class="admin-input" style="width:100%;" id="txRate" value="${tax.gstRate}"></div>
+          <div class="form-field"><label>Label shown to customers</label><input class="admin-input" style="width:100%;" id="txLabel" value="${tax.label||'GST'}"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="saveTaxSettings">Save Tax Settings</button>`;
+      document.getElementById('saveTaxSettings').addEventListener('click', async ()=>{
+        try{
+          await adminApiFetch('/admin/settings/tax', {method:'PUT', body: JSON.stringify({
+            enabled: document.getElementById('txEnabled').checked,
+            gstRate: Number(document.getElementById('txRate').value),
+            label: document.getElementById('txLabel').value
+          })});
+          toast('Tax settings saved');
+        }catch(e){ toast(e.message, 'error'); }
+      });
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function loadReturnPolicySettings(){
+    try{
+      const {returnPolicy} = await adminApiFetch('/admin/settings/return-policy');
+      document.getElementById('returnPolicyForm').innerHTML = `
+        <label class="filter-option" style="margin-bottom:16px;"><input type="checkbox" id="rpEnabled" ${returnPolicy.enabled?'checked':''}> Accept return requests</label>
+        <div class="form-field" style="max-width:220px;"><label>Return window (days after delivery)</label><input type="number" min="0" class="admin-input" style="width:100%;" id="rpWindow" value="${returnPolicy.windowDays}"></div>
+        <button class="btn btn-primary btn-sm" id="saveReturnPolicy">Save Return Policy</button>`;
+      document.getElementById('saveReturnPolicy').addEventListener('click', async ()=>{
+        try{
+          await adminApiFetch('/admin/settings/return-policy', {method:'PUT', body: JSON.stringify({
+            enabled: document.getElementById('rpEnabled').checked,
+            windowDays: Number(document.getElementById('rpWindow').value)
+          })});
+          toast('Return policy saved');
+        }catch(e){ toast(e.message, 'error'); }
+      });
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function loadSettings(){
+    try{
+      const {timing} = await adminApiFetch('/admin/settings/tracking');
+      document.getElementById('trackingSettingsForm').innerHTML = `
+        <div class="form-row-2">
+          ${STAGE_NAMES.map(s=>`<div class="form-field"><label>${s} (hours after order placed)</label><input type="number" min="0" class="admin-input" style="width:100%;" data-stage="${s}" value="${timing[s]}"></div>`).join('')}
+        </div>
+        <button class="btn btn-primary btn-sm" id="saveTracking">Save Tracking Timing</button>`;
+
+      document.getElementById('saveTracking').addEventListener('click', async ()=>{
+        const newTiming = {};
+        document.querySelectorAll('[data-stage]').forEach(inp => newTiming[inp.dataset.stage] = inp.value);
+        try{
+          await adminApiFetch('/admin/settings/tracking', {method:'PUT', body: JSON.stringify({timing: newTiming})});
+          toast('Tracking timing saved');
+        }catch(e){ toast(e.message, 'error'); }
+      });
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function loadNotificationsLog(){
+    try{
+      const {notifications, emailConfigured, smsConfigured} = await adminApiFetch('/admin/notifications');
+      document.getElementById('notifyConfigStatus').innerHTML = `
+        <span class="status-pill ${emailConfigured?'status-confirmed':'status-pending'}">Email: ${emailConfigured?'configured':'not configured'}</span>
+        <span class="status-pill ${smsConfigured?'status-confirmed':'status-pending'}">SMS: ${smsConfigured?'configured':'not configured'}</span>`;
+      const table = document.getElementById('notificationsLogTable');
+      if(!notifications.length){
+        table.innerHTML = `<tr><td style="color:var(--ink-soft);padding:14px 0;">No notifications sent yet — place an order to see attempts appear here.</td></tr>`;
+        return;
+      }
+      table.innerHTML = `
+        <thead><tr><th>When</th><th>Order</th><th>Channel</th><th>Recipient</th><th>Status</th></tr></thead>
+        <tbody>
+          ${notifications.map(n=>`
+            <tr>
+              <td style="white-space:nowrap;">${new Date(n.created_at).toLocaleString('en-IN')}</td>
+              <td>${n.order_id || '—'}</td>
+              <td>${n.channel.toUpperCase()}</td>
+              <td>${n.recipient || '—'}</td>
+              <td><span class="status-pill ${n.status==='sent'?'status-confirmed':(n.status==='failed'?'status-cancelled':'status-pending')}">${n.status.replace(/_/g,' ')}</span></td>
+            </tr>`).join('')}
+        </tbody>`;
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function loadBackups(){
+    try{
+      const {backups} = await adminApiFetch('/admin/backups');
+      const table = document.getElementById('backupsTable');
+      if(!backups.length){
+        table.innerHTML = `<tr><td style="color:var(--ink-soft);padding:14px 0;">No backups yet — the first automatic one runs shortly after the server starts.</td></tr>`;
+        return;
+      }
+      table.innerHTML = `
+        <thead><tr><th>Created</th><th>Size</th><th></th></tr></thead>
+        <tbody>
+          ${backups.map(b=>`
+            <tr>
+              <td style="white-space:nowrap;">${new Date(b.createdAt).toLocaleString('en-IN')}</td>
+              <td>${(b.size/1024).toFixed(0)} KB</td>
+              <td><button class="btn btn-sm btn-outline" data-download-backup="${b.file}">Download</button></td>
+            </tr>`).join('')}
+        </tbody>`;
+      table.querySelectorAll('[data-download-backup]').forEach(btn=>btn.addEventListener('click', async ()=>{
+        try{ await adminDownloadFile('/admin/backups/' + encodeURIComponent(btn.dataset.downloadBackup) + '/download', btn.dataset.downloadBackup); }
+        catch(e){ toast(e.message, 'error'); }
+      }));
+    }catch(e){ toast(e.message, 'error'); }
+  }
+  document.getElementById('runBackupBtn').addEventListener('click', async ()=>{
+    const btn = document.getElementById('runBackupBtn');
+    btn.disabled = true; btn.textContent = 'Backing up…';
+    try{ await adminApiFetch('/admin/backups/run', {method:'POST'}); toast('Backup created'); loadBackups(); }
+    catch(e){ toast(e.message, 'error'); }
+    finally{ btn.disabled = false; btn.textContent = 'Back Up Now'; }
+  });
+
+  // ==== Catalog taxonomy (Fabrics / Occasions / Badges / Collections) ====
+  let catalogTab = 'fabrics';
+  document.querySelectorAll('#catalogTabs button').forEach(b=>b.addEventListener('click', ()=>{
+    catalogTab = b.dataset.ctab;
+    document.querySelectorAll('#catalogTabs button').forEach(x=>x.classList.toggle('active', x===b));
+    renderCatalogTab();
+  }));
+
+  function renderCatalogTab(){
+    if(catalogTab==='fabrics') renderFabricsTab();
+    else if(catalogTab==='occasions') renderOccasionsTab();
+    else if(catalogTab==='badges') renderBadgesTab();
+    else if(catalogTab==='collections') renderCollectionsTab();
+  }
+
+  function slugify(s){ return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
+
+  async function uploadEntityImage(url, fieldName, file, extra){
+    const fd = new FormData();
+    fd.append('file', file);
+    if(extra) Object.entries(extra).forEach(([k,v])=>fd.append(k,v));
+    const res = await fetch(url, { method:'POST', headers:{ Authorization:'Bearer '+getToken() }, body: fd });
+    if(!res.ok){ const j = await res.json().catch(()=>({})); throw new Error(j.message||'Upload failed'); }
+    return res.json();
+  }
+
+  // ---- Fabrics ----
+  async function renderFabricsTab(){
+    const body = document.getElementById('catalogTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const {fabrics} = await adminApiFetch('/admin/fabrics');
+    body.innerHTML = `
+      <div style="overflow-x:auto;">
+        <table class="admin-table">
+          <thead><tr><th>Name</th><th>Region</th><th>Craft Type</th><th>Products</th><th>Active</th><th></th></tr></thead>
+          <tbody>${fabrics.map(f=>`
+            <tr>
+              <td>${f.name}</td>
+              <td style="font-size:12px;color:var(--ink-soft);">${f.region}${f.state?', '+f.state:''}</td>
+              <td>${f.craft_type}</td>
+              <td>${f.productCount}</td>
+              <td>${f.active ? 'Yes' : 'No'}</td>
+              <td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" data-fab-edit="${f.id}">Edit</button> <button class="btn btn-sm" style="color:var(--maroon);" data-fab-del="${f.id}">Delete</button></td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <div id="fabricEditor" style="margin-top:16px;"></div>
+      <button class="btn btn-sm btn-outline" id="addFabricBtn" style="margin-top:16px;">+ Add Fabric</button>`;
+
+    function openFabricForm(f){
+      const editor = document.getElementById('fabricEditor');
+      const isNew = !f;
+      f = f || { id:null, name:'', slug:'', region:'', state:'', craft_type:'Handloom', swatch:'maroon', short_description:'', full_description:'', story:'', active:1, hero_image:null, thumbnail:null };
+      editor.innerHTML = `
+        <div class="editor-card">
+          <h4 style="font-family:var(--font-body);font-size:14px;margin-bottom:12px;">${isNew?'New Fabric':'Edit '+f.name}</h4>
+          <div class="form-row-2">
+            <div class="form-field"><label>Name</label><input id="fName" value="${f.name}"></div>
+            <div class="form-field"><label>Slug</label><input id="fSlug" value="${f.slug}"></div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-field"><label>Region</label><input id="fRegion" value="${f.region}"></div>
+            <div class="form-field"><label>State</label><input id="fState" value="${f.state}"></div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-field"><label>Craft Type</label>
+              <select id="fCraft"><option ${f.craft_type==='Handloom'?'selected':''}>Handloom</option><option ${f.craft_type==='Handcrafted'?'selected':''}>Handcrafted</option><option ${f.craft_type==='Powerloom'?'selected':''}>Powerloom</option></select>
+            </div>
+            <div class="form-field"><label>Swatch Key</label><input id="fSwatch" value="${f.swatch}"></div>
+          </div>
+          <div class="form-field"><label>Short Description</label><input id="fShort" value="${f.short_description||''}"></div>
+          <div class="form-field"><label>Story</label><textarea id="fStory" rows="2">${f.story||''}</textarea></div>
+          ${!isNew ? `<div class="form-field"><label>Hero Image</label><input type="file" accept="image/*" id="fHeroUpload">${f.hero_image?`<img src="${f.hero_image}" style="height:60px;margin-top:8px;border-radius:4px;">`:''}</div>` : ''}
+          <label style="font-size:12.5px;"><input type="checkbox" id="fActive" ${f.active?'checked':''}> Active</label>
+          <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="fSave">${isNew?'Create Fabric':'Save Changes'}</button> <button class="btn btn-sm" id="fCancel">Cancel</button></div>
+        </div>`;
+      if(!f.slug) document.getElementById('fName').addEventListener('input', e=>{ document.getElementById('fSlug').value = slugify(e.target.value); });
+      document.getElementById('fCancel').addEventListener('click', ()=>{ editor.innerHTML=''; });
+      document.getElementById('fSave').addEventListener('click', async ()=>{
+        const payload = {
+          name: document.getElementById('fName').value, slug: document.getElementById('fSlug').value,
+          region: document.getElementById('fRegion').value, state: document.getElementById('fState').value,
+          craftType: document.getElementById('fCraft').value, swatch: document.getElementById('fSwatch').value,
+          shortDesc: document.getElementById('fShort').value, story: document.getElementById('fStory').value,
+          active: document.getElementById('fActive').checked
+        };
+        try{
+          const saved = isNew
+            ? await adminApiFetch('/admin/fabrics', {method:'POST', body: JSON.stringify(payload)})
+            : await adminApiFetch('/admin/fabrics/'+f.id, {method:'PUT', body: JSON.stringify(payload)});
+          const heroInput = document.getElementById('fHeroUpload');
+          if(heroInput && heroInput.files[0]) await uploadEntityImage('/api/admin/fabrics/'+(saved.fabric?.id||f.id)+'/image', 'file', heroInput.files[0], {slot:'hero'});
+          toast(isNew?'Fabric created':'Fabric saved');
+          editor.innerHTML='';
+          renderFabricsTab();
+        }catch(e){ toast(e.message, 'error'); }
+      });
+    }
+
+    document.getElementById('addFabricBtn').addEventListener('click', ()=>openFabricForm(null));
+    body.querySelectorAll('[data-fab-edit]').forEach(btn=>btn.addEventListener('click', ()=>{
+      openFabricForm(fabrics.find(x=>x.id===Number(btn.dataset.fabEdit)));
+    }));
+    body.querySelectorAll('[data-fab-del]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const ok = await showConfirmDialog('If products still use this fabric, it will be deactivated instead of deleted.', {title:'Delete this fabric?', confirmLabel:'Delete', danger:true});
+      if(!ok) return;
+      try{ const r = await adminApiFetch('/admin/fabrics/'+btn.dataset.fabDel, {method:'DELETE'}); toast(r.message); renderFabricsTab(); }
+      catch(e){ toast(e.message, 'error'); }
+    }));
+  }
+
+  // ---- Occasions ----
+  async function renderOccasionsTab(){
+    const body = document.getElementById('catalogTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const {occasions} = await adminApiFetch('/admin/occasions');
+    body.innerHTML = `
+      <div style="overflow-x:auto;">
+        <table class="admin-table">
+          <thead><tr><th>Name</th><th>Home Card Title</th><th>Featured</th><th>Products</th><th>Active</th><th></th></tr></thead>
+          <tbody>${occasions.map(o=>`
+            <tr>
+              <td>${o.name}</td>
+              <td>${o.home_card_title || '—'}</td>
+              <td>${o.featured_on_home ? 'Yes' : 'No'}</td>
+              <td>${o.productCount}</td>
+              <td>${o.active ? 'Yes' : 'No'}</td>
+              <td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" data-occ-edit="${o.id}">Edit</button> <button class="btn btn-sm" style="color:var(--maroon);" data-occ-del="${o.id}">Delete</button></td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <div id="occEditor" style="margin-top:16px;"></div>
+      <button class="btn btn-sm btn-outline" id="addOccBtn" style="margin-top:16px;">+ Add Occasion</button>`;
+
+    function openOccForm(o){
+      const editor = document.getElementById('occEditor');
+      const isNew = !o;
+      o = o || { id:null, name:'', slug:'', description:'', home_card_title:'', featured_on_home:0, active:1, image:null };
+      editor.innerHTML = `
+        <div class="editor-card">
+          <h4 style="font-family:var(--font-body);font-size:14px;margin-bottom:12px;">${isNew?'New Occasion':'Edit '+o.name}</h4>
+          <div class="form-row-2">
+            <div class="form-field"><label>Name</label><input id="oName" value="${o.name}"></div>
+            <div class="form-field"><label>Slug</label><input id="oSlug" value="${o.slug}"></div>
+          </div>
+          <div class="form-field"><label>Description</label><input id="oDesc" value="${o.description||''}"></div>
+          <div class="form-field"><label>Home Card Title (leave blank to use Name)</label><input id="oCardTitle" value="${o.home_card_title||''}"></div>
+          ${!isNew ? `<div class="form-field"><label>Card Image</label><input type="file" accept="image/*" id="oImgUpload">${o.image?`<img src="${o.image}" style="height:60px;margin-top:8px;border-radius:4px;">`:''}</div>` : ''}
+          <label style="font-size:12.5px;display:block;margin-bottom:6px;"><input type="checkbox" id="oFeatured" ${o.featured_on_home?'checked':''}> Featured on homepage</label>
+          <label style="font-size:12.5px;"><input type="checkbox" id="oActive" ${o.active?'checked':''}> Active</label>
+          <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="oSave">${isNew?'Create Occasion':'Save Changes'}</button> <button class="btn btn-sm" id="oCancel">Cancel</button></div>
+        </div>`;
+      if(!o.slug) document.getElementById('oName').addEventListener('input', e=>{ document.getElementById('oSlug').value = slugify(e.target.value); });
+      document.getElementById('oCancel').addEventListener('click', ()=>{ editor.innerHTML=''; });
+      document.getElementById('oSave').addEventListener('click', async ()=>{
+        const payload = {
+          name: document.getElementById('oName').value, slug: document.getElementById('oSlug').value,
+          description: document.getElementById('oDesc').value, homeCardTitle: document.getElementById('oCardTitle').value,
+          featuredOnHome: document.getElementById('oFeatured').checked, active: document.getElementById('oActive').checked
+        };
+        try{
+          const saved = isNew
+            ? await adminApiFetch('/admin/occasions', {method:'POST', body: JSON.stringify(payload)})
+            : await adminApiFetch('/admin/occasions/'+o.id, {method:'PUT', body: JSON.stringify(payload)});
+          const imgInput = document.getElementById('oImgUpload');
+          if(imgInput && imgInput.files[0]) await uploadEntityImage('/api/admin/occasions/'+(saved.occasion?.id||o.id)+'/image', 'file', imgInput.files[0]);
+          toast(isNew?'Occasion created':'Occasion saved');
+          editor.innerHTML='';
+          renderOccasionsTab();
+        }catch(e){ toast(e.message, 'error'); }
+      });
+    }
+
+    document.getElementById('addOccBtn').addEventListener('click', ()=>openOccForm(null));
+    body.querySelectorAll('[data-occ-edit]').forEach(btn=>btn.addEventListener('click', ()=>{
+      openOccForm(occasions.find(x=>x.id===Number(btn.dataset.occEdit)));
+    }));
+    body.querySelectorAll('[data-occ-del]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const ok = await showConfirmDialog('If products still use this occasion, it will be deactivated instead of deleted.', {title:'Delete this occasion?', confirmLabel:'Delete', danger:true});
+      if(!ok) return;
+      try{ const r = await adminApiFetch('/admin/occasions/'+btn.dataset.occDel, {method:'DELETE'}); toast(r.message); renderOccasionsTab(); }
+      catch(e){ toast(e.message, 'error'); }
+    }));
+  }
+
+  // ---- Badges ----
+  async function renderBadgesTab(){
+    const body = document.getElementById('catalogTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const {badges} = await adminApiFetch('/admin/badges');
+    body.innerHTML = `
+      <div style="overflow-x:auto;">
+        <table class="admin-table">
+          <thead><tr><th>Key</th><th>Label</th><th>Priority</th><th>Active</th><th></th></tr></thead>
+          <tbody>${badges.map(b=>`
+            <tr data-id="${b.id}">
+              <td><input class="admin-input" data-bf="key" value="${b.key}"></td>
+              <td><input class="admin-input" style="width:140px;" data-bf="label" value="${b.label}"></td>
+              <td><input type="number" class="admin-input" style="width:60px;" data-bf="priority" value="${b.priority}"></td>
+              <td><input type="checkbox" data-bf="active" ${b.active?'checked':''}></td>
+              <td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" data-badge-save="${b.id}">Save</button> <button class="btn btn-sm" style="color:var(--maroon);" data-badge-del="${b.id}">Delete</button></td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <div class="admin-form" style="margin-top:16px;">
+        <div class="form-row-2">
+          <div class="form-field"><label>Key (matches product.badge)</label><input id="newBadgeKey" placeholder="limited"></div>
+          <div class="form-field"><label>Label</label><input id="newBadgeLabel" placeholder="Limited Edition"></div>
+        </div>
+        <button class="btn btn-sm btn-outline" id="addBadgeBtn">+ Add Badge</button>
+      </div>`;
+
+    body.querySelectorAll('[data-badge-save]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const row = btn.closest('tr');
+      const payload = {};
+      row.querySelectorAll('[data-bf]').forEach(inp=>{ payload[inp.dataset.bf] = inp.type==='checkbox' ? inp.checked : inp.value; });
+      try{ await adminApiFetch('/admin/badges/'+btn.dataset.badgeSave, {method:'PUT', body: JSON.stringify(payload)}); toast('Badge saved'); }
+      catch(e){ toast(e.message, 'error'); }
+    }));
+    body.querySelectorAll('[data-badge-del]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      try{ const r = await adminApiFetch('/admin/badges/'+btn.dataset.badgeDel, {method:'DELETE'}); toast(r.message); renderBadgesTab(); }
+      catch(e){ toast(e.message, 'error'); }
+    }));
+    document.getElementById('addBadgeBtn').addEventListener('click', async ()=>{
+      const key = document.getElementById('newBadgeKey').value, label = document.getElementById('newBadgeLabel').value;
+      if(!key || !label){ toast('Key and label are required', 'error'); return; }
+      try{ await adminApiFetch('/admin/badges', {method:'POST', body: JSON.stringify({key,label})}); toast('Badge added'); renderBadgesTab(); }
+      catch(e){ toast(e.message, 'error'); }
+    });
+  }
+
+  // ---- Collections ----
+  async function renderCollectionsTab(){
+    const body = document.getElementById('catalogTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const [{collections}, {products}] = await Promise.all([adminApiFetch('/admin/collections'), adminApiFetch('/admin/products')]);
+    body.innerHTML = `
+      <div style="overflow-x:auto;">
+        <table class="admin-table">
+          <thead><tr><th>Name</th><th>Products</th><th>Active</th><th></th></tr></thead>
+          <tbody>${collections.map(c=>`
+            <tr>
+              <td>${c.name}</td>
+              <td>${c.productIds.length}</td>
+              <td>${c.active ? 'Yes' : 'No'}</td>
+              <td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" data-coll-edit="${c.id}">Edit</button> <button class="btn btn-sm" style="color:var(--maroon);" data-coll-del="${c.id}">Delete</button></td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <div id="collEditor" style="margin-top:16px;"></div>
+      <button class="btn btn-sm btn-outline" id="addCollBtn" style="margin-top:16px;">+ Add Collection</button>`;
+
+    function openCollForm(c){
+      const editor = document.getElementById('collEditor');
+      const isNew = !c;
+      c = c || { id:null, name:'', slug:'', description:'', active:1, productIds:[], banner_image:null };
+      editor.innerHTML = `
+        <div class="editor-card">
+          <h4 style="font-family:var(--font-body);font-size:14px;margin-bottom:12px;">${isNew?'New Collection':'Edit '+c.name}</h4>
+          <div class="form-row-2">
+            <div class="form-field"><label>Name</label><input id="cName" value="${c.name}"></div>
+            <div class="form-field"><label>Slug</label><input id="cSlug" value="${c.slug}"></div>
+          </div>
+          <div class="form-field"><label>Description</label><input id="cDesc" value="${c.description||''}"></div>
+          ${!isNew ? `<div class="form-field"><label>Banner Image</label><input type="file" accept="image/*" id="cBannerUpload">${c.banner_image?`<img src="${c.banner_image}" style="height:60px;margin-top:8px;border-radius:4px;">`:''}</div>` : ''}
+          <label style="font-size:12.5px;"><input type="checkbox" id="cActive" ${c.active?'checked':''}> Active</label>
+          ${!isNew ? `
+          <div style="margin-top:14px;">
+            <label style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:8px;">Products in this collection</label>
+            <div style="max-height:220px;overflow-y:auto;border:1px solid rgba(173,59,92,0.15);border-radius:4px;padding:10px;">
+              ${products.map(p=>`<label style="display:block;font-size:12.5px;padding:4px 0;"><input type="checkbox" class="cProdCheck" value="${p.id}" ${c.productIds.includes(p.id)?'checked':''}> ${p.name}</label>`).join('')}
+            </div>
+          </div>` : `<p style="font-size:12px;color:var(--ink-soft);margin-top:10px;">Save the collection first, then reopen it to choose products.</p>`}
+          <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="cSave">${isNew?'Create Collection':'Save Changes'}</button> <button class="btn btn-sm" id="cCancel">Cancel</button></div>
+        </div>`;
+      if(!c.slug) document.getElementById('cName').addEventListener('input', e=>{ document.getElementById('cSlug').value = slugify(e.target.value); });
+      document.getElementById('cCancel').addEventListener('click', ()=>{ editor.innerHTML=''; });
+      document.getElementById('cSave').addEventListener('click', async ()=>{
+        const payload = { name: document.getElementById('cName').value, slug: document.getElementById('cSlug').value, description: document.getElementById('cDesc').value, active: document.getElementById('cActive').checked };
+        try{
+          const saved = isNew
+            ? await adminApiFetch('/admin/collections', {method:'POST', body: JSON.stringify(payload)})
+            : await adminApiFetch('/admin/collections/'+c.id, {method:'PUT', body: JSON.stringify(payload)});
+          const collId = saved.collection?.id || c.id;
+          if(!isNew){
+            const ids = [...document.querySelectorAll('.cProdCheck:checked')].map(i=>Number(i.value));
+            await adminApiFetch('/admin/collections/'+collId+'/products', {method:'PUT', body: JSON.stringify({productIds: ids})});
+          }
+          const bannerInput = document.getElementById('cBannerUpload');
+          if(bannerInput && bannerInput.files[0]) await uploadEntityImage('/api/admin/collections/'+collId+'/image', 'file', bannerInput.files[0], {slot:'banner'});
+          toast(isNew?'Collection created — reopen it to add products':'Collection saved');
+          editor.innerHTML='';
+          renderCollectionsTab();
+        }catch(e){ toast(e.message, 'error'); }
+      });
+    }
+
+    document.getElementById('addCollBtn').addEventListener('click', ()=>openCollForm(null));
+    body.querySelectorAll('[data-coll-edit]').forEach(btn=>btn.addEventListener('click', ()=>{
+      openCollForm(collections.find(x=>x.id===Number(btn.dataset.collEdit)));
+    }));
+    body.querySelectorAll('[data-coll-del]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const ok = await showConfirmDialog('This removes the collection and its product assignments.', {title:'Delete this collection?', confirmLabel:'Delete', danger:true});
+      if(!ok) return;
+      try{ await adminApiFetch('/admin/collections/'+btn.dataset.collDel, {method:'DELETE'}); toast('Collection deleted'); renderCollectionsTab(); }
+      catch(e){ toast(e.message, 'error'); }
+    }));
+  }
+
+  // ==== Coupons ====
+  async function loadCoupons(){
+    try{
+      const {coupons} = await adminApiFetch('/admin/coupons');
+      document.getElementById('couponsTable').innerHTML = `
+        <thead><tr><th>Code</th><th>Type</th><th>Value</th><th>Min Order</th><th>Usage</th><th>Active</th><th></th></tr></thead>
+        <tbody>${coupons.map(c=>`
+          <tr>
+            <td><strong>${c.code}</strong>${c.description?`<br><span style="font-size:11px;color:var(--ink-soft);">${c.description}</span>`:''}</td>
+            <td>${c.type}</td>
+            <td>${c.type==='percent' ? c.value+'%' : money(c.value)}${c.max_discount?` (max ${money(c.max_discount)})`:''}</td>
+            <td>${money(c.min_subtotal)}</td>
+            <td>${c.usedCount}${c.usage_limit ? ' / '+c.usage_limit : ''}</td>
+            <td>${c.active ? 'Yes' : 'No'}</td>
+            <td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" data-coupon-toggle="${c.code}" data-active="${c.active}">${c.active?'Deactivate':'Activate'}</button> <button class="btn btn-sm" style="color:var(--maroon);" data-coupon-del="${c.code}">Delete</button></td>
+          </tr>`).join('')}</tbody>`;
+
+      document.querySelectorAll('[data-coupon-toggle]').forEach(btn=>btn.addEventListener('click', async ()=>{
+        try{
+          await adminApiFetch('/admin/coupons/'+btn.dataset.couponToggle, {method:'PUT', body: JSON.stringify({active: btn.dataset.active !== '1'})});
+          toast('Coupon updated'); loadCoupons();
+        }catch(e){ toast(e.message, 'error'); }
+      }));
+      document.querySelectorAll('[data-coupon-del]').forEach(btn=>btn.addEventListener('click', async ()=>{
+        const ok = await showConfirmDialog('Any past orders keep their applied discount — this just retires the code.', {title:'Delete coupon '+btn.dataset.couponDel+'?', confirmLabel:'Delete', danger:true});
+        if(!ok) return;
+        try{ await adminApiFetch('/admin/coupons/'+btn.dataset.couponDel, {method:'DELETE'}); toast('Coupon deleted'); loadCoupons(); }
+        catch(e){ toast(e.message, 'error'); }
+      }));
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  document.getElementById('showAddCoupon').addEventListener('click', ()=>{
+    const form = document.getElementById('addCouponForm');
+    if(form.style.display === 'none'){
+      form.innerHTML = `
+        <div class="form-row-2">
+          <div class="form-field"><label>Code</label><input id="ncCode" placeholder="DIWALI25" style="text-transform:uppercase;"></div>
+          <div class="form-field"><label>Type</label><select id="ncType"><option value="percent">Percent off</option><option value="flat">Flat amount off</option></select></div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-field"><label>Value</label><input type="number" id="ncValue"></div>
+          <div class="form-field"><label>Max Discount (₹, optional)</label><input type="number" id="ncMaxDiscount"></div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-field"><label>Min Order Value (₹)</label><input type="number" id="ncMinSubtotal" value="0"></div>
+          <div class="form-field"><label>Description</label><input id="ncDesc" placeholder="Diwali sale"></div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-field"><label>Total Usage Limit (optional)</label><input type="number" id="ncUsageLimit"></div>
+          <div class="form-field"><label>Per-Customer Limit (optional)</label><input type="number" id="ncPerCustomer"></div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-field"><label>Start Date (optional)</label><input type="date" id="ncStart"></div>
+          <div class="form-field"><label>End Date (optional)</label><input type="date" id="ncEnd"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="createCoupon">Create Coupon</button>`;
+      document.getElementById('createCoupon').addEventListener('click', async ()=>{
+        try{
+          await adminApiFetch('/admin/coupons', {method:'POST', body: JSON.stringify({
+            code: document.getElementById('ncCode').value, type: document.getElementById('ncType').value,
+            value: document.getElementById('ncValue').value, maxDiscount: document.getElementById('ncMaxDiscount').value || null,
+            minSubtotal: document.getElementById('ncMinSubtotal').value, description: document.getElementById('ncDesc').value,
+            usageLimit: document.getElementById('ncUsageLimit').value || null, perCustomerLimit: document.getElementById('ncPerCustomer').value || null,
+            startDate: document.getElementById('ncStart').value || null, endDate: document.getElementById('ncEnd').value || null
+          })});
+          toast('Coupon created');
+          form.style.display = 'none';
+          loadCoupons();
+        }catch(e){ toast(e.message, 'error'); }
+      });
+    }
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  });
+
+  // ==== Storefront CMS (Hero / Promo Band / Sarees in Motion / FAQ) ====
+  let storefrontTab = 'hero';
+  document.querySelectorAll('#storefrontTabs button').forEach(b=>b.addEventListener('click', ()=>{
+    storefrontTab = b.dataset.stab;
+    document.querySelectorAll('#storefrontTabs button').forEach(x=>x.classList.toggle('active', x===b));
+    renderStorefrontTab();
+  }));
+
+  function renderStorefrontTab(){
+    if(storefrontTab==='hero') renderHeroAdmin();
+    else if(storefrontTab==='promo') renderPromoAdmin();
+    else if(storefrontTab==='reels') renderReelsAdmin();
+    else if(storefrontTab==='faq') renderFaqAdmin();
+  }
+
+  // ---- Hero ----
+  async function renderHeroAdmin(){
+    const body = document.getElementById('storefrontTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const {hero: h} = await adminApiFetch('/admin/content/hero');
+    body.innerHTML = `
+      <div class="editor-card">
+        <div class="form-row-2">
+          <div class="form-field"><label>Eyebrow</label><input id="hEyebrow" value="${h.eyebrow||''}"></div>
+          <div class="form-field"><label>CTA Text / Link</label><input id="hCtaText" value="${h.ctaText||''}" style="margin-bottom:6px;"><input id="hCtaLink" value="${h.ctaLink||''}"></div>
+        </div>
+        <label style="font-size:12px;color:var(--ink-soft);">Heading (three parts — the middle one renders in gold)</label>
+        <div class="form-row-2" style="margin-top:6px;">
+          <div class="form-field"><input id="hPre" placeholder="Drape a story" value="${h.headingPre||''}"></div>
+          <div class="form-field"><input id="hEm" placeholder="woven" value="${h.headingEm||''}"></div>
+        </div>
+        <div class="form-field"><input id="hPost" placeholder="in silk and gold" value="${h.headingPost||''}"></div>
+        <div class="form-field"><label>Subheading</label><textarea id="hSub" rows="2">${h.subheading||''}</textarea></div>
+        <div class="form-row-2">
+          <div class="form-field"><label>Badge Label</label><input id="hBadgeLabel" value="${h.badgeLabel||''}"></div>
+          <div class="form-field"><label>Badge Value</label><input id="hBadgeValue" value="${h.badgeValue||''}"></div>
+        </div>
+        <div class="form-field"><label>Desktop Image</label><input type="file" accept="image/*" id="hImgUpload">${h.desktopImage?`<img src="${h.desktopImage}" style="height:70px;margin-top:8px;border-radius:4px;">`:''}</div>
+        <label style="font-size:12.5px;"><input type="checkbox" id="hActive" ${h.active?'checked':''}> Show hero banner</label>
+        <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="hSave">Save Hero</button></div>
+      </div>`;
+
+    document.getElementById('hSave').addEventListener('click', async ()=>{
+      try{
+        await adminApiFetch('/admin/content/hero', {method:'PUT', body: JSON.stringify({
+          eyebrow: document.getElementById('hEyebrow').value, ctaText: document.getElementById('hCtaText').value,
+          ctaLink: document.getElementById('hCtaLink').value, headingPre: document.getElementById('hPre').value,
+          headingEm: document.getElementById('hEm').value, headingPost: document.getElementById('hPost').value,
+          subheading: document.getElementById('hSub').value, badgeLabel: document.getElementById('hBadgeLabel').value,
+          badgeValue: document.getElementById('hBadgeValue').value, active: document.getElementById('hActive').checked
+        })});
+        const imgInput = document.getElementById('hImgUpload');
+        if(imgInput.files[0]) await uploadEntityImage('/api/admin/content/hero/image', 'file', imgInput.files[0]);
+        toast('Hero banner saved');
+        renderHeroAdmin();
+      }catch(e){ toast(e.message, 'error'); }
+    });
+  }
+
+  // ---- Promo band ----
+  async function renderPromoAdmin(){
+    const body = document.getElementById('storefrontTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const {promoBand: b} = await adminApiFetch('/admin/content/promo-band');
+    body.innerHTML = `
+      <div class="editor-card">
+        <div class="form-row-2">
+          <div class="form-field"><label>Eyebrow</label><input id="pEyebrow" value="${b.eyebrow||''}"></div>
+          <div class="form-field"><label>Heading</label><input id="pHeading" value="${b.heading||''}"></div>
+        </div>
+        <div class="form-field"><label>Message (use {CODE} where the coupon code should appear)</label><input id="pMessage" value="${b.message||''}"></div>
+        <div class="form-row-2">
+          <div class="form-field"><label>Coupon Code</label><input id="pCode" value="${b.couponCode||''}" style="text-transform:uppercase;"></div>
+          <div class="form-field"><label>CTA Text / Link</label><input id="pCtaText" value="${b.ctaText||''}" style="margin-bottom:6px;"><input id="pCtaLink" value="${b.ctaLink||''}"></div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-field"><label>Start Date (optional)</label><input type="date" id="pStart" value="${b.startDate?b.startDate.slice(0,10):''}"></div>
+          <div class="form-field"><label>End Date (optional)</label><input type="date" id="pEnd" value="${b.endDate?b.endDate.slice(0,10):''}"></div>
+        </div>
+        <label style="font-size:12.5px;"><input type="checkbox" id="pActive" ${b.active?'checked':''}> Show promo band</label>
+        <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="pSave">Save Promo Band</button></div>
+      </div>`;
+
+    document.getElementById('pSave').addEventListener('click', async ()=>{
+      try{
+        await adminApiFetch('/admin/content/promo-band', {method:'PUT', body: JSON.stringify({
+          eyebrow: document.getElementById('pEyebrow').value, heading: document.getElementById('pHeading').value,
+          message: document.getElementById('pMessage').value, couponCode: document.getElementById('pCode').value,
+          ctaText: document.getElementById('pCtaText').value, ctaLink: document.getElementById('pCtaLink').value,
+          startDate: document.getElementById('pStart').value || null, endDate: document.getElementById('pEnd').value || null,
+          active: document.getElementById('pActive').checked
+        })});
+        toast('Promo band saved');
+        renderPromoAdmin();
+      }catch(e){ toast(e.message, 'error'); }
+    });
+  }
+
+  // ---- Sarees in Motion ----
+  async function renderReelsAdmin(){
+    const body = document.getElementById('storefrontTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const [{reels}, {products}] = await Promise.all([adminApiFetch('/admin/reels'), adminApiFetch('/admin/products')]);
+    const inReel = new Set(reels.map(r=>r.product_id));
+    const available = products.filter(p=>!inReel.has(p.id));
+
+    body.innerHTML = `
+      <div style="overflow-x:auto;">
+        <table class="admin-table">
+          <thead><tr><th>Order</th><th>Product</th><th>Video</th><th>Thumbnail</th><th>Active</th><th></th></tr></thead>
+          <tbody>${reels.map((r,i)=>`
+            <tr data-reel-id="${r.id}">
+              <td style="white-space:nowrap;">
+                <button class="btn btn-sm" data-reel-up="${r.id}" ${i===0?'disabled':''}>↑</button>
+                <button class="btn btn-sm" data-reel-down="${r.id}" ${i===reels.length-1?'disabled':''}>↓</button>
+              </td>
+              <td>${r.name}</td>
+              <td>${r.video_url ? '✅ uploaded' : '—'} <input type="file" accept="video/*" data-reel-video="${r.id}" style="max-width:120px;font-size:11px;"></td>
+              <td>${r.thumbnail_url ? `<img src="${r.thumbnail_url}" style="height:36px;border-radius:3px;">` : '—'} <input type="file" accept="image/*" data-reel-thumb="${r.id}" style="max-width:120px;font-size:11px;"></td>
+              <td><input type="checkbox" data-reel-active="${r.id}" ${r.active?'checked':''}></td>
+              <td><button class="btn btn-sm" style="color:var(--maroon);" data-reel-del="${r.id}">Remove</button></td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <div class="admin-form" style="margin-top:16px;">
+        <div class="form-field"><label>Add a product to the carousel</label>
+          <select id="addReelProduct" class="admin-input" style="width:100%;">
+            <option value="">Choose a product…</option>
+            ${available.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-sm btn-outline" id="addReelBtn">+ Add to Sarees in Motion</button>
+      </div>`;
+
+    body.querySelectorAll('[data-reel-active]').forEach(cb=>cb.addEventListener('change', async ()=>{
+      try{ await adminApiFetch('/admin/reels/'+cb.dataset.reelActive, {method:'PUT', body: JSON.stringify({active: cb.checked})}); toast('Updated'); }
+      catch(e){ toast(e.message, 'error'); }
+    }));
+    body.querySelectorAll('[data-reel-del]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const ok = await showConfirmDialog('Removes this saree from the homepage carousel.', {title:'Remove from Sarees in Motion?', confirmLabel:'Remove', danger:true});
+      if(!ok) return;
+      try{ await adminApiFetch('/admin/reels/'+btn.dataset.reelDel, {method:'DELETE'}); toast('Removed'); renderReelsAdmin(); }
+      catch(e){ toast(e.message, 'error'); }
+    }));
+    async function moveReel(id, dir){
+      const ids = reels.map(r=>r.id);
+      const idx = ids.indexOf(Number(id));
+      const swapWith = idx + dir;
+      if(swapWith < 0 || swapWith >= ids.length) return;
+      [ids[idx], ids[swapWith]] = [ids[swapWith], ids[idx]];
+      try{ await adminApiFetch('/admin/reels/reorder', {method:'PUT', body: JSON.stringify({orderedIds: ids})}); renderReelsAdmin(); }
+      catch(e){ toast(e.message, 'error'); }
+    }
+    body.querySelectorAll('[data-reel-up]').forEach(btn=>btn.addEventListener('click', ()=>moveReel(btn.dataset.reelUp, -1)));
+    body.querySelectorAll('[data-reel-down]').forEach(btn=>btn.addEventListener('click', ()=>moveReel(btn.dataset.reelDown, 1)));
+    body.querySelectorAll('[data-reel-video]').forEach(input=>input.addEventListener('change', async e=>{
+      if(!e.target.files[0]) return;
+      try{ await uploadEntityImage('/api/admin/reels/'+input.dataset.reelVideo+'/video', 'file', e.target.files[0]); toast('Video uploaded'); renderReelsAdmin(); }
+      catch(err){ toast(err.message, 'error'); }
+    }));
+    body.querySelectorAll('[data-reel-thumb]').forEach(input=>input.addEventListener('change', async e=>{
+      if(!e.target.files[0]) return;
+      try{ await uploadEntityImage('/api/admin/reels/'+input.dataset.reelThumb+'/video', 'file', e.target.files[0]); toast('Thumbnail uploaded'); renderReelsAdmin(); }
+      catch(err){ toast(err.message, 'error'); }
+    }));
+    document.getElementById('addReelBtn').addEventListener('click', async ()=>{
+      const productId = document.getElementById('addReelProduct').value;
+      if(!productId){ toast('Choose a product first', 'error'); return; }
+      try{ await adminApiFetch('/admin/reels', {method:'POST', body: JSON.stringify({productId})}); toast('Added to Sarees in Motion'); renderReelsAdmin(); }
+      catch(e){ toast(e.message, 'error'); }
+    });
+  }
+
+  // ---- FAQ ----
+  async function renderFaqAdmin(){
+    const body = document.getElementById('storefrontTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const {faq} = await adminApiFetch('/admin/faq');
+    body.innerHTML = `
+      ${faq.map(f=>`
+        <div class="variant-card" data-faq-id="${f.id}">
+          <div class="form-field"><label>Question</label><input class="admin-input" style="width:100%;" data-ff="question" value="${f.question}"></div>
+          <div class="form-field"><label>Answer</label><textarea class="admin-input" style="width:100%;" rows="2" data-ff="answer">${f.answer}</textarea></div>
+          <div class="form-row-2">
+            <div class="form-field"><label>Category</label><input class="admin-input" style="width:100%;" data-ff="category" value="${f.category}"></div>
+            <div class="form-field"><label>&nbsp;</label><label style="font-size:12.5px;display:block;margin-top:8px;"><input type="checkbox" data-ff="active" ${f.active?'checked':''}> Active</label></div>
+          </div>
+          <button class="btn btn-sm btn-primary" data-faq-save="${f.id}">Save</button> <button class="btn btn-sm" style="color:var(--maroon);" data-faq-del="${f.id}">Delete</button>
+        </div>`).join('')}
+      <div class="variant-card" style="border-style:dashed;">
+        <h4 style="margin-bottom:12px;">+ Add Question</h4>
+        <div class="form-field"><label>Question</label><input class="admin-input" style="width:100%;" id="newFaqQ"></div>
+        <div class="form-field"><label>Answer</label><textarea class="admin-input" style="width:100%;" rows="2" id="newFaqA"></textarea></div>
+        <div class="form-field"><label>Category</label><input class="admin-input" style="width:100%;" id="newFaqCat" value="General"></div>
+        <button class="btn btn-sm btn-outline" id="addFaqBtn">Add Question</button>
+      </div>`;
+
+    body.querySelectorAll('[data-faq-save]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const card = btn.closest('[data-faq-id]');
+      const payload = {};
+      card.querySelectorAll('[data-ff]').forEach(inp=>{ payload[inp.dataset.ff] = inp.type==='checkbox' ? inp.checked : inp.value; });
+      try{ await adminApiFetch('/admin/faq/'+btn.dataset.faqSave, {method:'PUT', body: JSON.stringify(payload)}); toast('FAQ saved'); }
+      catch(e){ toast(e.message, 'error'); }
+    }));
+    body.querySelectorAll('[data-faq-del]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const ok = await showConfirmDialog('', {title:'Delete this question?', confirmLabel:'Delete', danger:true});
+      if(!ok) return;
+      try{ await adminApiFetch('/admin/faq/'+btn.dataset.faqDel, {method:'DELETE'}); toast('FAQ deleted'); renderFaqAdmin(); }
+      catch(e){ toast(e.message, 'error'); }
+    }));
+    document.getElementById('addFaqBtn').addEventListener('click', async ()=>{
+      const question = document.getElementById('newFaqQ').value, answer = document.getElementById('newFaqA').value;
+      if(!question || !answer){ toast('Question and answer are required', 'error'); return; }
+      try{
+        await adminApiFetch('/admin/faq', {method:'POST', body: JSON.stringify({question, answer, category: document.getElementById('newFaqCat').value})});
+        toast('Question added');
+        renderFaqAdmin();
+      }catch(e){ toast(e.message, 'error'); }
+    });
+  }
+
+  // ==== Customers ====
+  let openCustomerId = null;
+
+  async function loadCustomers(){
+    try{
+      const {customers} = await adminApiFetch('/admin/customers');
+      document.getElementById('customersTable').innerHTML = `
+        <thead><tr><th>Name</th><th>Email</th><th>Orders</th><th>Total Spent</th><th>Last Order</th><th>Status</th><th></th></tr></thead>
+        <tbody>${customers.length ? customers.map(c=>`
+          <tr>
+            <td>${c.name} ${c.isGuest?'<span class="status-pill status-pending">GUEST</span>':''} ${c.flag==='vip'?'<span class="status-pill status-confirmed">VIP</span>':''} ${c.flag==='watch'?'<span class="status-pill status-cancelled">WATCH</span>':''}</td>
+            <td style="font-size:12px;">${c.email}</td>
+            <td>${c.orderCount}</td>
+            <td>${money(c.totalSpent)}</td>
+            <td style="font-size:12px;">${c.lastOrderAt ? new Date(c.lastOrderAt).toLocaleDateString('en-IN') : '—'}</td>
+            <td>${c.status === 'blocked' ? '<span class="order-status cancelled">Blocked</span>' : '<span class="order-status ok">Active</span>'}</td>
+            <td><button class="btn btn-sm btn-outline" data-cust-view="${c.id}">View</button></td>
+          </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:24px;">No customers yet.</td></tr>`}</tbody>`;
+
+      document.querySelectorAll('[data-cust-view]').forEach(btn=>btn.addEventListener('click', ()=>{
+        openCustomerId = btn.dataset.custView;
+        renderCustomerDetail();
+      }));
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function renderCustomerDetail(){
+    const wrap = document.getElementById('customerDetail');
+    if(!openCustomerId){ wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    wrap.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+
+    try{
+      const {customer: c, orders, addresses, wishlist, cart} = await adminApiFetch('/admin/customers/' + openCustomerId);
+      wrap.innerHTML = `
+        <div class="editor-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <h3 style="font-family:var(--font-body);font-size:16px;">${c.name} ${c.status==='blocked'?'<span class="manual-override-flag">BLOCKED</span>':''} ${c.isGuest?'<span class="status-pill status-pending">GUEST</span>':''}</h3>
+            <button class="btn btn-sm" id="closeCustDetail">Close ×</button>
+          </div>
+          <div class="detail-grid">
+            <div class="detail-block">
+              <h5>Profile</h5>
+              <p>${c.email}<br>${c.phone || 'No phone on file'}<br>Joined ${new Date(c.createdAt).toLocaleDateString('en-IN')}</p>
+            </div>
+            <div class="detail-block">
+              <h5>Flag &amp; Notes</h5>
+              <select class="admin-input" id="custFlagSelect" style="width:100%;margin-bottom:8px;">
+                <option value="" ${!c.flag?'selected':''}>No flag</option>
+                <option value="vip" ${c.flag==='vip'?'selected':''}>VIP</option>
+                <option value="watch" ${c.flag==='watch'?'selected':''}>Watch (e.g. repeated cancellations)</option>
+              </select>
+              <textarea class="admin-input" id="custAdminNote" rows="3" style="width:100%;" placeholder="Internal note — not visible to the customer">${c.adminNote || ''}</textarea>
+              <button class="btn btn-sm btn-outline" id="saveCustFlag" style="margin-top:8px;">Save</button>
+            </div>
+            <div class="detail-block">
+              <h5>Addresses (${addresses.length})</h5>
+              ${addresses.length ? addresses.map(a=>`<p>${a.line1}, ${a.city}, ${a.state} ${a.pincode}</p>`).join('') : '<p>No saved addresses.</p>'}
+            </div>
+            <div class="detail-block">
+              <h5>Order History (${orders.length})</h5>
+              ${orders.length ? orders.map(o=>`<p>#${o.id} — ${o.status} — ${money(o.total)}</p>`).join('') : '<p>No orders yet.</p>'}
+            </div>
+            <div class="detail-block">
+              <h5>Wishlist (${wishlist.length}) &amp; Bag (${cart.length})</h5>
+              ${wishlist.length ? `<p><strong>Wishlist:</strong> ${wishlist.map(w=>w.name).join(', ')}</p>` : ''}
+              ${cart.length ? `<p><strong>In bag:</strong> ${cart.map(i=>i.name+' ×'+i.qty).join(', ')}</p>` : ''}
+              ${!wishlist.length && !cart.length ? '<p>Nothing saved right now.</p>' : ''}
+            </div>
+          </div>
+          <button class="btn btn-sm ${c.status==='blocked'?'btn-outline':''}" id="toggleCustStatus" style="${c.status!=='blocked'?'color:var(--maroon);':''}">${c.status==='blocked'?'Reactivate Customer':'Block Customer'}</button>
+        </div>`;
+
+      document.getElementById('closeCustDetail').addEventListener('click', ()=>{ openCustomerId = null; renderCustomerDetail(); });
+      document.getElementById('saveCustFlag').addEventListener('click', async ()=>{
+        try{
+          await adminApiFetch('/admin/customers/' + c.id + '/flag', {method:'PUT', body: JSON.stringify({
+            flag: document.getElementById('custFlagSelect').value,
+            adminNote: document.getElementById('custAdminNote').value.trim()
+          })});
+          toast('Customer updated');
+          loadCustomers();
+        }catch(e){ toast(e.message, 'error'); }
+      });
+      document.getElementById('toggleCustStatus').addEventListener('click', async ()=>{
+        const newStatus = c.status === 'blocked' ? 'active' : 'blocked';
+        const ok = await showConfirmDialog(
+          newStatus==='blocked' ? 'They will be signed out immediately and unable to log back in.' : 'They will be able to log in again right away.',
+          { title: newStatus==='blocked' ? 'Block this customer?' : 'Reactivate this customer?', confirmLabel: newStatus==='blocked'?'Block':'Reactivate', danger: newStatus==='blocked' }
+        );
+        if(!ok) return;
+        try{
+          const r = await adminApiFetch('/admin/customers/' + c.id + '/status', {method:'PUT', body: JSON.stringify({status:newStatus})});
+          toast(r.message);
+          renderCustomerDetail();
+          loadCustomers();
+        }catch(e){ toast(e.message, 'error'); }
+      });
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  // ==== Reviews moderation ====
+  let reviewFilter = 'all';
+  const REVIEW_FILTERS = ['all','pending','published','rejected'];
+
+  async function loadReviews(){
+    document.getElementById('reviewStatusFilters').innerHTML = REVIEW_FILTERS.map(f=>
+      `<button data-rfilter="${f}" class="${reviewFilter===f?'active':''}">${f[0].toUpperCase()+f.slice(1)}</button>`).join('');
+    document.querySelectorAll('[data-rfilter]').forEach(b=>b.addEventListener('click', ()=>{ reviewFilter = b.dataset.rfilter; loadReviews(); }));
+
+    try{
+      const q = reviewFilter !== 'all' ? ('?status=' + reviewFilter) : '';
+      const {reviews} = await adminApiFetch('/admin/reviews' + q);
+      document.getElementById('reviewsTable').innerHTML = `
+        <thead><tr><th>Product</th><th>Customer</th><th>Rating</th><th>Review</th><th>Verified</th><th>Status</th><th></th></tr></thead>
+        <tbody>${reviews.length ? reviews.map(r=>`
+          <tr>
+            <td style="font-size:12.5px;">${r.productName}</td>
+            <td style="font-size:12.5px;">${r.userName}</td>
+            <td>${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</td>
+            <td style="font-size:12px;max-width:220px;">${r.title?`<strong>${r.title}</strong><br>`:''}${r.body}</td>
+            <td>${r.verified?'Yes':'No'}</td>
+            <td>${r.status}${r.featured?' ⭐':''}</td>
+            <td style="white-space:nowrap;">
+              ${r.status!=='published'?`<button class="btn btn-sm btn-outline" data-rev-approve="${r.id}">Approve</button>`:''}
+              ${r.status!=='rejected'?`<button class="btn btn-sm" style="color:var(--maroon);" data-rev-reject="${r.id}">Reject</button>`:''}
+              <button class="btn btn-sm btn-outline" data-rev-feature="${r.id}" data-featured="${r.featured}">${r.featured?'Unfeature':'Feature'}</button>
+              <button class="btn btn-sm" style="color:var(--maroon);" data-rev-del="${r.id}">Delete</button>
+            </td>
+          </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:24px;">No reviews in this view.</td></tr>`}</tbody>`;
+
+      document.querySelectorAll('[data-rev-approve]').forEach(btn=>btn.addEventListener('click', async ()=>{
+        try{ await adminApiFetch('/admin/reviews/'+btn.dataset.revApprove, {method:'PUT', body: JSON.stringify({status:'published'})}); toast('Review approved'); loadReviews(); }
+        catch(e){ toast(e.message, 'error'); }
+      }));
+      document.querySelectorAll('[data-rev-reject]').forEach(btn=>btn.addEventListener('click', async ()=>{
+        try{ await adminApiFetch('/admin/reviews/'+btn.dataset.revReject, {method:'PUT', body: JSON.stringify({status:'rejected'})}); toast('Review rejected'); loadReviews(); }
+        catch(e){ toast(e.message, 'error'); }
+      }));
+      document.querySelectorAll('[data-rev-feature]').forEach(btn=>btn.addEventListener('click', async ()=>{
+        try{ await adminApiFetch('/admin/reviews/'+btn.dataset.revFeature, {method:'PUT', body: JSON.stringify({featured: btn.dataset.featured !== '1'})}); toast('Updated'); loadReviews(); }
+        catch(e){ toast(e.message, 'error'); }
+      }));
+      document.querySelectorAll('[data-rev-del]').forEach(btn=>btn.addEventListener('click', async ()=>{
+        const ok = await showConfirmDialog('This cannot be undone.', {title:'Delete this review?', confirmLabel:'Delete', danger:true});
+        if(!ok) return;
+        try{ await adminApiFetch('/admin/reviews/'+btn.dataset.revDel, {method:'DELETE'}); toast('Review deleted'); loadReviews(); }
+        catch(e){ toast(e.message, 'error'); }
+      }));
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  // ==== Analytics ====
+  let analyticsTab = 'wishlist';
+  document.querySelectorAll('#analyticsTabs button').forEach(b=>b.addEventListener('click', ()=>{
+    analyticsTab = b.dataset.atab;
+    document.querySelectorAll('#analyticsTabs button').forEach(x=>x.classList.toggle('active', x===b));
+    renderAnalyticsTab();
+  }));
+
+  function renderAnalyticsTab(){
+    if(analyticsTab==='wishlist') renderWishlistAnalytics();
+    else renderSearchAnalytics();
+  }
+
+  async function renderWishlistAnalytics(){
+    const body = document.getElementById('analyticsTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const {products, totalWishlistAdds} = await adminApiFetch('/admin/analytics/wishlist');
+    body.innerHTML = `
+      <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">${totalWishlistAdds} total wishlist adds across the store.</p>
+      <div style="overflow-x:auto;">
+        <table class="admin-table">
+          <thead><tr><th>Product</th><th>Fabric</th><th>Wishlist Adds</th><th>Purchases by Wishlisters</th><th>Conversion</th></tr></thead>
+          <tbody>${products.length ? products.map(p=>`
+            <tr>
+              <td>${p.name}</td>
+              <td>${p.fabric}</td>
+              <td>${p.wishlistCount}</td>
+              <td>${p.purchaseCount}</td>
+              <td>${p.wishlistCount ? Math.round(p.purchaseCount/p.wishlistCount*100) : 0}%</td>
+            </tr>`).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--ink-soft);padding:24px;">No wishlist activity yet.</td></tr>`}</tbody>
+        </table>
+      </div>`;
+  }
+
+  async function renderSearchAnalytics(){
+    const body = document.getElementById('analyticsTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const {topSearches, noResults, totalSearches} = await adminApiFetch('/admin/analytics/search');
+    body.innerHTML = `
+      <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">${totalSearches} total searches logged.</p>
+      <div class="detail-grid">
+        <div>
+          <h5 style="font-size:11px;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px;">Top Searches</h5>
+          ${topSearches.length ? topSearches.map(s=>`<div class="order-item-row"><span>${s.query}</span><span>${s.searches}</span></div>`).join('') : '<p style="font-size:13px;color:var(--ink-soft);">No searches logged yet.</p>'}
+        </div>
+        <div>
+          <h5 style="font-size:11px;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px;">Searches With No Results</h5>
+          ${noResults.length ? noResults.map(s=>`<div class="order-item-row"><span>${s.query}</span><span>${s.searches}</span></div>`).join('') : '<p style="font-size:13px;color:var(--ink-soft);">None — every search has found something.</p>'}
+        </div>
+      </div>`;
+  }
+
+  // ==== Admin Users (Super Admin only) ====
+  async function loadAdminUsers(){
+    try{
+      const {adminUsers, roles} = await adminApiFetch('/admin/admin-users');
+      document.getElementById('adminUsersTable').innerHTML = `
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+        <tbody>${adminUsers.map(a=>`
+          <tr>
+            <td>${a.name}</td>
+            <td style="font-size:12px;">${a.email}</td>
+            <td>
+              <select class="admin-input" data-role-select="${a.id}">
+                ${roles.map(r=>`<option value="${r}" ${a.role===r?'selected':''}>${r}</option>`).join('')}
+              </select>
+            </td>
+            <td>${a.active ? '<span class="order-status ok">Active</span>' : '<span class="order-status cancelled">Deactivated</span>'}</td>
+            <td><button class="btn btn-sm ${a.active?'':'btn-outline'}" style="${a.active?'color:var(--maroon);':''}" data-toggle-admin="${a.id}" data-active="${a.active}">${a.active?'Deactivate':'Reactivate'}</button></td>
+          </tr>`).join('')}</tbody>`;
+
+      document.querySelectorAll('[data-role-select]').forEach(sel=>sel.addEventListener('change', async ()=>{
+        try{ await adminApiFetch('/admin/admin-users/'+sel.dataset.roleSelect, {method:'PUT', body: JSON.stringify({role: sel.value})}); toast('Role updated'); }
+        catch(e){ toast(e.message, 'error'); loadAdminUsers(); }
+      }));
+      document.querySelectorAll('[data-toggle-admin]').forEach(btn=>btn.addEventListener('click', async ()=>{
+        const nowActive = btn.dataset.active === '1' || btn.dataset.active === 'true';
+        const ok = await showConfirmDialog('', {title: nowActive?'Deactivate this admin?':'Reactivate this admin?', confirmLabel: nowActive?'Deactivate':'Reactivate', danger: nowActive});
+        if(!ok) return;
+        try{ await adminApiFetch('/admin/admin-users/'+btn.dataset.toggleAdmin, {method:'PUT', body: JSON.stringify({active: !nowActive})}); toast('Updated'); loadAdminUsers(); }
+        catch(e){ toast(e.message, 'error'); }
+      }));
+
+      const form = document.getElementById('addAdminUserForm');
+      if(form.style.display !== 'none'){
+        form.innerHTML = adminUserFormHTML(roles);
+        bindAdminUserForm();
+      }
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  function adminUserFormHTML(roles){
+    return `
+      <div class="form-row-2">
+        <div class="form-field"><label>Name</label><input id="auName"></div>
+        <div class="form-field"><label>Email</label><input type="email" id="auEmail"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-field"><label>Password</label><input type="password" id="auPassword"></div>
+        <div class="form-field"><label>Role</label>
+          <select id="auRole">${roles.map(r=>`<option>${r}</option>`).join('')}</select>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" id="createAdminUser">Create Admin User</button>`;
+  }
+
+  function bindAdminUserForm(){
+    document.getElementById('createAdminUser').addEventListener('click', async ()=>{
+      try{
+        await adminApiFetch('/admin/admin-users', {method:'POST', body: JSON.stringify({
+          name: document.getElementById('auName').value, email: document.getElementById('auEmail').value,
+          password: document.getElementById('auPassword').value, role: document.getElementById('auRole').value
+        })});
+        toast('Admin user created');
+        document.getElementById('addAdminUserForm').style.display = 'none';
+        loadAdminUsers();
+      }catch(e){ toast(e.message, 'error'); }
+    });
+  }
+
+  document.getElementById('showAddAdminUser').addEventListener('click', async ()=>{
+    const form = document.getElementById('addAdminUserForm');
+    if(form.style.display === 'none'){
+      const {roles} = await adminApiFetch('/admin/admin-users');
+      form.innerHTML = adminUserFormHTML(roles);
+      bindAdminUserForm();
+    }
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  });
+
+  // ==== Activity Log ====
+  async function loadActivityLog(){
+    try{
+      const {log} = await adminApiFetch('/admin/activity-log');
+      document.getElementById('activityLogList').innerHTML = log.length ? log.map(entry=>`
+        <div class="order-item-row" style="align-items:flex-start;">
+          <span>
+            <strong>${entry.adminName}</strong> ${entry.action} <strong>${entry.entity}</strong>${entry.entityId?' #'+entry.entityId:''}
+            ${entry.before || entry.after ? `<br><span style="font-size:11px;color:var(--ink-soft);">${entry.before?'from '+JSON.stringify(entry.before):''} ${entry.after?'to '+JSON.stringify(entry.after):''}</span>` : ''}
+          </span>
+          <span style="font-size:11px;color:var(--ink-soft);white-space:nowrap;">${new Date(entry.createdAt).toLocaleString('en-IN')}</span>
+        </div>`).join('') : `<p style="color:var(--ink-soft);">No admin activity recorded yet.</p>`;
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function loadMessages(){
+    try{
+      const {messages} = await adminApiFetch('/admin/contact');
+      document.getElementById('messagesList').innerHTML = messages.length ? messages.map(m=>`
+        <div class="order-card" style="${!m.read?'border-color:var(--maroon);':''}">
+          <div class="order-card-head">
+            <span><strong>${m.name}</strong> · ${m.email}</span>
+            <span style="font-size:11px;">${new Date(m.created_at).toLocaleDateString('en-IN')}</span>
+          </div>
+          <p style="font-size:12.5px;color:var(--gold);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">${m.subject}</p>
+          <p style="font-size:13.5px;color:var(--ink-soft);">${m.message}</p>
+          ${!m.read ? `<div class="cancel-order-btn" data-read="${m.id}" style="color:var(--teal);">Mark as read</div>` : ''}
+        </div>`).join('') : `<p style="color:var(--ink-soft);">No messages yet.</p>`;
+
+      document.querySelectorAll('[data-read]').forEach(el=>el.addEventListener('click', async ()=>{
+        try{ await adminApiFetch('/admin/contact/' + el.dataset.read + '/read', {method:'PUT'}); loadMessages(); }
+        catch(e){ toast(e.message, 'error'); }
+      }));
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  // Which sidebar tabs each role can even see — mirrors the server-side
+  // PATH_SCOPES/ROLE_SCOPES in middleware/adminAuth.js. Hiding the nav entry
+  // is just UX; the real enforcement already happened on the API before this
+  // ever ran (a role can't unlock more by editing the DOM).
+  const ROLE_TAB_ACCESS = {
+    'Catalog Manager': ['overview','products','catalog','inventory','coupons','analytics','activitylog'],
+    'Order Manager': ['overview','orders','returns','inventory','analytics','activitylog'],
+    'Customer Support': ['overview','customers','reviews','messages','analytics','activitylog'],
+    'Content Manager': ['overview','storefront','analytics','activitylog']
+  };
+
+  function applyRoleVisibility(role){
+    const allowed = ROLE_TAB_ACCESS[role]; // undefined/null (Super Admin) = everything
+    document.querySelectorAll('.account-nav button[data-tab]').forEach(btn=>{
+      const tab = btn.dataset.tab;
+      const visible = !allowed || allowed.includes(tab);
+      btn.style.display = visible ? '' : 'none';
+    });
+  }
+
+  function renderIdentityBar(admin){
+    document.getElementById('adminIdentityBar').innerHTML = `
+      <div style="font-size:13px;color:var(--ink-soft);">Signed in as</div>
+      <div style="font-weight:600;color:var(--maroon-deep);">${admin.name}</div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--gold);margin-bottom:8px;">${admin.role}</div>
+      <button class="btn btn-sm btn-outline" id="adminLogoutBtn">Log Out</button>`;
+    document.getElementById('adminLogoutBtn').addEventListener('click', adminLogout);
+  }
+
+  async function init(){
+    if(!requireAdminLogin()) return;
+    try{
+      const {admin} = await adminApiFetch('/admin-auth/me');
+      setStoredAdmin(admin);
+      renderIdentityBar(admin);
+      applyRoleVisibility(admin.role);
+      // Land on the first tab this role can actually see, in case they
+      // bookmarked/reloaded on one they no longer have access to.
+      const active = document.querySelector('.account-nav button.active');
+      const allowed = ROLE_TAB_ACCESS[admin.role];
+      if(allowed && active && !allowed.includes(active.dataset.tab)){
+        switchTab(allowed[0]);
+      } else {
+        loadOverview();
+      }
+    }catch(e){
+      clearAdminToken();
+      window.location.href = '/admin-login';
+    }
+  }
+  init();
+</script>
+</body>
+</html>

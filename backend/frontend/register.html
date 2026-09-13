@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Create Account — Padmora by Yashi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="register.html">
+
+<div id="site-header"></div>
+
+<main>
+  <section class="section">
+    <div class="container">
+      <div class="auth-shell">
+        <h1>Create Your Account</h1>
+        <p class="sub">Join Padmora for a faster checkout and order tracking.</p>
+        <div class="form-error" id="formError"></div>
+        <form id="registerForm">
+          <div class="form-field">
+            <label>Full Name</label>
+            <input type="text" id="name" placeholder="Ananya Sharma" required>
+          </div>
+          <div class="form-field">
+            <label>Email Address</label>
+            <input type="email" id="email" placeholder="you@example.com" required>
+            <span class="field-hint" id="emailHint"></span>
+          </div>
+          <div class="form-field">
+            <label>Password</label>
+            <div class="password-field">
+              <input type="password" id="password" placeholder="At least 6 characters" required minlength="6">
+              <button type="button" class="password-toggle" id="togglePassword" aria-label="Show password">Show</button>
+            </div>
+            <div class="strength-meter" id="strengthMeter"><span></span></div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block" style="justify-content:center;">Create Account</button>
+        </form>
+        <p class="form-note">Already have an account? <a href="/login">Log in</a></p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  document.getElementById('registerForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const errBox = document.getElementById('formError');
+    errBox.classList.remove('show');
+    try{
+      const { token, user } = await apiFetch('/auth/register', {
+        method:'POST',
+        body: JSON.stringify({
+          name: document.getElementById('name').value,
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value
+        })
+      });
+      setToken(token);
+      setStoredUser(user);
+      await mergeGuestDataIntoAccount();
+      toast('Welcome to Padmora, ' + user.name.split(' ')[0] + '!');
+      window.location.href = '/account';
+    }catch(err){
+      errBox.textContent = err.message;
+      errBox.classList.add('show');
+    }
+  });
+
+  document.getElementById('togglePassword').addEventListener('click', (e)=>{
+    const input = document.getElementById('password');
+    const showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    e.target.textContent = showing ? 'Show' : 'Hide';
+  });
+
+  document.getElementById('email').addEventListener('input', (e)=>{
+    const hint = document.getElementById('emailHint');
+    const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.target.value);
+    hint.textContent = (!e.target.value || valid) ? '' : 'That doesn\'t look like a valid email address.';
+  });
+
+  document.getElementById('password').addEventListener('input', (e)=>{
+    const val = e.target.value;
+    let score = 0;
+    if(val.length >= 6) score++;
+    if(val.length >= 10) score++;
+    if(/[0-9]/.test(val) && /[a-zA-Z]/.test(val)) score++;
+    if(/[^a-zA-Z0-9]/.test(val)) score++;
+    const meter = document.getElementById('strengthMeter');
+    meter.className = 'strength-meter' + (val ? ' level-' + score : '');
+  });
+</script>
+</body>
+</html>

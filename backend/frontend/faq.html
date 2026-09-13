@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>FAQ — Padmora by Yashi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="faq.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="page-banner">
+    <div class="container">
+      <p class="breadcrumb"><a href="/">Home</a> / FAQ</p>
+      <h1>Frequently Asked Questions</h1>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:36px;">
+    <div class="container" style="max-width:760px;">
+      <div id="faqList"></div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  // Admin-managed (Storefront → FAQ) — add, edit, reorder or retire a
+  // question from admin and it shows up here with no frontend changes.
+  async function loadFaq(){
+    try{
+      const {faq} = await apiFetch('/faq');
+      document.getElementById('faqList').innerHTML = faq.length ? faq.map((f,i)=>`
+        <div class="faq-item" data-i="${i}">
+          <button class="faq-q">${f.question}<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg></button>
+          <div class="faq-a"><p>${f.answer}</p></div>
+        </div>`).join('') : `<p style="text-align:center;color:var(--ink-soft);">No questions yet — check back soon.</p>`;
+
+      document.querySelectorAll('.faq-q').forEach(btn=>{
+        btn.addEventListener('click', ()=> btn.closest('.faq-item').classList.toggle('open'));
+      });
+    }catch(e){
+      document.getElementById('faqList').innerHTML = `<p style="text-align:center;color:var(--ink-soft);">Could not load FAQs — is the backend server running?</p>`;
+    }
+  }
+  loadFaq();
+</script>
+</body>
+</html>

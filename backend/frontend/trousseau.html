@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Wedding Trousseau Planner — Padmora by Yashi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .budget-bar-wrap{background:var(--white);border:1px solid rgba(173,59,92,0.12);border-radius:4px;padding:24px;margin-bottom:36px;}
+  .budget-bar-track{height:10px;border-radius:20px;background:var(--ivory-deep);overflow:hidden;margin:14px 0 8px;}
+  .budget-bar-fill{height:100%;background:var(--teal);transition:width .4s ease, background .4s ease;}
+  .budget-bar-fill.over{background:var(--maroon);}
+  .budget-summary{display:flex;justify-content:space-between;font-size:13px;color:var(--ink-soft);flex-wrap:wrap;gap:8px;}
+  .trousseau-event{background:var(--white);border:1px solid rgba(173,59,92,0.12);border-radius:4px;padding:22px;margin-bottom:18px;}
+  .trousseau-event-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:6px;}
+  .trousseau-event-head label{display:flex;align-items:center;gap:10px;font-family:var(--font-display);font-size:19px;color:var(--maroon-deep);cursor:pointer;}
+  .trousseau-event-head input[type=checkbox]{width:18px;height:18px;accent-color:var(--maroon);}
+  .trousseau-event p.hint{font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;}
+  .trousseau-budget-row{display:flex;align-items:center;gap:10px;margin-bottom:16px;}
+  .trousseau-budget-row input{width:130px;border:1px solid rgba(173,59,92,0.25);padding:8px 10px;border-radius:2px;font-size:13px;}
+  .trousseau-picks{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  .pick-card{border:1px solid rgba(173,59,92,0.1);border-radius:3px;overflow:hidden;display:block;}
+  .pick-media{aspect-ratio:3/4;}
+  .pick-info{padding:10px 12px;}
+  .pick-info strong{display:block;font-size:12.5px;font-weight:500;}
+  .pick-info span{font-size:12px;color:var(--maroon-deep);font-weight:600;}
+  @media (max-width:760px){ .trousseau-picks{grid-template-columns:repeat(2,1fr);} }
+</style>
+</head>
+<body data-page="trousseau.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="page-banner">
+    <div class="container">
+      <p class="breadcrumb"><a href="/">Home</a> / Wedding Trousseau Planner</p>
+      <h1>Wedding Trousseau Planner</h1>
+      <p>Plan sarees and budget across every wedding event — from Haldi to Reception — in one place.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:36px;">
+    <div class="container" style="max-width:900px;">
+
+      <div class="budget-bar-wrap">
+        <div class="form-field" style="max-width:260px;margin-bottom:0;">
+          <label>Overall Trousseau Budget (₹)</label>
+          <input type="number" id="overallBudget" placeholder="e.g. 60000">
+        </div>
+        <div class="budget-bar-track"><div class="budget-bar-fill" id="budgetFill" style="width:0%;"></div></div>
+        <div class="budget-summary">
+          <span id="budgetAllocatedLabel">Allocated: ₹0</span>
+          <span id="budgetRemainingLabel">Budget not set yet</span>
+        </div>
+      </div>
+
+      <div id="eventsWrap"></div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  const EVENTS = [
+    { key:'haldi', name:'Haldi', occasion:'Casual', suggestedCount:'1-2 sarees', defaultBudget:3500, note:'Light, comfortable cottons or georgettes — turmeric-friendly fabrics that wash easily.' },
+    { key:'mehendi', name:'Mehendi', occasion:'Festive', suggestedCount:'1-2 sarees', defaultBudget:5500, note:'Bright festive colors with playful prints — Bandhani and block prints work beautifully here.' },
+    { key:'sangeet', name:'Sangeet', occasion:'Party', suggestedCount:'1-2 sarees', defaultBudget:7000, note:'Something that moves well for dancing — georgette or organza with a bit of shimmer.' },
+    { key:'wedding', name:'Wedding Ceremony', occasion:'Wedding', suggestedCount:'1 saree', defaultBudget:16000, note:'The centerpiece — Banarasi, Kanjeevaram, or Patola silk for the main ceremony.' },
+    { key:'reception', name:'Reception', occasion:'Wedding', suggestedCount:'1 saree', defaultBudget:14000, note:'A second statement silk, often in a contrasting shade to the wedding-day saree.' }
+  ];
+
+  function loadState(){
+    try{ return JSON.parse(localStorage.getItem('zaree_trousseau')) || {}; }catch{ return {}; }
+  }
+  function saveState(state){
+    localStorage.setItem('zaree_trousseau', JSON.stringify(state));
+  }
+
+  let state = loadState();
+  if(!state.overallBudget) state.overallBudget = '';
+  if(!state.events) state.events = {};
+  EVENTS.forEach(ev=>{
+    if(!state.events[ev.key]) state.events[ev.key] = { included: true, budget: ev.defaultBudget };
+  });
+
+  function updateBudgetBar(){
+    const allocated = EVENTS.reduce((s,ev)=> s + (state.events[ev.key].included ? Number(state.events[ev.key].budget||0) : 0), 0);
+    document.getElementById('budgetAllocatedLabel').textContent = 'Allocated: ' + money(allocated);
+    const overall = Number(state.overallBudget) || 0;
+    const fill = document.getElementById('budgetFill');
+    if(!overall){
+      document.getElementById('budgetRemainingLabel').textContent = 'Set an overall budget to track progress';
+      fill.style.width = '0%';
+      fill.classList.remove('over');
+      return;
+    }
+    const pct = Math.min(150, Math.round((allocated/overall)*100));
+    fill.style.width = Math.min(100, pct) + '%';
+    fill.classList.toggle('over', allocated > overall);
+    document.getElementById('budgetRemainingLabel').textContent = allocated > overall
+      ? `${money(allocated - overall)} over budget`
+      : `${money(overall - allocated)} remaining`;
+  }
+
+  function pickCardHTML(p){
+    return `<a class="pick-card" href="/product?id=${p.id}">
+      <div class="pick-media" style="background:${swatchBg(p.swatch)};"></div>
+      <div class="pick-info"><strong>${p.name}</strong><span>${money(p.price)}</span></div>
+    </a>`;
+  }
+
+  async function loadPicksFor(occasion, containerId){
+    try{
+      const {products} = await apiFetch('/products?occasion=' + encodeURIComponent(occasion) + '&sort=popular');
+      document.getElementById(containerId).innerHTML = products.slice(0,3).map(pickCardHTML).join('');
+    }catch(e){ /* ignore */ }
+  }
+
+  function renderEvents(){
+    document.getElementById('overallBudget').value = state.overallBudget;
+    document.getElementById('eventsWrap').innerHTML = EVENTS.map(ev=>`
+      <div class="trousseau-event">
+        <div class="trousseau-event-head">
+          <label><input type="checkbox" data-included="${ev.key}" ${state.events[ev.key].included?'checked':''}> ${ev.name}</label>
+          <a href="/shop?occasion=${encodeURIComponent(ev.occasion)}" class="btn btn-outline btn-sm">Shop ${ev.occasion}</a>
+        </div>
+        <p class="hint">${ev.note} Suggested: ${ev.suggestedCount}.</p>
+        <div class="trousseau-budget-row">
+          <label style="font-size:12px;color:var(--ink-soft);">Budget for this event</label>
+          <input type="number" data-budget="${ev.key}" value="${state.events[ev.key].budget}">
+        </div>
+        <div class="trousseau-picks" id="picks-${ev.key}"><p style="grid-column:1/-1;font-size:12px;color:var(--ink-soft);">Loading picks…</p></div>
+      </div>`).join('');
+
+    document.querySelectorAll('[data-included]').forEach(cb=>cb.addEventListener('change', ()=>{
+      state.events[cb.dataset.included].included = cb.checked;
+      saveState(state);
+      updateBudgetBar();
+    }));
+    document.querySelectorAll('[data-budget]').forEach(inp=>inp.addEventListener('input', ()=>{
+      state.events[inp.dataset.budget].budget = Number(inp.value) || 0;
+      saveState(state);
+      updateBudgetBar();
+    }));
+
+    EVENTS.forEach(ev => loadPicksFor(ev.occasion, 'picks-' + ev.key));
+    updateBudgetBar();
+  }
+
+  document.getElementById('overallBudget').addEventListener('input', (e)=>{
+    state.overallBudget = e.target.value;
+    saveState(state);
+    updateBudgetBar();
+  });
+
+  renderEvents();
+</script>
+</body>
+</html>

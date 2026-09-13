@@ -60,9 +60,10 @@ app.use('/api/payments', paymentRoutes);
 // handlers below so these real routes win over any same-named static file.
 app.use(sitemapRoutes);
 
-// Serve the frontend (static HTML/CSS/JS) from the same server so there's
-// no CORS setup needed — everything runs on http://localhost:5000
-const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
+// Serve the frontend from inside the deployed backend directory. Hostinger's
+// Node.js app is rooted at backend/, so keeping the frontend here ensures all
+// static HTML/CSS/JS/assets are included in the deployment.
+const FRONTEND_DIR = path.join(__dirname, 'frontend');
 
 // Clean, extensionless URLs — /shop, /product, /account, etc. — so a visitor
 // (or a search engine) only ever sees "padmorasarees.com/shop", never
@@ -81,7 +82,7 @@ function withQuery(req, cleanPath) {
 }
 CLEAN_PAGES.forEach(name => {
   app.get(`/${name}`, (req, res) => res.sendFile(path.join(FRONTEND_DIR, `${name}.html`)));
-  app.get(`/${name}.html`, (req, res) => res.redirect(301, withQuery(req, `/${name}`)));
+  app.get(`/${name}.html`, (req, res) => res.redirect(301, withQuery(req, `/${name}`));
 });
 app.get('/index.html', (req, res) => res.redirect(301, withQuery(req, '/')));
 
