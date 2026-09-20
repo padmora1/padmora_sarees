@@ -6,6 +6,7 @@ const { requireAuth } = require('../middleware/auth');
 const { resolveCoupon, computeOrderTotals } = require('../utils/pricing');
 const { computeStatus, buildTimeline, isCancellable } = require('../utils/orderStatus');
 const { isWithinReturnWindow } = require('../utils/returns');
+const { isBlocked, recordFailure } = require('../utils/attemptLimiter');
 
 const router = express.Router();
 
@@ -148,6 +149,83 @@ router.get('/guest/:id', async (req, res) => {
     res.json({ order: await shapeOrder(order) });
   } catch (err) {
     console.error('GET /orders/guest/:id failed:', err);
+    res.status(500).json({ message: 'Something went wrong on the server.' });
+  }
+});
+
+// Guest order cancellation — same "prove you placed it" idea as tracking, but
+// stricter, because this one changes data:
+//  - the email used at checkout is required (a phone number alone isn't enough
+//    to cancel, even though it is enough to track),
+//  - only orders that belong to a guest can be cancelled this way; an order
+//    tied to a registered account must be cancelled while logged in,
+//  - failed attempts are rate-limited per client and per order,
+//  - a wrong ID and a wrong email give the identical "not found" answer, so
+//    the endpoint can't be used to discover which order IDs exist,
+//  - the order is claimed with a conditional update first, so a double-click
+//    or two tabs can't restock the same order twice.
+const MAX_FAILS_PER_CLIENT = 10;
+const MAX_FAILS_PER_ORDER = 5;
+
+router.post('/guest/:id/cancel', async (req, res) => {
+  const orderId = String(req.params.id || '').trim();
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  const clientKey = 'guest-cancel:ip:' + (forwarded || req.ip || 'unknown');
+  const orderKey = 'guest-cancel:order:' + orderId.toUpperCase();
+  const notFound = { message: 'Order not found. Check your Order ID and the email used at checkout.' };
+
+  try {
+    const { email, reason } = req.body || {};
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())) {
+      return res.status(400).json({ message: 'Enter the email address you used at checkout to cancel this order.' });
+    }
+    if (isBlocked(clientKey, MAX_FAILS_PER_CLIENT) || isBlocked(orderKey, MAX_FAILS_PER_ORDER)) {
+      return res.status(429).json({ message: 'Too many attempts. Please wait a few minutes and try again, or contact us for help.' });
+    }
+
+    const order = must(await supabase.from('orders').select('*').eq('id', orderId).maybeSingle(), 'guestCancel:lookup');
+    const user = order ? must(await supabase.from('users').select('*').eq('id', order.user_id).maybeSingle(), 'guestCancel:user') : null;
+    const emailMatches = !!(user && user.email && user.email.toLowerCase() === String(email).trim().toLowerCase());
+    if (!order || !emailMatches) {
+      recordFailure(clientKey);
+      recordFailure(orderKey);
+      return res.status(404).json(notFound);
+    }
+    if (!user.is_guest) {
+      return res.status(403).json({ message: 'This order is linked to an account. Please log in to cancel it.' });
+    }
+    if (!(await isCancellable(order))) {
+      const status = await computeStatus(order);
+      return res.status(400).json({ message: `This order is already ${status.toLowerCase()} and can no longer be cancelled.` });
+    }
+
+    const cleanReason = String(reason || '').trim().slice(0, 200);
+    const cancelReason = cleanReason ? `Guest request: ${cleanReason}` : 'Guest request';
+    // Nothing was ever charged on a COD order — anything paid upfront starts a
+    // refund the admin marks processed, exactly as for a logged-in cancel.
+    const refundStatus = order.payment === 'COD' ? 'Not Applicable' : 'Pending';
+
+    // Claim the cancellation: only one request can flip cancelled_at from null.
+    const claimedAt = new Date().toISOString();
+    const claimed = must(await supabase.from('orders')
+      .update({ cancelled_at: claimedAt, cancel_reason: cancelReason, refund_status: refundStatus })
+      .eq('id', order.id).is('cancelled_at', null).select('id'), 'guestCancel:claim');
+    if (!claimed.length) {
+      return res.status(409).json({ message: 'This order has already been cancelled.' });
+    }
+
+    const rpc = await supabase.rpc('cancel_order', { p_order_id: order.id, p_reason: cancelReason, p_refund_status: refundStatus });
+    if (rpc.error) {
+      // Restocking failed — undo the claim so the order isn't left cancelled
+      // with its stock still held back.
+      await supabase.from('orders').update({ cancelled_at: null, cancel_reason: null, refund_status: order.refund_status ?? null }).eq('id', order.id);
+      throw new Error(rpc.error.message);
+    }
+
+    const updated = must(await supabase.from('orders').select('*').eq('id', order.id).single(), 'guestCancel:reread');
+    res.json({ order: await shapeOrder(updated) });
+  } catch (err) {
+    console.error('POST /orders/guest/:id/cancel failed:', err);
     res.status(500).json({ message: 'Something went wrong on the server.' });
   }
 });
