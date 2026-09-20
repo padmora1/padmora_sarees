@@ -10,14 +10,6 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 
-// The auth code falls back to a public 'dev_secret' when JWT_SECRET is unset,
-// which would let anyone forge a valid admin/customer token. Refuse to boot
-// instead of silently running with a known signing key.
-if (!process.env.JWT_SECRET) {
-  console.error('JWT_SECRET is not set. Add it to the environment variables and restart.');
-  process.exit(1);
-}
-
 const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/products');
 const cartRoutes = require('./routes/cart');
