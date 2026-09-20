@@ -33,6 +33,7 @@
 
       <div id="orderPicker"></div>
       <div id="trackResult"></div>
+      <div id="guestCancelBox"></div>
     </div>
   </section>
 </main>
@@ -76,7 +77,7 @@
         <div class="tracker-card">
           <div class="cancelled-banner">
             <span class="tracker-icon-circle cancelled">${stageIcon('Cancelled')}</span>
-            <div><strong>Order Cancelled</strong><span>This order was cancelled and will not be delivered.</span></div>
+            <div><strong>Order Cancelled</strong><span>This order was cancelled and will not be delivered.${order.refundStatus === 'Pending' ? ' Your refund will be processed by our team.' : ''}</span></div>
           </div>
           ${orderSummaryHTML(order)}
         </div>`;
@@ -156,7 +157,62 @@
     setTimeout(()=> layer.remove(), 4000);
   }
 
+  // Guests can cancel a still-cancellable order from here. The box lives
+  // outside #trackResult on purpose: the tracker re-renders every 20s while
+  // polling, which would wipe an email the guest is halfway through typing.
+  let guestContact = '';
+
+  function updateGuestCancelBox(order){
+    const box = document.getElementById('guestCancelBox');
+    const show = !isLoggedIn() && order.cancellable;
+    const key = show ? order.id : '';
+    if(box.dataset.key === key) return;
+    box.dataset.key = key;
+    if(!show){ box.innerHTML = ''; return; }
+    box.innerHTML = `
+      <div class="summary-card" style="position:static;margin-top:18px;">
+        <h3 class="updates-heading" style="margin-top:0;">Need to cancel?</h3>
+        <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">You can cancel this order until it ships. Confirm the email address you used at checkout.</p>
+        <div class="track-search-row" style="margin-bottom:10px;">
+          <input type="email" id="cancelEmail" placeholder="Email used at checkout" autocomplete="email">
+          <select id="cancelReason" class="sort-select">
+            <option value="">Reason (optional)</option>
+            <option>Ordered by mistake</option>
+            <option>Found a better price</option>
+            <option>Want to change the order</option>
+            <option>Delivery will take too long</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <button class="btn btn-outline" id="guestCancelBtn">Cancel this order</button>
+      </div>`;
+    if(guestContact.includes('@')) document.getElementById('cancelEmail').value = guestContact;
+    document.getElementById('guestCancelBtn').addEventListener('click', () => cancelGuestOrder(order.id));
+  }
+
+  async function cancelGuestOrder(id){
+    const email = document.getElementById('cancelEmail').value.trim();
+    const reason = document.getElementById('cancelReason').value;
+    if(!email){ toast('Enter the email you used at checkout.', 'error'); return; }
+    if(!window.confirm('Cancel order #' + id + '? This cannot be undone.')) return;
+    const btn = document.getElementById('guestCancelBtn');
+    btn.disabled = true;
+    try{
+      const { order } = await apiFetch('/orders/guest/' + encodeURIComponent(id) + '/cancel', {
+        method: 'POST', body: JSON.stringify({ email, reason })
+      });
+      if(pollTimer) clearInterval(pollTimer);
+      renderTracker(order);
+      updateGuestCancelBox(order);
+      toast('Your order has been cancelled.');
+    }catch(e){
+      toast(e.message, 'error');
+      btn.disabled = false;
+    }
+  }
+
   async function loadOrder(id, {silent, contact} = {}){
+    if(contact) guestContact = contact;
     if(!silent) document.getElementById('trackResult').innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Looking up your order…</div>`;
     try{
       // Guest orders are looked up by Order ID + the email/phone given at
@@ -167,6 +223,7 @@
         : '/orders/guest/' + encodeURIComponent(id) + '?contact=' + encodeURIComponent(contact || '');
       const { order } = await apiFetch(path);
       renderTracker(order);
+      updateGuestCancelBox(order);
       history.replaceState(null, '', '/track-order?id=' + encodeURIComponent(id));
       if(pollTimer) clearInterval(pollTimer);
       // Once an order reaches a terminal state, nothing will ever change
