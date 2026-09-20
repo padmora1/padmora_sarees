@@ -3,10 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Saree Details — Padmora by Yashi</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/images/favicon-192.png">
+<link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+<title>Saree Details — Padmora Sarees by Yashi</title>
 <meta name="description" id="metaDescription" content="Handloom and heritage sarees from Padmora by Yashi — authentic weaves sourced directly from India's weaving communities.">
 <meta property="og:type" content="product">
-<meta property="og:title" id="ogTitle" content="Padmora by Yashi">
+<meta property="og:title" id="ogTitle" content="Padmora Sarees by Yashi">
 <meta property="og:description" id="ogDescription" content="Handloom and heritage sarees, sourced directly from India's weaving communities.">
 <meta property="og:image" id="ogImage" content="">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -151,7 +155,7 @@
   function updateProductSEO(p, variant){
     const desc = (variant.desc || p.desc || '').slice(0, 155);
     document.getElementById('metaDescription').setAttribute('content', desc || `${p.name} — ${p.fabric} saree from Padmora by Yashi.`);
-    document.getElementById('ogTitle').setAttribute('content', p.name + ' — Padmora by Yashi');
+    document.getElementById('ogTitle').setAttribute('content', p.name + ' — Padmora Sarees by Yashi');
     document.getElementById('ogDescription').setAttribute('content', desc);
     const media = variant.media && (variant.media.find(m=>m.isPrimary) || variant.media[0]);
     if(media && media.type === 'image') document.getElementById('ogImage').setAttribute('content', new URL(media.url, window.location.href).href);
@@ -184,7 +188,7 @@
     selectedVariant = variants.find(v => v.isDefault) || variants[0];
 
     document.getElementById('crumbName').textContent = p.name;
-    document.title = p.name + ' — Padmora by Yashi';
+    document.title = p.name + ' — Padmora Sarees by Yashi';
     updateProductSEO(p, selectedVariant);
 
     document.getElementById('pdWrap').innerHTML = `
