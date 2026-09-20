@@ -86,7 +86,7 @@
   }
   async function moveToCart(id){
     try{
-      await cartAdd(id, 1, 'default', 'none');
+      await cartAdd(id, 1, 'default', null);
       await wishlistRemove(id);
       toast('Added to bag');
       loadWishlist(); refreshBadgeCounts();
