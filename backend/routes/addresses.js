@@ -5,6 +5,18 @@ const { requireAuth } = require('../middleware/auth');
 const router = express.Router();
 router.use(requireAuth);
 
+// A real Indian pincode is exactly 6 digits, never starting with 0. Phone
+// stays optional (unchanged from before — checkout's own guest flow already
+// requires one where it actually matters), but when one IS given here it must
+// at least look like a real number: enough digits, with country-code
+// prefixes like "+91" or spaces/dashes tolerated by stripping non-digits
+// first, same tolerant style the guest-order-cancel phone match already uses.
+const PINCODE_RE = /^[1-9][0-9]{5}$/;
+function isPlausiblePhone(phone) {
+  const digits = String(phone).replace(/\D/g, '');
+  return digits.length >= 10 && digits.length <= 15;
+}
+
 async function listAddresses(userId) {
   return must(
     await supabase.from('addresses').select('*').eq('user_id', userId).order('is_default', { ascending: false }).order('id', { ascending: true }),
@@ -26,6 +38,12 @@ router.post('/', async (req, res) => {
     const { label, name, line1, city, state, pincode, phone, isDefault } = req.body;
     if (!line1 || !city || !pincode) {
       return res.status(400).json({ message: 'Address line, city and pincode are required.' });
+    }
+    if (!PINCODE_RE.test(String(pincode).trim())) {
+      return res.status(400).json({ message: 'Enter a valid 6-digit pincode.' });
+    }
+    if (phone && !isPlausiblePhone(phone)) {
+      return res.status(400).json({ message: 'Enter a valid phone number.' });
     }
 
     const count = (await supabase.from('addresses').select('*', { count: 'exact', head: true }).eq('user_id', req.userId)).count || 0;

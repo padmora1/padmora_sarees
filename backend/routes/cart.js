@@ -83,9 +83,16 @@ async function touchCartMeta(userId) {
 async function addItem(userId, { productId, qty, color, variantId }) {
   if (!productId) return { error: null };
   const resolvedVariantId = await resolveVariantId(productId, variantId, color);
-  if (!resolvedVariantId) return { error: null };
+  // A productId/variantId that doesn't match anything real (a stale link, a
+  // deleted product, someone poking at the request) used to return success
+  // here and add nothing, with no way for the caller to tell. POST /cart below
+  // now surfaces this as a real error; POST /cart/merge (folding a guest's
+  // localStorage cart in on login) never inspects .error, so a stale merge
+  // item is still skipped exactly as quietly as before — this only changes
+  // what a direct "add to bag" click sees.
+  if (!resolvedVariantId) return { error: 'This saree could not be found.' };
   const variant = await getVariantById(resolvedVariantId);
-  if (!variant) return { error: null };
+  if (!variant) return { error: 'This saree could not be found.' };
 
   const lineId = `${userId}:${resolvedVariantId}`;
   const now = new Date().toISOString();

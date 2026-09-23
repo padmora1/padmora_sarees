@@ -148,6 +148,16 @@
         errBox.classList.add('show');
         return;
       }
+      // Guest checkout needs a real phone number for the courier — the server
+      // (routes/payments.js) already requires this and would reject the
+      // payment later without it, so catch it here with a clear message
+      // instead of letting the guest reach the Payment step first.
+      const phoneDigits = document.getElementById('phone').value.replace(/\D/g, '');
+      if(phoneDigits.length < 10){
+        errBox.textContent = 'Enter a phone number so our courier can reach you for delivery.';
+        errBox.classList.add('show');
+        return;
+      }
     }
     errBox.classList.remove('show');
     document.getElementById('coSubtotal').textContent = money(cart.subtotal);

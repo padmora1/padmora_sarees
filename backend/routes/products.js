@@ -101,7 +101,12 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const row = await getProductById(Number(req.params.id));
+    const id = Number(req.params.id);
+    // A non-numeric id (a typo'd link, a stray query string, someone poking
+    // at the URL) used to reach the database as NaN and blow up as a 500 —
+    // it's just a "not found" like any other bad id.
+    if (!Number.isInteger(id)) return res.status(404).json({ message: 'Saree not found.' });
+    const row = await getProductById(id);
     if (!row) return res.status(404).json({ message: 'Saree not found.' });
     res.json({ product: toProductApiShape(row) });
   } catch (err) {

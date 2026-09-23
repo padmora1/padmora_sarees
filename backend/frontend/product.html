@@ -433,13 +433,13 @@
       list.innerHTML = reviews.map(r=>`
         <div class="review-card">
           <div class="review-card-head">
-            <strong>${r.userName}</strong>
+            <strong>${escapeHtml(r.userName)}</strong>
             ${r.verified ? '<span class="verified-tag">Verified Purchase</span>' : ''}
             <span style="color:var(--ink-soft);font-size:12px;">${new Date(r.createdAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span>
           </div>
           <span class="stars">${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</span>
-          ${r.title ? `<p style="font-weight:600;color:var(--ink);margin-top:6px;">${r.title}</p>` : ''}
-          <p>${r.body}</p>
+          ${r.title ? `<p style="font-weight:600;color:var(--ink);margin-top:6px;">${escapeHtml(r.title)}</p>` : ''}
+          <p>${escapeHtml(r.body)}</p>
         </div>`).join('');
     }catch(e){ /* ignore */ }
   }

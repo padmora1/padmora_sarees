@@ -79,6 +79,16 @@ function money(n) {
   return '₹' + Number(n).toLocaleString('en-IN');
 }
 
+// Escapes text that came from another customer (a review, a name, anything
+// user-submitted) before it's dropped into an HTML template string. Without
+// this, a review body like "<img src=x onerror=...>" runs as real HTML for
+// every visitor who views that page — this turns it back into inert text.
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+}
+
 const SWATCHES = {
   maroon:['#7A1F2B','#C9A227'], emerald:['#0F5132','#C9A227'], ivory:['#EDE3D0','#B08968'],
   teal:['#1F4B4A','#8FBFB6'], blush:['#E7C6C0','#B75D5D'], sand:['#C9B183','#7A6A4E'],
