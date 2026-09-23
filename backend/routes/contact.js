@@ -3,11 +3,18 @@ const { supabase, must } = require('../utils/db');
 
 const router = express.Router();
 
+// Same shape used for a guest's checkout email (routes/payments.js) — kept
+// consistent everywhere an email is taken from a customer.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 router.post('/', async (req, res) => {
   try {
     const { name, email, subject, message } = req.body;
     if (!name || !email || !message) {
       return res.status(400).json({ message: 'Name, email and a message are required.' });
+    }
+    if (!EMAIL_RE.test(email)) {
+      return res.status(400).json({ message: 'Enter a valid email address so we can reply to you.' });
     }
 
     must(await supabase.from('contact_messages').insert({

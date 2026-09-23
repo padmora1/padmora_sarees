@@ -10,6 +10,11 @@ function signToken(userId) {
   return jwt.sign({ userId }, process.env.JWT_SECRET || 'dev_secret', { expiresIn: '7d' });
 }
 
+// Same shape used to validate a guest's checkout email (routes/payments.js) —
+// just "has an @ and a dot", not a full RFC check, kept consistent everywhere
+// an email is taken from a customer.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function publicUser(row) {
   return {
     id: row.id,
@@ -32,6 +37,9 @@ router.post('/register', async (req, res) => {
     const { name, email, password } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Name, email and password are all required.' });
+    }
+    if (!EMAIL_RE.test(email)) {
+      return res.status(400).json({ message: 'Enter a valid email address.' });
     }
     if (password.length < 6) {
       return res.status(400).json({ message: 'Password must be at least 6 characters.' });
@@ -64,14 +72,19 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Email and password are required.' });
     }
 
+    // Same message and status whether the email doesn't exist or the password
+    // is wrong — telling the two apart would let someone probe which emails
+    // have an account here just by trying to log in.
+    const badCredentials = () => res.status(401).json({ message: 'Incorrect email or password.' });
+
     const user = must(await supabase.from('users').select('*').ilike('email', email || '').maybeSingle(), 'login:lookup');
     if (!user) {
-      return res.status(401).json({ message: 'No account found with that email.' });
+      return badCredentials();
     }
 
     const match = await bcrypt.compare(password, user.password);
     if (!match) {
-      return res.status(401).json({ message: 'Incorrect password.' });
+      return badCredentials();
     }
     if (user.status === 'blocked') {
       return res.status(403).json({ message: 'This account has been blocked. Contact support for help.' });
