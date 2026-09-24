@@ -13,6 +13,23 @@ const NAV_LINKS = [
   { href: '/our-weaves', page: 'our-weaves.html', label: 'Our Weaves' }
 ];
 
+// "Menu" and "Sale" are two different links to the same shop.html page, only
+// distinguished by query string — matching on `page` alone (as the header
+// markup below used to) lit up both of them together on every shop visit.
+// A link is active when its page matches AND, among links that share a page,
+// its own query string is the one that actually matches the current URL —
+// "Menu" (no query) wins whenever no more specific sibling does.
+function isNavLinkActive(link, activeHref) {
+  if (link.page !== activeHref) return false;
+  const query = link.href.includes('?') ? link.href.slice(link.href.indexOf('?')) : '';
+  if (query) return query === location.search;
+  const moreSpecificSiblingMatches = NAV_LINKS.some(other =>
+    other !== link && other.page === link.page && other.href.includes('?') &&
+    other.href.slice(other.href.indexOf('?')) === location.search
+  );
+  return !moreSpecificSiblingMatches;
+}
+
 // Small five-petal lotus glyph, used as a legible inline mark (footer divider).
 const LOTUS_GLYPH_SVG = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 20 C10 15 9.3 10 12 5 C14.7 10 14 15 12 20 Z"/><path d="M12 19 C8 16.5 6 13 6.6 9 C10 11 11.6 15 12 19 Z"/><path d="M12 19 C16 16.5 18 13 17.4 9 C14 11 12.4 15 12 19 Z"/><path d="M11.5 18 C7.8 16 5.3 13.3 5.7 10.3 C8.7 11.8 10.7 14.6 11.5 18 Z"/><path d="M12.5 18 C16.2 16 18.7 13.3 18.3 10.3 C15.3 11.8 13.3 14.6 12.5 18 Z"/></svg>`;
 
@@ -78,7 +95,7 @@ function initHeader(activeHref) {
         </button>
         <a href="/" class="logo"><img src="images/padmora-lotus.png" alt="" class="logo-mark">Padmora</a>
         <nav class="main-nav">
-          ${NAV_LINKS.map(l => `<a href="${l.href}" class="${l.page === activeHref ? 'active' : ''}">${l.label}</a>`).join('')}
+          ${NAV_LINKS.map(l => `<a href="${l.href}" class="${isNavLinkActive(l, activeHref) ? 'active' : ''}">${l.label}</a>`).join('')}
         </nav>
         <div class="header-actions">${headerIconsHTML()}</div>
       </div>
@@ -88,9 +105,20 @@ function initHeader(activeHref) {
       </nav>
     </header>`;
 
-  document.getElementById('hamburgerBtn').addEventListener('click', () => {
+  document.getElementById('hamburgerBtn').addEventListener('click', (e) => {
+    e.stopPropagation(); // don't let the same click immediately re-close it via the outside-tap handler below
     const nav = document.getElementById('mobileNav');
     nav.style.display = (nav.style.display === 'flex') ? 'none' : 'flex';
+  });
+
+  // Tapping anywhere outside the open mobile menu closes it — previously only
+  // the ☰ button itself could, so the menu stayed open until deliberately
+  // toggled shut, even after tapping elsewhere on the page.
+  document.addEventListener('click', (e) => {
+    const nav = document.getElementById('mobileNav');
+    if (nav && nav.style.display === 'flex' && !nav.contains(e.target)) {
+      nav.style.display = 'none';
+    }
   });
 
   const cartTrigger = document.getElementById('cartTrigger');
