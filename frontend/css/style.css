@@ -150,6 +150,20 @@ body::after{right:0;transform:scaleX(-1);}
   *, *::before, *::after{animation-duration:0.001ms !important;animation-iteration-count:1 !important;transition-duration:0.001ms !important;}
 }
 
+/* #site-header/#site-footer start as empty <div>s in the page's own HTML —
+   components.js only fills them in once it has loaded and run, which on a
+   slow connection is long enough to notice as a bare, unstyled gap where the
+   header should be. This reserves the header's real height and colors on the
+   empty mount itself, so what's visible before the real markup lands is a
+   correctly-colored, correctly-sized placeholder, not a blank flash. It has
+   no effect once real content fills the div (that content's own layout takes
+   over), and does nothing on the admin dashboard, whose shorter header isn't
+   worth a second placeholder for. */
+#site-header:empty{
+  min-height:calc(38px + 68px);
+  background:linear-gradient(to bottom, var(--maroon-deep) 0 38px, rgba(250,245,236,0.96) 38px 100%);
+}
+
 /* Topbar */
 .topbar{background:var(--maroon-deep);color:var(--ivory-deep);font-size:12.5px;padding:8px 0;text-align:center;}
 
