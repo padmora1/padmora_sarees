@@ -287,7 +287,10 @@
           const { orders } = await apiFetch('/orders');
           const active = orders.find(o=>o.status!=='Cancelled') || orders[0];
           if(active){ document.getElementById('orderIdInput').value = active.id; loadOrder(active.id); }
-          else document.getElementById('trackResult').innerHTML = `<div class="empty-state"><p>No orders yet. <a href="/shop" style="color:var(--maroon);text-decoration:underline;">Start shopping</a>.</p></div>`;
+          // No orders: renderPicker() (above) already shows "No orders yet —
+          // Start shopping" in #orderPicker for this exact case, so leave
+          // #trackResult empty rather than repeat the same message directly
+          // underneath it.
         }catch(e){ /* ignore */ }
       }
     }else{
