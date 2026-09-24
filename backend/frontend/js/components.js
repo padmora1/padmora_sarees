@@ -93,7 +93,7 @@ function initHeader(activeHref) {
         <button class="hamburger" id="hamburgerBtn" aria-label="Open menu">
           <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
         </button>
-        <a href="/" class="logo"><img src="images/padmora-lotus.png" alt="" class="logo-mark">Padmora</a>
+        <a href="/" class="logo"><img src="images/padmora-lotus.png" alt="" class="logo-mark"><span class="logo-text" id="logoText">Padmora</span></a>
         <nav class="main-nav">
           ${NAV_LINKS.map(l => `<a href="${l.href}" class="${isNavLinkActive(l, activeHref) ? 'active' : ''}">${l.label}</a>`).join('')}
         </nav>
@@ -134,6 +134,7 @@ function initHeader(activeHref) {
   if (searchTrigger) searchTrigger.addEventListener('click', openSearchOverlay);
 
   refreshBadgeCounts();
+  startLogoLanguageCycle();
 
   // Keep the topbar's free-shipping claim honest against the admin's actual
   // Phase 7 shipping settings, not a hardcoded number that can drift out of
@@ -143,6 +144,28 @@ function initHeader(activeHref) {
     const bar = document.getElementById('siteTopbar');
     if (bar) bar.textContent = `Free shipping above ${money(shipping.freeShippingThreshold)} · Easy 7-day returns · Secure payments via Razorpay`;
   }).catch(() => {});
+}
+
+// The header wordmark cycles English -> Marathi -> English every 8s, on every
+// customer page. Re-running initHeader (shouldn't normally happen, but is
+// cheap to guard) would otherwise stack a second interval on top of the
+// first, so this always clears any interval it previously started.
+let logoLanguageTimer = null;
+function startLogoLanguageCycle() {
+  const el = document.getElementById('logoText');
+  if (!el) return;
+  if (logoLanguageTimer) clearInterval(logoLanguageTimer);
+  const ENGLISH = 'Padmora', MARATHI = 'पद्मोरा';
+  let showingMarathi = false;
+  logoLanguageTimer = setInterval(() => {
+    el.classList.add('swapping');
+    setTimeout(() => {
+      showingMarathi = !showingMarathi;
+      el.textContent = showingMarathi ? MARATHI : ENGLISH;
+      el.classList.toggle('devanagari', showingMarathi);
+      el.classList.remove('swapping');
+    }, 350); // matches .logo-text's own opacity transition duration
+  }, 8000);
 }
 
 async function refreshBadgeCounts() {

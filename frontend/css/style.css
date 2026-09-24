@@ -1,3 +1,8 @@
+/* Devanagari face for the header's periodic "पद्मोरा" — the rest of the site's
+   type (Marcellus/Jost) has no Devanagari glyphs, so this loads only the one
+   family actually needed for that. */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@600&display=swap');
+
 :root{
   /* Padmora palette v2 — revised after feedback that v1's olive-forward
      accent read dull and buried the pink. Pink is now the dominant
@@ -172,6 +177,13 @@ body::after{right:0;transform:scaleX(-1);}
 .header-inner{display:flex;align-items:center;justify-content:space-between;padding:18px 28px;max-width:1240px;margin:0 auto;gap:24px;}
 .logo{font-family:var(--font-display);font-size:26px;color:var(--maroon);letter-spacing:.03em;display:flex;align-items:baseline;gap:9px;}
 .logo-mark{height:38px;width:auto;align-self:center;flex-shrink:0;border-radius:3px;}
+/* The wordmark cycles English -> Marathi -> English (see components.js);
+   only the Marathi state needs its own face, since Marcellus has no
+   Devanagari glyphs to fall back on. */
+.logo-text{display:inline-block;transition:opacity .35s ease;}
+.logo-text.swapping{opacity:0;}
+.logo-text.devanagari{font-family:'Noto Sans Devanagari','Marcellus',serif;letter-spacing:0;}
+@media (prefers-reduced-motion:reduce){ .logo-text{transition:none;} }
 .admin-view-store{font-size:12.5px;color:var(--ink-soft);border:1px solid rgba(173,59,92,0.18);border-radius:20px;padding:7px 16px;transition:border-color .15s,color .15s;}
 .admin-view-store:hover{color:var(--maroon);border-color:var(--maroon);}
 .logo span.by-yashi{color:var(--gold);font-size:11px;font-family:var(--font-body);font-weight:600;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;}
@@ -267,7 +279,17 @@ body::after{right:0;transform:scaleX(-1);}
   background-size:64px 64px, 46px 46px, 56px 56px, 30px 30px, 38px 38px, 26px 26px, 34px 34px, 42px 42px, 24px 24px;
   opacity:.24;
 }
-@media (max-width:640px){ .page-banner::before,.page-banner::after{ display:none; } }
+/* A toned-down version of the same decoration for mobile — the full 10-bloom
+   desktop scatter reads as clutter on a narrow banner, but the banner should
+   still carry the lotus motif the way the desktop version does, not go bare. */
+@media (max-width:640px){
+  .page-banner::before{ width:64px;height:64px;left:-10px;top:-8px;background-size:64px 64px; }
+  .page-banner::after{
+    background-image:var(--lotus-outline),var(--lotus-outline),var(--lotus-outline);
+    background-position:right 4% top 6px, left 8% bottom -10px, right 14% bottom 22%;
+    background-size:34px 34px, 26px 26px, 20px 20px;
+  }
+}
 
 .promo-band{background:linear-gradient(120deg,var(--maroon-deep),var(--maroon) 60%,#D9749A);color:var(--ivory);text-align:center;padding:56px 28px;display:flex;flex-direction:column;align-items:center;}
 .promo-band h2{color:var(--ivory);font-size:32px;}
@@ -606,7 +628,11 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 .social-btn{width:34px;height:34px;border-radius:50%;border:1px solid rgba(250,245,236,0.3);display:flex;align-items:center;justify-content:center;color:var(--ivory-deep);transition:background .25s ease,border-color .25s ease,transform .25s ease,color .25s ease;}
 .social-btn svg{width:16px;height:16px;stroke:currentColor;}
 .social-btn:hover{background:var(--gold);border-color:var(--gold);color:var(--maroon-deep);transform:translateY(-2px);}
-.footer-bottom{border-top:1px solid rgba(250,245,236,0.15);padding:18px 28px;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:rgba(250,245,236,0.55);max-width:1240px;margin:0 auto;flex-wrap:wrap;gap:10px;}
+/* padding-bottom is taller than the rest of this rule needs on its own — it's
+   reserving room for the fixed back-to-top/"Find My Saree" buttons, which
+   otherwise sit right on top of this line once the page is fully scrolled,
+   on both desktop (finder button, bottom-right) and mobile (both buttons). */
+.footer-bottom{border-top:1px solid rgba(250,245,236,0.15);padding:18px 28px calc(90px + env(safe-area-inset-bottom));display:flex;justify-content:space-between;align-items:center;font-size:12px;color:rgba(250,245,236,0.55);max-width:1240px;margin:0 auto;flex-wrap:wrap;gap:10px;}
 .footer-lotus-mark{display:inline-flex;align-items:center;color:var(--gold-soft);opacity:.85;}
 .footer-lotus-mark svg{width:13px;height:13px;}
 
@@ -886,6 +912,27 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
   .saree-finder-panel{bottom:calc(130px + env(safe-area-inset-bottom));}
   .back-to-top-btn{bottom:calc(76px + env(safe-area-inset-bottom));}
   .mini-cart-drawer{width:100%;max-width:100%;}
+
+  /* The product page's sticky "Add to Bag" bar stacks on top of the bottom
+     nav too, so on that page only, these two floating buttons need to clear
+     BOTH bars, not just the bottom nav — otherwise they land on top of the
+     sticky bar's own Add to Bag button. :has() scopes this to whichever page
+     actually renders that bar, wherever in the document it sits, rather than
+     hardcoding one page's filename here. */
+  body:has(.sticky-add-bar) .saree-finder-btn,
+  body:has(.sticky-add-bar) .back-to-top-btn{
+    bottom:calc(76px + 64px + env(safe-area-inset-bottom));
+  }
+
+  /* On the Bag page, a short cart (few items) ends close enough to the
+     bottom that the promo "Apply" button sits at the same screen height as
+     these floating buttons on first load — before any scrolling, so extra
+     space after the content doesn't help; the buttons themselves need to
+     start higher on this page specifically. */
+  body[data-page="cart.html"] .saree-finder-btn,
+  body[data-page="cart.html"] .back-to-top-btn{
+    bottom:calc(76px + 60px + env(safe-area-inset-bottom));
+  }
 }
 
 /* ================= Sticky mobile "Add to Bag" bar (product page) ================= */
