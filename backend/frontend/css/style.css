@@ -1,7 +1,9 @@
 /* Devanagari face for the header's periodic "पद्मोरा" — the rest of the site's
    type (Marcellus/Jost) has no Devanagari glyphs, so this loads only the one
-   family actually needed for that. */
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@600&display=swap');
+   family actually needed for that. Rozha One is a serif display face (same
+   register as Marcellus) rather than a plain-sans UI face, so the Marathi
+   state reads as considered branding, not a fallback. */
+@import url('https://fonts.googleapis.com/css2?family=Rozha+One&display=swap');
 
 :root{
   /* Padmora palette v2 — revised after feedback that v1's olive-forward
@@ -177,13 +179,17 @@ body::after{right:0;transform:scaleX(-1);}
 .header-inner{display:flex;align-items:center;justify-content:space-between;padding:18px 28px;max-width:1240px;margin:0 auto;gap:24px;}
 .logo{font-family:var(--font-display);font-size:26px;color:var(--maroon);letter-spacing:.03em;display:flex;align-items:baseline;gap:9px;}
 .logo-mark{height:38px;width:auto;align-self:center;flex-shrink:0;border-radius:3px;}
-/* The wordmark cycles English -> Marathi -> English (see components.js);
-   only the Marathi state needs its own face, since Marcellus has no
-   Devanagari glyphs to fall back on. */
-.logo-text{display:inline-block;transition:opacity .35s ease;}
-.logo-text.swapping{opacity:0;}
-.logo-text.devanagari{font-family:'Noto Sans Devanagari','Marcellus',serif;letter-spacing:0;}
-@media (prefers-reduced-motion:reduce){ .logo-text{transition:none;} }
+/* The wordmark cycles English -> Marathi -> English (see components.js).
+   Both states are always in the DOM, stacked in the same grid cell — that
+   makes the stage's own width the wider of the two permanently, in every
+   browser, with no JS measuring involved, so .header-inner's flex layout
+   (space-between) never reflows the nav links when the text underneath
+   changes; only opacity crossfades, nothing shifts. */
+.logo-text-stage{display:inline-grid;}
+.logo-text-el{grid-area:1/1;align-self:center;opacity:0;transition:opacity .5s ease;pointer-events:none;}
+.logo-text-el.active{opacity:1;}
+.logo-text-el.lang-mr{font-family:'Rozha One','Marcellus',serif;font-size:1.08em;letter-spacing:.01em;}
+@media (prefers-reduced-motion:reduce){ .logo-text-el{transition:none;} }
 .admin-view-store{font-size:12.5px;color:var(--ink-soft);border:1px solid rgba(173,59,92,0.18);border-radius:20px;padding:7px 16px;transition:border-color .15s,color .15s;}
 .admin-view-store:hover{color:var(--maroon);border-color:var(--maroon);}
 .logo span.by-yashi{color:var(--gold);font-size:11px;font-family:var(--font-body);font-weight:600;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;}
