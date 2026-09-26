@@ -63,4 +63,14 @@ async function isCancellable(order) {
   return status === 'Confirmed' || status === 'Packed';
 }
 
-module.exports = { computeStatus, buildTimeline, isCancellable, STAGE_NAMES };
+// Shown to the customer when requesting a cancellation, and to the admin
+// reviewing it. 'other' is the only key that requires a detail note.
+const CANCEL_REASONS = [
+  { key: 'wrong_choice', label: 'Chose the wrong color/size' },
+  { key: 'changed_mind', label: 'Changed my mind' },
+  { key: 'ordered_by_mistake', label: 'Ordered by mistake' },
+  { key: 'found_better_price', label: 'Found a better price elsewhere' },
+  { key: 'other', label: 'Other' }
+];
+
+module.exports = { computeStatus, buildTimeline, isCancellable, STAGE_NAMES, CANCEL_REASONS };

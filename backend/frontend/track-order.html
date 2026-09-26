@@ -99,6 +99,8 @@
           <div class="tracker-order-id">Order #${order.id}</div>
         </div>
         ${!isDelivered ? `<p class="eta-line">Expected by <strong>${fmtDateTime(stages[stages.length-1].at)}</strong></p>` : `<p class="eta-line delivered-line">Delivered on <strong>${fmtDateTime(stages[stages.length-1].at)}</strong> 🎉</p>`}
+        ${order.cancelRequestStatus === 'Requested' ? `<p class="eta-line" style="color:var(--maroon);">⏳ Cancellation requested — pending review</p>`
+          : order.cancelRequestStatus === 'Rejected' ? `<p class="eta-line" style="color:var(--ink-soft);">Cancellation request rejected${order.cancelAdminNote ? ': '+order.cancelAdminNote : ''}</p>` : ''}
 
         <div class="tracker-path">
           ${stages.map((s,i)=>`
@@ -161,14 +163,25 @@
     setTimeout(()=> layer.remove(), 4000);
   }
 
-  // Guests can cancel a still-cancellable order from here. The box lives
-  // outside #trackResult on purpose: the tracker re-renders every 20s while
-  // polling, which would wipe an email the guest is halfway through typing.
+  // Guests can request cancellation of a still-cancellable order from here.
+  // The box lives outside #trackResult on purpose: the tracker re-renders
+  // every 20s while polling, which would wipe an email the guest is halfway
+  // through typing. Submitting only files a request — an admin still has to
+  // approve it before the order is actually cancelled (see account.html's
+  // matching logged-in flow for the same two-step pattern).
   let guestContact = '';
+
+  const CANCEL_REASONS = [
+    { key: 'wrong_choice', label: 'Chose the wrong color/size' },
+    { key: 'changed_mind', label: 'Changed my mind' },
+    { key: 'ordered_by_mistake', label: 'Ordered by mistake' },
+    { key: 'found_better_price', label: 'Found a better price elsewhere' },
+    { key: 'other', label: 'Other' }
+  ];
 
   function updateGuestCancelBox(order){
     const box = document.getElementById('guestCancelBox');
-    const show = !isLoggedIn() && order.cancellable;
+    const show = !isLoggedIn() && (order.cancellable || order.cancelRequestStatus === 'Rejected') && order.cancelRequestStatus !== 'Requested';
     const key = show ? order.id : '';
     if(box.dataset.key === key) return;
     box.dataset.key = key;
@@ -176,39 +189,41 @@
     box.innerHTML = `
       <div class="summary-card" style="position:static;margin-top:18px;">
         <h3 class="updates-heading" style="margin-top:0;">Need to cancel?</h3>
-        <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">You can cancel this order until it ships. Confirm the email address you used at checkout.</p>
+        <p style="font-size:13px;color:var(--ink-soft);margin:0 0 12px;">You can request cancellation until this order ships. An admin reviews every request before the order is actually cancelled. Confirm the email address you used at checkout.</p>
         <div class="track-search-row" style="margin-bottom:10px;">
           <input type="email" id="cancelEmail" placeholder="Email used at checkout" autocomplete="email">
           <select id="cancelReason" class="sort-select">
-            <option value="">Reason (optional)</option>
-            <option>Ordered by mistake</option>
-            <option>Found a better price</option>
-            <option>Want to change the order</option>
-            <option>Delivery will take too long</option>
-            <option>Other</option>
+            <option value="">Choose a reason…</option>
+            ${CANCEL_REASONS.map(r=>`<option value="${r.key}">${r.label}</option>`).join('')}
           </select>
         </div>
-        <button class="btn btn-outline" id="guestCancelBtn">Cancel this order</button>
+        <textarea id="cancelDetail" rows="2" placeholder="A short note helps us review this faster" style="display:none;width:100%;margin-bottom:10px;"></textarea>
+        <button class="btn btn-outline" id="guestCancelBtn">Request cancellation</button>
       </div>`;
     if(guestContact.includes('@')) document.getElementById('cancelEmail').value = guestContact;
+    document.getElementById('cancelReason').addEventListener('change', (e)=>{
+      document.getElementById('cancelDetail').style.display = e.target.value === 'other' ? 'block' : 'none';
+    });
     document.getElementById('guestCancelBtn').addEventListener('click', () => cancelGuestOrder(order.id));
   }
 
   async function cancelGuestOrder(id){
     const email = document.getElementById('cancelEmail').value.trim();
     const reason = document.getElementById('cancelReason').value;
+    const detail = document.getElementById('cancelDetail').value;
     if(!email){ toast('Enter the email you used at checkout.', 'error'); return; }
-    if(!window.confirm('Cancel order #' + id + '? This cannot be undone.')) return;
+    if(!reason){ toast('Choose a reason first', 'error'); return; }
+    if(reason === 'other' && !detail.trim()){ toast('Add a short note for "Other"', 'error'); return; }
+    if(!window.confirm('Submit a cancellation request for order #' + id + '? An admin will review it before it\'s cancelled.')) return;
     const btn = document.getElementById('guestCancelBtn');
     btn.disabled = true;
     try{
-      const { order } = await apiFetch('/orders/guest/' + encodeURIComponent(id) + '/cancel', {
-        method: 'POST', body: JSON.stringify({ email, reason })
+      const { order } = await apiFetch('/orders/guest/' + encodeURIComponent(id) + '/cancel-request', {
+        method: 'POST', body: JSON.stringify({ email, reason, detail })
       });
-      if(pollTimer) clearInterval(pollTimer);
       renderTracker(order);
       updateGuestCancelBox(order);
-      toast('Your order has been cancelled.');
+      toast('Cancellation request submitted — we\'ll review it shortly.');
     }catch(e){
       toast(e.message, 'error');
       btn.disabled = false;
