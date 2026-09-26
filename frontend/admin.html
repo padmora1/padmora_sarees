@@ -546,7 +546,7 @@
       fd.append('file', file);
       try{
         await fetch('/api/admin/variants/' + input.dataset.uploadMedia + '/media', {
-          method:'POST', headers: { Authorization: 'Bearer ' + getToken() }, body: fd
+          method:'POST', headers: { Authorization: 'Bearer ' + getAdminToken() }, body: fd
         }).then(async r => { if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.message || 'Upload failed'); } });
         toast('Media uploaded');
         await loadProducts();
@@ -1286,7 +1286,7 @@
     const fd = new FormData();
     fd.append('file', file);
     if(extra) Object.entries(extra).forEach(([k,v])=>fd.append(k,v));
-    const res = await fetch(url, { method:'POST', headers:{ Authorization:'Bearer '+getToken() }, body: fd });
+    const res = await fetch(url, { method:'POST', headers:{ Authorization:'Bearer '+getAdminToken() }, body: fd });
     if(!res.ok){ const j = await res.json().catch(()=>({})); throw new Error(j.message||'Upload failed'); }
     return res.json();
   }
