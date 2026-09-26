@@ -52,7 +52,7 @@
           <div id="panel-address" style="display:none;">
             <h2>Saved Addresses</h2>
             <div id="addressList" style="margin-bottom:22px;"></div>
-            <h3 style="font-size:15px;margin-bottom:14px;">Add a New Address</h3>
+            <h3 style="font-size:15px;margin-bottom:14px;" id="addressFormHeading">Add a New Address</h3>
             <div class="form-error" id="addressError"></div>
             <form id="addressForm">
               <div class="form-row-2">
@@ -75,7 +75,8 @@
                 </div>
                 <div class="form-field"><label>Phone</label><input type="tel" id="aPhone"></div>
               </div>
-              <button type="submit" class="btn btn-primary">Save Address</button>
+              <button type="submit" class="btn btn-primary" id="addressSubmitBtn">Save Address</button>
+              <span class="cancel-order-btn" id="addressCancelEdit" style="display:none;margin-left:14px;">Cancel</span>
             </form>
           </div>
 
@@ -140,44 +141,84 @@
     }catch(err){ toast(err.message, 'error'); }
   });
 
+  let currentAddresses = [];
+  let editingAddressId = null;
+
+  function resetAddressForm(){
+    editingAddressId = null;
+    document.getElementById('addressForm').reset();
+    document.getElementById('addressFormHeading').textContent = 'Add a New Address';
+    document.getElementById('addressSubmitBtn').textContent = 'Save Address';
+    document.getElementById('addressCancelEdit').style.display = 'none';
+  }
+
   async function loadAddresses(){
     const box = document.getElementById('addressList');
     try{
       const { addresses } = await apiFetch('/addresses');
+      currentAddresses = addresses;
       box.innerHTML = addresses.length ? addresses.map(a=>`
         <div class="order-card">
           <div class="order-card-head">
             <span><strong>${a.label}</strong>${a.is_default ? ' · Default' : ''}</span>
-            <span class="cancel-order-btn" data-del-addr="${a.id}" style="margin-top:0;">Delete</span>
+            <span>
+              <span class="cancel-order-btn" data-edit-addr="${a.id}" style="margin-top:0;">Edit</span>
+              <span class="cancel-order-btn" data-del-addr="${a.id}" style="margin-top:0;margin-left:12px;">Delete</span>
+            </span>
           </div>
           <p style="font-size:13px;color:var(--ink-soft);">${a.name ? a.name+', ' : ''}${a.line1}, ${a.city}, ${a.state} ${a.pincode}${a.phone ? ' · '+a.phone : ''}</p>
         </div>`).join('') : `<p style="color:var(--ink-soft);font-size:13px;">No saved addresses yet.</p>`;
       document.querySelectorAll('[data-del-addr]').forEach(el=>el.addEventListener('click', async ()=>{
-        try{ await apiFetch('/addresses/' + el.dataset.delAddr, {method:'DELETE'}); loadAddresses(); toast('Address removed'); }
+        try{
+          await apiFetch('/addresses/' + el.dataset.delAddr, {method:'DELETE'});
+          if(editingAddressId === Number(el.dataset.delAddr)) resetAddressForm();
+          loadAddresses(); toast('Address removed');
+        }
         catch(e){ toast(e.message, 'error'); }
+      }));
+      document.querySelectorAll('[data-edit-addr]').forEach(el=>el.addEventListener('click', ()=>{
+        const a = currentAddresses.find(x=>x.id === Number(el.dataset.editAddr));
+        if(!a) return;
+        editingAddressId = a.id;
+        document.getElementById('aLabel').value = a.label || 'Home';
+        document.getElementById('aName').value = a.name || '';
+        document.getElementById('aLine1').value = a.line1 || '';
+        document.getElementById('aCity').value = a.city || '';
+        document.getElementById('aPincode').value = a.pincode || '';
+        document.getElementById('aState').value = a.state || 'Maharashtra';
+        document.getElementById('aPhone').value = a.phone || '';
+        document.getElementById('addressFormHeading').textContent = 'Edit Address';
+        document.getElementById('addressSubmitBtn').textContent = 'Save Changes';
+        document.getElementById('addressCancelEdit').style.display = 'inline-block';
+        document.getElementById('addressForm').scrollIntoView({behavior:'smooth', block:'start'});
       }));
     }catch(e){
       box.innerHTML = `<p style="color:var(--ink-soft);">Could not load addresses.</p>`;
     }
   }
 
+  document.getElementById('addressCancelEdit').addEventListener('click', resetAddressForm);
+
   document.getElementById('addressForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
     try{
-      await apiFetch('/addresses', {
-        method:'POST',
-        body: JSON.stringify({
-          label: document.getElementById('aLabel').value,
-          name: document.getElementById('aName').value,
-          line1: document.getElementById('aLine1').value,
-          city: document.getElementById('aCity').value,
-          pincode: document.getElementById('aPincode').value,
-          state: document.getElementById('aState').value,
-          phone: document.getElementById('aPhone').value
-        })
-      });
-      toast('Address saved');
-      document.getElementById('addressForm').reset();
+      const payload = {
+        label: document.getElementById('aLabel').value,
+        name: document.getElementById('aName').value,
+        line1: document.getElementById('aLine1').value,
+        city: document.getElementById('aCity').value,
+        pincode: document.getElementById('aPincode').value,
+        state: document.getElementById('aState').value,
+        phone: document.getElementById('aPhone').value
+      };
+      if(editingAddressId){
+        await apiFetch('/addresses/' + editingAddressId, { method:'PUT', body: JSON.stringify(payload) });
+        toast('Address updated');
+      } else {
+        await apiFetch('/addresses', { method:'POST', body: JSON.stringify(payload) });
+        toast('Address saved');
+      }
+      resetAddressForm();
       loadAddresses();
     }catch(err){ toast(err.message, 'error'); }
   });
