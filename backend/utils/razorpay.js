@@ -41,4 +41,20 @@ function verifySignature({ razorpay_order_id, razorpay_payment_id, razorpay_sign
   return expected === razorpay_signature;
 }
 
-module.exports = { razorpay, isConfigured, createOrder, verifySignature, KEY_ID };
+// Refunds a captured payment back to the customer's original payment method.
+// Razorpay itself rejects a refund that would exceed what was captured (minus
+// earlier refunds), which is the final safety net against over-refunding.
+async function refundPayment(paymentId, amountRupees, notes) {
+  return razorpay.payments.refund(paymentId, {
+    amount: Math.round(amountRupees * 100),
+    speed: 'normal',
+    notes: notes || {}
+  });
+}
+
+// Razorpay SDK errors carry the useful text in err.error.description.
+function refundErrorMessage(err) {
+  return (err && err.error && err.error.description) || (err && err.message) || 'Razorpay refund failed.';
+}
+
+module.exports = { razorpay, isConfigured, createOrder, verifySignature, refundPayment, refundErrorMessage, KEY_ID };

@@ -767,6 +767,12 @@
                 </select>
               </div>
             </div>
+            ${o.razorpayRefundId ? `<p style="margin-top:10px;font-size:13px;">Refunded via Razorpay: <strong>${money(o.refundAmount)}</strong> · Refund ID <strong>${o.razorpayRefundId}</strong>${o.refundProcessedAt ? ' · '+new Date(o.refundProcessedAt).toLocaleString('en-IN') : ''}</p>`
+              : (o.payment !== 'COD' && o.razorpayPaymentId && o.refundStatus !== 'Processed') ? `
+              <div style="margin-top:12px;">
+                <button class="btn btn-primary btn-sm" id="rzpRefundBtn">Refund ${money(o.total)} via Razorpay</button>
+                <p style="font-size:12px;color:var(--ink-soft);margin-top:6px;">Sends the money back to the customer's original payment method (payment ${o.razorpayPaymentId}). Usually reaches them in 5–7 business days.</p>
+              </div>` : ''}
           </div>` : o.cancelRequestStatus === 'Requested' ? `
           <div class="detail-block" style="border-color:var(--gold);">
             <h5>Cancellation Requested</h5>
@@ -798,6 +804,16 @@
       if(refundSel) refundSel.addEventListener('change', async ()=>{
         try{ await adminApiFetch('/admin/orders/' + o.id + '/refund', {method:'PUT', body: JSON.stringify({refundStatus: refundSel.value})}); toast('Refund status updated'); }
         catch(e){ toast(e.message, 'error'); }
+      });
+      const rzpRefundBtn = document.getElementById('rzpRefundBtn');
+      if(rzpRefundBtn) rzpRefundBtn.addEventListener('click', async ()=>{
+        const ok = await showConfirmDialog(`This sends ${money(o.total)} back to the customer through Razorpay. It cannot be undone.`, {title:'Refund this order?', confirmLabel:'Refund via Razorpay', danger:true});
+        if(!ok) return;
+        rzpRefundBtn.disabled = true;
+        try{
+          await adminApiFetch('/admin/orders/' + o.id + '/refund/razorpay', {method:'POST'});
+          toast('Refund sent to Razorpay'); renderOrderDetail(); loadOrders();
+        }catch(e){ toast(e.message, 'error'); rzpRefundBtn.disabled = false; }
       });
       const cancelApproveBtn = document.getElementById('cancelApproveBtn');
       if(cancelApproveBtn) cancelApproveBtn.addEventListener('click', async ()=>{
@@ -990,7 +1006,7 @@
       });
       const refundBtn = document.getElementById('retRefundBtn');
       if(refundBtn) refundBtn.addEventListener('click', async ()=>{
-        const ok = await showConfirmDialog('This finalizes the refund — issuing store credit creates a real one-time coupon immediately.', {title:'Process this refund?', confirmLabel:'Process Refund'});
+        const ok = await showConfirmDialog('This finalizes the refund — "Original payment method" sends real money back through Razorpay, and store credit creates a real one-time coupon immediately.', {title:'Process this refund?', confirmLabel:'Process Refund'});
         if(!ok) return;
         try{
           await adminApiFetch('/admin/returns/' + r.id + '/refund', {method:'PUT', body: JSON.stringify({
