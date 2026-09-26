@@ -8,7 +8,7 @@ const {
   ADMIN_ROLES, logActivity
 } = require('../utils/db');
 const { requireAdminAuth, requirePermission } = require('../middleware/adminAuth');
-const { computeStatus, buildTimeline, STAGE_NAMES } = require('../utils/orderStatus');
+const { computeStatus, buildTimeline, isCancellable, STAGE_NAMES, CANCEL_REASONS } = require('../utils/orderStatus');
 const { upload, UPLOAD_DIR } = require('../middleware/upload');
 const { toProductApiShape } = require('../utils/shape');
 const { runBackup, listBackups, BACKUP_DIR } = require('../utils/backup');
@@ -491,6 +491,11 @@ async function shapeAdminOrder(o, { full } = {}) {
     manualStatus: o.manual_status,
     cancelReason: o.cancel_reason,
     refundStatus: o.refund_status,
+    cancelRequestStatus: o.cancel_request_status,
+    cancelRequestReason: o.cancel_request_reason,
+    cancelRequestDetail: o.cancel_request_detail,
+    cancelRequestedAt: o.cancel_requested_at,
+    cancelAdminNote: o.cancel_admin_note,
     address: { name: o.address_name, city: o.address_city, state: o.address_state, pincode: o.address_pincode },
     placedAt: o.placed_at
   };
@@ -685,6 +690,64 @@ router.put('/orders/:id/refund', asyncRoute(async (req, res) => {
 
   must(await supabase.from('orders').update({ refund_status: refundStatus }).eq('id', order.id), 'setRefundStatus:update');
   res.json({ message: 'Refund status updated.' });
+}));
+
+// Deciding a pending cancellation request: approving here is the only place
+// that actually cancels + restocks the order now (see routes/orders.js,
+// which only ever writes a pending request, never cancels directly).
+router.put('/orders/:id/cancel-decision', asyncRoute(async (req, res) => {
+  const { approve, adminNote } = req.body || {};
+  const order = must(await supabase.from('orders').select('*').eq('id', req.params.id).maybeSingle(), 'decideCancel:lookup');
+  if (!order) return res.status(404).json({ message: 'Order not found.' });
+  if (order.cancel_request_status !== 'Requested') {
+    return res.status(400).json({ message: 'No pending cancellation request for this order.' });
+  }
+  if (!approve && !(adminNote || '').trim()) {
+    return res.status(400).json({ message: 'Add a note explaining why — the customer will see it.' });
+  }
+
+  const cleanNote = (adminNote || '').trim() || null;
+  const reasonLabel = (CANCEL_REASONS.find(r => r.key === order.cancel_request_reason) || {}).label || order.cancel_request_reason;
+  const fullReason = order.cancel_request_detail ? `${reasonLabel} — ${order.cancel_request_detail}` : reasonLabel;
+
+  if (approve) {
+    if (!(await isCancellable(order))) {
+      return res.status(400).json({ message: 'This order has since shipped and can no longer be cancelled — reject the request instead.' });
+    }
+    const refundStatus = order.payment === 'COD' ? 'Not Applicable' : 'Pending';
+    const rpc = await supabase.rpc('cancel_order', { p_order_id: order.id, p_reason: fullReason, p_refund_status: refundStatus });
+    if (rpc.error) throw new Error(rpc.error.message);
+    must(await supabase.from('orders').update({
+      cancel_request_status: 'Approved', cancel_decided_at: new Date().toISOString(), cancel_admin_note: cleanNote
+    }).eq('id', order.id), 'decideCancel:approve');
+  } else {
+    must(await supabase.from('orders').update({
+      cancel_request_status: 'Rejected', cancel_decided_at: new Date().toISOString(), cancel_admin_note: cleanNote
+    }).eq('id', order.id), 'decideCancel:reject');
+  }
+
+  await record(req, approve ? 'approved' : 'rejected', 'order_cancel_request', order.id, { cancelRequestStatus: order.cancel_request_status }, { cancelRequestStatus: approve ? 'Approved' : 'Rejected', adminNote: cleanNote });
+
+  const customer = must(await supabase.from('users').select('name, email').eq('id', order.user_id).maybeSingle(), 'decideCancel:customer');
+  if (customer && customer.email) {
+    await sendEmail({
+      to: customer.email,
+      subject: approve ? `Order ${order.id} has been cancelled` : `Update on your cancellation request for order ${order.id}`,
+      html: `<div style="font-family:Georgia,serif;max-width:480px;margin:0 auto;">
+        <h2 style="color:#7A1F2B;">${approve ? 'Order cancelled' : 'Cancellation request update'}</h2>
+        <p>Hi ${customer.name || 'there'},</p>
+        <p>${approve
+          ? `Your order <strong>${order.id}</strong> has been cancelled as requested.${order.payment === 'COD' ? '' : ' Your refund will be processed shortly.'}`
+          : `We're not able to cancel your order <strong>${order.id}</strong> right now.`}</p>
+        ${cleanNote ? `<p style="color:#6f5a5c;">Note from our team: ${cleanNote}</p>` : ''}
+      </div>`,
+      orderId: order.id,
+      userId: order.user_id
+    });
+  }
+
+  const updated = must(await supabase.from('orders').select('*').eq('id', order.id).single(), 'decideCancel:reread');
+  res.json({ order: await shapeAdminOrder(updated, { full: true }) });
 }));
 
 // ---- Returns & Refunds (post-delivery) ----

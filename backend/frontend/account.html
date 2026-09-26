@@ -229,6 +229,14 @@
     Refunded: 'Refunded'
   };
 
+  const CANCEL_REASONS = [
+    { key: 'wrong_choice', label: 'Chose the wrong color/size' },
+    { key: 'changed_mind', label: 'Changed my mind' },
+    { key: 'ordered_by_mistake', label: 'Ordered by mistake' },
+    { key: 'found_better_price', label: 'Found a better price elsewhere' },
+    { key: 'other', label: 'Other' }
+  ];
+
   let lastOrders = [];
 
   async function loadOrders(){
@@ -257,14 +265,17 @@
             <span>Total</span><span>${money(o.total)}</span>
           </div>
           ${o.returnStatus ? `<p style="font-size:12.5px;color:var(--maroon);margin-top:10px;">↩ ${RETURN_STATUS_LABEL[o.returnStatus] || o.returnStatus}</p>` : ''}
+          ${o.cancelRequestStatus === 'Requested' ? `<p style="font-size:12.5px;color:var(--maroon);margin-top:10px;">⏳ Cancellation requested — pending review</p>`
+            : o.cancelRequestStatus === 'Rejected' ? `<p style="font-size:12.5px;color:var(--ink-soft);margin-top:10px;">Cancellation request rejected${o.cancelAdminNote ? ': '+o.cancelAdminNote : ''}</p>` : ''}
           <div class="order-actions">
             ${o.status !== 'Cancelled' ? `<a href="/track-order?id=${o.id}" class="order-action-btn track"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 7h11v8H3z"/><path d="M14 10h4l3 3v2h-7z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17.5" cy="18" r="1.6"/></svg>Track Order</a>` : ''}
-            ${o.cancellable ? `<button type="button" class="order-action-btn cancel" data-cancel="${o.id}"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg>Cancel Order</button>` : `${o.status !== 'Cancelled' && o.status !== 'Confirmed' && o.status !== 'Packed' ? `<span class="order-locked-note">Shipped — can no longer be cancelled</span>` : ''}`}
+            ${o.cancellable && o.cancelRequestStatus !== 'Requested' ? `<button type="button" class="order-action-btn cancel" data-cancel="${o.id}"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg>Cancel Order</button>` : `${o.status !== 'Cancelled' && o.status !== 'Confirmed' && o.status !== 'Packed' ? `<span class="order-locked-note">Shipped — can no longer be cancelled</span>` : ''}`}
             ${o.canRequestReturn ? `<button type="button" class="order-action-btn return" data-return="${o.id}"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>Return / Refund</button>` : ''}
           </div>
           <div id="returnForm-${o.id}"></div>
+          <div id="cancelForm-${o.id}"></div>
         </div>`).join('');
-      document.querySelectorAll('[data-cancel]').forEach(el=>el.addEventListener('click', ()=>cancelOrder(el.dataset.cancel)));
+      document.querySelectorAll('[data-cancel]').forEach(el=>el.addEventListener('click', ()=>openCancelForm(el.dataset.cancel)));
       document.querySelectorAll('[data-return]').forEach(el=>el.addEventListener('click', ()=>openReturnForm(el.dataset.return)));
     }catch(e){
       box.innerHTML = `<p style="color:var(--ink-soft);">Could not load orders.</p>`;
@@ -452,17 +463,56 @@
 
   document.querySelector('[data-goto-orders]')?.addEventListener('click', (e)=>{ e.preventDefault(); switchTab('orders'); });
 
-  async function cancelOrder(orderId){
-    const ok = await showConfirmDialog(
-      'This will cancel your order and restock the items. This cannot be undone.',
-      { title: 'Cancel this order?', confirmLabel: 'Cancel Order', cancelLabel: 'Keep Order', danger: true }
-    );
-    if(!ok) return;
-    try{
-      await apiFetch('/orders/' + orderId + '/cancel', {method:'POST'});
-      toast('Order cancelled');
-      loadOrders();
-    }catch(e){ toast(e.message, 'error'); }
+  // ---- Cancellation request (expands inline under the order card, mirrors the Return/Refund panel above) ----
+  function openCancelForm(orderId){
+    const mount = document.getElementById('cancelForm-' + orderId);
+    if(!mount) return;
+    if(mount.innerHTML){ mount.innerHTML = ''; return; } // toggle closed if already open
+
+    const order = lastOrders.find(o => o.id === orderId);
+    const refundNote = order && order.payment === 'COD'
+      ? "You chose Cash on Delivery, so no refund is needed — nothing was charged."
+      : "Once approved, we'll process a refund to your original payment method.";
+
+    mount.innerHTML = `
+      <div class="return-request-panel">
+        <h4>Request Cancellation</h4>
+        <p style="font-size:12px;color:var(--ink-soft);">This isn't instant — an admin reviews every cancellation request before the order is actually cancelled.</p>
+        <div class="form-field"><label>Reason</label>
+          <select id="cancelReason-${orderId}">
+            <option value="">Choose a reason…</option>
+            ${CANCEL_REASONS.map(r=>`<option value="${r.key}">${r.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-field" id="cancelDetailField-${orderId}" style="display:none;">
+          <label>Tell us more</label>
+          <textarea id="cancelDetail-${orderId}" rows="2" placeholder="A short note helps us review this faster"></textarea>
+        </div>
+        <p style="font-size:12px;color:var(--ink-soft);">${refundNote}</p>
+        <button type="button" class="btn btn-primary" id="cancelSubmit-${orderId}">Submit Cancellation Request</button>
+      </div>`;
+
+    const reasonSel = document.getElementById('cancelReason-' + orderId);
+    const detailField = document.getElementById('cancelDetailField-' + orderId);
+    reasonSel.addEventListener('change', ()=>{ detailField.style.display = reasonSel.value === 'other' ? 'block' : 'none'; });
+
+    document.getElementById('cancelSubmit-' + orderId).addEventListener('click', async ()=>{
+      const reason = reasonSel.value;
+      const detail = document.getElementById('cancelDetail-' + orderId).value;
+      if(!reason){ toast('Choose a reason first', 'error'); return; }
+      if(reason === 'other' && !detail.trim()){ toast('Add a short note for "Other"', 'error'); return; }
+      const ok = await showConfirmDialog(
+        'An admin will review this before your order is actually cancelled.',
+        { title: 'Submit cancellation request?', confirmLabel: 'Submit Request', cancelLabel: 'Never Mind' }
+      );
+      if(!ok) return;
+      try{
+        await apiFetch('/orders/' + orderId + '/cancel-request', {method:'POST', body: JSON.stringify({reason, detail})});
+        toast('Cancellation request submitted — we\'ll review it shortly');
+        mount.innerHTML = '';
+        loadOrders();
+      }catch(e){ toast(e.message, 'error'); }
+    });
   }
 
   if(requireLogin()) loadProfile();
