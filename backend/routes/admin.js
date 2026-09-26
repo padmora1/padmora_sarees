@@ -1295,10 +1295,12 @@ router.put('/reels/reorder', asyncRoute(async (req, res) => {
 router.put('/reels/:id', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('reel_items').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateReel:lookup');
   if (!existing) return res.status(404).json({ message: 'Reel item not found.' });
-  const { active, sortOrder } = req.body;
+  const { active, sortOrder, clearVideo, clearThumbnail } = req.body;
   const updated = must(await supabase.from('reel_items').update({
     active: active !== undefined ? !!active : existing.active,
-    sort_order: sortOrder !== undefined ? Number(sortOrder) : existing.sort_order
+    sort_order: sortOrder !== undefined ? Number(sortOrder) : existing.sort_order,
+    video_url: clearVideo ? null : existing.video_url,
+    thumbnail_url: clearThumbnail ? null : existing.thumbnail_url
   }).eq('id', existing.id).select().single(), 'updateReel:update');
   res.json({ reelItem: updated });
 }));

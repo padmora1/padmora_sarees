@@ -90,6 +90,7 @@
               <div class="form-field"><label>Loom Type</label><input type="text" id="npLoomType" placeholder="Handloom / Powerloom / Handcrafted"></div>
               <button class="btn btn-primary btn-sm" id="createProduct">Create Product</button>
             </div>
+            <div id="archivedProductsToggle" style="display:none;margin-bottom:10px;font-size:12.5px;color:var(--ink-soft);"></div>
             <div style="overflow-x:auto;">
               <table class="admin-table" id="productsTable"></table>
             </div>
@@ -327,24 +328,34 @@
   let allProducts = [];
   let openProductId = null;
   let editorTab = 'general';
+  let showArchivedProducts = false;
 
   async function loadProducts(){
     try{
       const {products} = await adminApiFetch('/admin/products');
       allProducts = products;
+      const archivedCount = products.filter(p=>p.status==='archived').length;
+      const visible = showArchivedProducts ? products : products.filter(p=>p.status!=='archived');
+      const toggleEl = document.getElementById('archivedProductsToggle');
+      toggleEl.style.display = archivedCount ? 'block' : 'none';
+      toggleEl.innerHTML = archivedCount
+        ? `${archivedCount} archived product${archivedCount===1?'':'s'} (deleted, but had past orders) ${showArchivedProducts ? 'shown below' : 'hidden'} — <a href="#" id="toggleArchivedLink" style="color:var(--maroon);">${showArchivedProducts?'Hide':'Show'} archived</a>`
+        : '';
+      const link = document.getElementById('toggleArchivedLink');
+      if(link) link.addEventListener('click', (e)=>{ e.preventDefault(); showArchivedProducts = !showArchivedProducts; loadProducts(); });
       document.getElementById('productsTable').innerHTML = `
         <thead><tr><th>Name</th><th>Fabric</th><th>Variants</th><th>Total Stock</th><th>Badge</th><th>Status</th><th></th></tr></thead>
-        <tbody>${products.map(p=>`
-          <tr data-id="${p.id}">
-            <td>${p.name}</td>
+        <tbody>${visible.map(p=>`
+          <tr data-id="${p.id}" ${p.status==='archived'?'style="opacity:.55;"':''}>
+            <td>${p.status==='archived'?`<s>${p.name}</s>`:p.name}</td>
             <td>${p.fabric}</td>
             <td>${p.variantCount}</td>
             <td style="${p.totalStock<=10?'color:var(--maroon);font-weight:600;':''}">${p.totalStock}</td>
             <td>${p.badge || '—'}</td>
-            <td>${p.status || 'active'}</td>
+            <td>${p.status==='archived' ? '<strong>archived</strong>' : (p.status || 'active')}</td>
             <td style="white-space:nowrap;">
               <button class="btn btn-sm btn-outline" data-edit="${p.id}">Edit</button>
-              <button class="btn btn-sm" style="color:var(--maroon);" data-delete="${p.id}">Delete</button>
+              ${p.status==='archived' ? '' : `<button class="btn btn-sm" style="color:var(--maroon);" data-delete="${p.id}">Delete</button>`}
             </td>
           </tr>`).join('')}</tbody>`;
 
@@ -1766,8 +1777,8 @@
                 <button class="btn btn-sm" data-reel-down="${r.id}" ${i===reels.length-1?'disabled':''}>↓</button>
               </td>
               <td>${r.name}</td>
-              <td>${r.video_url ? '✅ uploaded' : '—'} <span class="reel-upload-status" data-reel-video-status="${r.id}"></span><input type="file" accept="video/*" data-reel-video="${r.id}" style="max-width:120px;font-size:11px;"></td>
-              <td>${r.thumbnail_url ? `<img src="${r.thumbnail_url}" style="height:36px;border-radius:3px;">` : '—'} <span class="reel-upload-status" data-reel-thumb-status="${r.id}"></span><input type="file" accept="image/*" data-reel-thumb="${r.id}" style="max-width:120px;font-size:11px;"></td>
+              <td>${r.video_url ? `✅ uploaded <button class="btn btn-sm" style="color:var(--maroon);padding:2px 6px;" data-reel-video-clear="${r.id}" title="Remove this video">✕</button>` : '—'} <span class="reel-upload-status" data-reel-video-status="${r.id}"></span><input type="file" accept="video/*" data-reel-video="${r.id}" style="max-width:120px;font-size:11px;"></td>
+              <td>${r.thumbnail_url ? `<img src="${r.thumbnail_url}" style="height:36px;border-radius:3px;vertical-align:middle;"> <button class="btn btn-sm" style="color:var(--maroon);padding:2px 6px;" data-reel-thumb-clear="${r.id}" title="Remove this thumbnail">✕</button>` : '—'} <span class="reel-upload-status" data-reel-thumb-status="${r.id}"></span><input type="file" accept="image/*" data-reel-thumb="${r.id}" style="max-width:120px;font-size:11px;"></td>
               <td><input type="checkbox" data-reel-active="${r.id}" ${r.active?'checked':''}></td>
               <td><button class="btn btn-sm" style="color:var(--maroon);" data-reel-del="${r.id}">Remove</button></td>
             </tr>`).join('')}</tbody>
@@ -1821,6 +1832,18 @@
       if(statusEl) statusEl.textContent = 'Uploading…';
       try{ await uploadEntityImage('/api/admin/reels/'+id+'/video', 'file', e.target.files[0]); toast('Thumbnail uploaded'); renderReelsAdmin(); }
       catch(err){ toast(err.message, 'error'); input.disabled = false; if(statusEl) statusEl.textContent = ''; }
+    }));
+    body.querySelectorAll('[data-reel-video-clear]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const ok = await showConfirmDialog('The video file stays reachable at its old link — only the reel item stops using it.', {title:'Remove this video?', confirmLabel:'Remove', danger:true});
+      if(!ok) return;
+      try{ await adminApiFetch('/admin/reels/'+btn.dataset.reelVideoClear, {method:'PUT', body: JSON.stringify({clearVideo:true})}); toast('Video removed'); renderReelsAdmin(); }
+      catch(e){ toast(e.message, 'error'); }
+    }));
+    body.querySelectorAll('[data-reel-thumb-clear]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const ok = await showConfirmDialog('', {title:'Remove this thumbnail?', confirmLabel:'Remove', danger:true});
+      if(!ok) return;
+      try{ await adminApiFetch('/admin/reels/'+btn.dataset.reelThumbClear, {method:'PUT', body: JSON.stringify({clearThumbnail:true})}); toast('Thumbnail removed'); renderReelsAdmin(); }
+      catch(e){ toast(e.message, 'error'); }
     }));
     document.getElementById('addReelBtn').addEventListener('click', async ()=>{
       const productId = document.getElementById('addReelProduct').value;
