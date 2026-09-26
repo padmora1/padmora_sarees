@@ -44,12 +44,30 @@ function verifySignature({ razorpay_order_id, razorpay_payment_id, razorpay_sign
 // Refunds a captured payment back to the customer's original payment method.
 // Razorpay itself rejects a refund that would exceed what was captured (minus
 // earlier refunds), which is the final safety net against over-refunding.
-async function refundPayment(paymentId, amountRupees, notes) {
-  return razorpay.payments.refund(paymentId, {
-    amount: Math.round(amountRupees * 100),
-    speed: 'normal',
-    notes: notes || {}
+// Called over REST rather than the SDK because the SDK can't send Razorpay's
+// X-Refund-Idempotency header. With a stable key per order/return, a retry
+// after a timeout returns the ORIGINAL refund instead of creating a second one.
+// (Key must be 10+ chars of letters/digits/-/_; same key + different body is
+// rejected by Razorpay, which is the safe outcome.)
+async function refundPayment(paymentId, amountRupees, notes, idempotencyKey) {
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: 'Basic ' + Buffer.from(`${KEY_ID}:${KEY_SECRET}`).toString('base64')
+  };
+  if (idempotencyKey) headers['X-Refund-Idempotency'] = idempotencyKey;
+  const res = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}/refund`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ amount: Math.round(amountRupees * 100), speed: 'normal', notes: notes || {} })
   });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(body.error?.description || `Razorpay responded ${res.status}`);
+    err.error = body.error;
+    err.statusCode = res.status;
+    throw err;
+  }
+  return body;
 }
 
 // Razorpay SDK errors carry the useful text in err.error.description.

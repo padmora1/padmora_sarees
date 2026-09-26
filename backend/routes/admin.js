@@ -717,7 +717,7 @@ router.post('/orders/:id/refund/razorpay', asyncRoute(async (req, res) => {
 
   let refund;
   try {
-    refund = await razorpayUtil.refundPayment(order.razorpay_payment_id, order.total, { order_id: order.id, reason: 'Order cancelled' });
+    refund = await razorpayUtil.refundPayment(order.razorpay_payment_id, order.total, { order_id: order.id, reason: 'Order cancelled' }, 'rfnd-order-' + order.id);
   } catch (err) {
     await supabase.from('orders').update({ razorpay_refund_id: null }).eq('id', order.id);
     console.error(`[razorpay] Refund failed for order ${order.id}:`, err);
@@ -939,7 +939,7 @@ router.put('/returns/:id/refund', asyncRoute(async (req, res) => {
           .eq('id', existing.id).is('razorpay_refund_id', null).select('id'), 'refundReturn:claim');
         if (!claimed.length) return res.status(409).json({ message: 'A refund for this return is already in progress.' });
         try {
-          const refund = await razorpayUtil.refundPayment(order.razorpay_payment_id, amount, { order_id: order.id, return_id: String(existing.id), reason: 'Return refund' });
+          const refund = await razorpayUtil.refundPayment(order.razorpay_payment_id, amount, { order_id: order.id, return_id: String(existing.id), reason: 'Return refund' }, 'rfnd-return-' + existing.id);
           rzpRefundId = refund.id;
         } catch (err) {
           await supabase.from('return_requests').update({ razorpay_refund_id: null }).eq('id', existing.id);
