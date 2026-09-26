@@ -67,6 +67,34 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.put('/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const existing = must(await supabase.from('addresses').select('id').eq('id', id).eq('user_id', req.userId).maybeSingle(), 'putAddress:lookup');
+    if (!existing) return res.status(404).json({ message: 'Address not found.' });
+
+    const { label, name, line1, city, state, pincode, phone } = req.body;
+    if (!line1 || !city || !pincode) {
+      return res.status(400).json({ message: 'Address line, city and pincode are required.' });
+    }
+    if (!PINCODE_RE.test(String(pincode).trim())) {
+      return res.status(400).json({ message: 'Enter a valid 6-digit pincode.' });
+    }
+    if (phone && !isPlausiblePhone(phone)) {
+      return res.status(400).json({ message: 'Enter a valid phone number.' });
+    }
+
+    must(await supabase.from('addresses').update({
+      label: label || 'Home', name: name || '', line1, city, state: state || '', pincode, phone: phone || ''
+    }).eq('id', id), 'putAddress:update');
+
+    res.json({ addresses: await listAddresses(req.userId) });
+  } catch (err) {
+    console.error('PUT /addresses/:id failed:', err);
+    res.status(500).json({ message: 'Something went wrong on the server.' });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
   try {
     must(await supabase.from('addresses').delete().eq('id', Number(req.params.id)).eq('user_id', req.userId), 'deleteAddress');

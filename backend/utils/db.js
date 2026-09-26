@@ -138,7 +138,11 @@ async function getReelItems({ activeOnly = true } = {}) {
     'getReelItems:products'
   );
   const productById = Object.fromEntries(products.map(p => [p.id, p]));
-  const rows = items.map(item => ({ ...item, ...(productById[item.product_id] || {}), product_status: productById[item.product_id]?.status }));
+  // Product fields spread first so the reel_item's own columns (id, active,
+  // sort_order, video_url, thumbnail_url) always win — a product's own `id`
+  // must never leak in and overwrite the reel_item's id (they're rows in
+  // different tables and mean completely different things).
+  const rows = items.map(item => ({ ...(productById[item.product_id] || {}), ...item, product_status: productById[item.product_id]?.status }));
   return activeOnly ? rows.filter(r => r.product_status !== 'archived') : rows;
 }
 
