@@ -14,6 +14,7 @@ const { toProductApiShape } = require('../utils/shape');
 const { runBackup, listBackups, BACKUP_DIR } = require('../utils/backup');
 const { RETURN_REASONS } = require('../utils/returns');
 const { sendEmail, emailConfigured, smsConfigured } = require('../utils/notify');
+const razorpayUtil = require('../utils/razorpay');
 const { checkWishlistAlerts } = require('../utils/wishlistAlerts');
 const { checkAbandonedCarts } = require('../utils/abandonedCart');
 const { checkLowStock } = require('../utils/lowStockAlerts');
@@ -514,6 +515,10 @@ async function shapeAdminOrder(o, { full } = {}) {
     giftNote: o.gift_note,
     payment: o.payment,
     cancelledAt: o.cancelled_at,
+    razorpayPaymentId: o.razorpay_payment_id || null,
+    razorpayRefundId: o.razorpay_refund_id && o.razorpay_refund_id !== 'pending' ? o.razorpay_refund_id : null,
+    refundAmount: o.refund_amount,
+    refundProcessedAt: o.refund_processed_at,
     timeline: await buildTimeline(o),
     notifications
   };
@@ -690,6 +695,43 @@ router.put('/orders/:id/refund', asyncRoute(async (req, res) => {
 
   must(await supabase.from('orders').update({ refund_status: refundStatus }).eq('id', order.id), 'setRefundStatus:update');
   res.json({ message: 'Refund status updated.' });
+}));
+
+// Refunds a cancelled, prepaid order to the customer's original payment method
+// through Razorpay. Additive to the manual refund-status dropdown above (which
+// stays as the fallback for legacy/COD orders with no Razorpay payment id).
+// Double-click safe: the order is "claimed" with a conditional update before
+// the Razorpay call, and the claim is released if Razorpay rejects it.
+router.post('/orders/:id/refund/razorpay', asyncRoute(async (req, res) => {
+  const order = must(await supabase.from('orders').select('*').eq('id', req.params.id).maybeSingle(), 'rzpRefund:lookup');
+  if (!order) return res.status(404).json({ message: 'Order not found.' });
+  if (!order.cancelled_at) return res.status(400).json({ message: 'Only cancelled orders can be refunded.' });
+  if (order.payment === 'COD') return res.status(400).json({ message: 'This was a Cash on Delivery order — nothing was charged, so there is nothing to refund.' });
+  if (!order.razorpay_payment_id) return res.status(400).json({ message: 'This order has no Razorpay payment on record — refund it manually from the Razorpay Dashboard, then mark it Processed here.' });
+  if (order.razorpay_refund_id || order.refund_status === 'Processed') return res.status(409).json({ message: 'This order has already been refunded.' });
+  if (!razorpayUtil.isConfigured()) return res.status(503).json({ message: 'Razorpay is not configured on the server.' });
+
+  const claimed = must(await supabase.from('orders').update({ razorpay_refund_id: 'pending' })
+    .eq('id', order.id).is('razorpay_refund_id', null).select('id'), 'rzpRefund:claim');
+  if (!claimed.length) return res.status(409).json({ message: 'A refund for this order is already in progress.' });
+
+  let refund;
+  try {
+    refund = await razorpayUtil.refundPayment(order.razorpay_payment_id, order.total, { order_id: order.id, reason: 'Order cancelled' }, 'rfnd-order-' + order.id);
+  } catch (err) {
+    await supabase.from('orders').update({ razorpay_refund_id: null }).eq('id', order.id);
+    console.error(`[razorpay] Refund failed for order ${order.id}:`, err);
+    return res.status(502).json({ message: 'Razorpay could not process this refund: ' + razorpayUtil.refundErrorMessage(err) });
+  }
+
+  must(await supabase.from('orders').update({
+    razorpay_refund_id: refund.id, refund_amount: order.total, refund_processed_at: new Date().toISOString(), refund_status: 'Processed'
+  }).eq('id', order.id), 'rzpRefund:save');
+  await record(req, 'refunded via razorpay', 'order', order.id, { refundStatus: order.refund_status }, { refundStatus: 'Processed', razorpayRefundId: refund.id, amount: order.total });
+
+  const updated = must(await supabase.from('orders').select('*').eq('id', order.id).single(), 'rzpRefund:reread');
+  const [withExtras] = await attachOrderExtras([updated]);
+  res.json({ message: 'Refund sent to Razorpay.', order: await shapeAdminOrder(withExtras, { full: true }) });
 }));
 
 // Deciding a pending cancellation request: approving here is the only place
@@ -878,6 +920,39 @@ router.put('/returns/:id/refund', asyncRoute(async (req, res) => {
     return res.status(400).json({ message: 'Enter a valid refund amount.' });
   }
 
+  // "Original payment method" on a Razorpay-paid order means a real Razorpay
+  // refund, sent BEFORE the return is marked Refunded. If a previous attempt
+  // already sent it (razorpay_refund_id saved) but the bookkeeping below
+  // failed, a retry skips straight to the bookkeeping instead of paying twice.
+  // Orders with no Razorpay payment on record keep the old manual behaviour.
+  let rzpRefundId = null;
+  if (method === 'original' && amount > 0) {
+    const order = must(await supabase.from('orders').select('id, payment, razorpay_payment_id').eq('id', existing.order_id).maybeSingle(), 'refundReturn:order');
+    if (order && order.razorpay_payment_id && order.payment !== 'COD') {
+      if (existing.razorpay_refund_id === 'pending') {
+        return res.status(409).json({ message: 'A refund for this return is already in progress.' });
+      }
+      rzpRefundId = existing.razorpay_refund_id;
+      if (!rzpRefundId) {
+        if (!razorpayUtil.isConfigured()) return res.status(503).json({ message: 'Razorpay is not configured on the server.' });
+        const claimed = must(await supabase.from('return_requests').update({ razorpay_refund_id: 'pending' })
+          .eq('id', existing.id).is('razorpay_refund_id', null).select('id'), 'refundReturn:claim');
+        if (!claimed.length) return res.status(409).json({ message: 'A refund for this return is already in progress.' });
+        try {
+          const refund = await razorpayUtil.refundPayment(order.razorpay_payment_id, amount, { order_id: order.id, return_id: String(existing.id), reason: 'Return refund' }, 'rfnd-return-' + existing.id);
+          rzpRefundId = refund.id;
+        } catch (err) {
+          await supabase.from('return_requests').update({ razorpay_refund_id: null }).eq('id', existing.id);
+          console.error(`[razorpay] Refund failed for return ${existing.id}:`, err);
+          return res.status(502).json({ message: 'Razorpay could not process this refund: ' + razorpayUtil.refundErrorMessage(err) });
+        }
+        // Money has moved — record the id; if even this fails, say so loudly rather than lose it.
+        const saved = await supabase.from('return_requests').update({ razorpay_refund_id: rzpRefundId }).eq('id', existing.id);
+        if (saved.error) console.error(`[razorpay] Refund ${rzpRefundId} sent for return ${existing.id} but could not be saved:`, saved.error);
+      }
+    }
+  }
+
   let couponCode;
   try {
     const rpc = await supabase.rpc('process_return_refund', {
@@ -886,10 +961,11 @@ router.put('/returns/:id/refund', asyncRoute(async (req, res) => {
     if (rpc.error) throw new Error(rpc.error.message);
     couponCode = rpc.data;
   } catch (e) {
-    return res.status(500).json({ message: 'Could not process refund: ' + e.message });
+    const already = rzpRefundId ? ` The money was already sent via Razorpay (refund ${rzpRefundId}) — press Process Refund again to finish recording it; it won't be paid twice.` : '';
+    return res.status(500).json({ message: 'Could not process refund: ' + e.message + already });
   }
 
-  await record(req, 'refunded', 'return_request', existing.id, { status: existing.status }, { status: 'Refunded', method, amount, couponCode });
+  await record(req, 'refunded', 'return_request', existing.id, { status: existing.status }, { status: 'Refunded', method, amount, couponCode, razorpayRefundId: rzpRefundId });
 
   const customer = must(await supabase.from('users').select('name, email').eq('id', existing.user_id).maybeSingle(), 'refundReturn:customer');
   if (customer && customer.email) {
