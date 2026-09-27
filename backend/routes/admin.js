@@ -645,6 +645,20 @@ router.post('/jobs/prebook/run', asyncRoute(async (req, res) => {
   res.json({ result: await checkPrebookNotifications() });
 }));
 
+// Manual "Notify Now" for one saree/colour — same send logic as the
+// background job, scoped to a single variant so it can't ping anyone
+// pre-booked on a different saree that also happens to be in stock.
+router.post('/prebooks/:variantId/notify', asyncRoute(async (req, res) => {
+  const variantId = Number(req.params.variantId);
+  const variant = must(await supabase.from('product_variants').select('stock').eq('id', variantId).maybeSingle(), 'notifyPrebook:lookup');
+  if (!variant) return res.status(404).json({ message: 'Variant not found.' });
+  if (variant.stock <= 0) return res.status(400).json({ message: 'This colour is still out of stock — nothing to notify.' });
+
+  const result = await checkPrebookNotifications(variantId);
+  if (!result.sent) return res.status(400).json({ message: 'Everyone who pre-booked this colour has already been notified.' });
+  res.json({ message: `Notified ${result.sent} customer${result.sent === 1 ? '' : 's'}.`, result });
+}));
+
 // Pre-Book demand — grouped by variant so "14 people want this back" reads
 // at a glance, with each requester's email/date available underneath.
 router.get('/prebooks', asyncRoute(async (req, res) => {

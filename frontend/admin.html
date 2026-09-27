@@ -1119,7 +1119,10 @@
             <td>${g.colorName}</td>
             <td>${g.requests.length}</td>
             <td>${g.stock > 0 ? '<span class="order-status ok">Back in stock</span>' : '<span class="order-status cancelled">Still out of stock</span>'}</td>
-            <td><button class="btn btn-sm btn-outline" data-prebook-toggle="${i}">View emails</button></td>
+            <td style="white-space:nowrap;">
+              <button class="btn btn-sm btn-outline" data-prebook-toggle="${i}">View emails</button>
+              ${g.stock > 0 && g.requests.some(r=>!r.notified) ? `<button class="btn btn-sm btn-primary" data-prebook-notify="${g.variantId}">Notify Now</button>` : ''}
+            </td>
           </tr>
           <tr id="prebookDetail-${i}" style="display:none;"><td colspan="5">
             <div style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;">
@@ -1129,6 +1132,14 @@
       document.querySelectorAll('[data-prebook-toggle]').forEach(btn=>btn.addEventListener('click', ()=>{
         const row = document.getElementById('prebookDetail-' + btn.dataset.prebookToggle);
         row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+      }));
+      document.querySelectorAll('[data-prebook-notify]').forEach(btn=>btn.addEventListener('click', async ()=>{
+        btn.disabled = true;
+        try{
+          const r = await adminApiFetch('/admin/prebooks/' + btn.dataset.prebookNotify + '/notify', {method:'POST'});
+          toast(r.message);
+          loadPrebooks();
+        }catch(e){ toast(e.message, 'error'); btn.disabled = false; }
       }));
     }catch(e){ toast(e.message, 'error'); }
   }
