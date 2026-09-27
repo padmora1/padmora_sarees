@@ -114,6 +114,7 @@
               <button data-stab="hero" class="active">Hero</button>
               <button data-stab="promo">Promo Band</button>
               <button data-stab="reels">Sarees in Motion</button>
+              <button data-stab="upcoming">Upcoming Sarees</button>
               <button data-stab="faq">FAQ</button>
             </div>
             <div id="storefrontTabBody"></div>
@@ -1790,6 +1791,7 @@
     if(storefrontTab==='hero') renderHeroAdmin();
     else if(storefrontTab==='promo') renderPromoAdmin();
     else if(storefrontTab==='reels') renderReelsAdmin();
+    else if(storefrontTab==='upcoming') renderUpcomingAdmin();
     else if(storefrontTab==='faq') renderFaqAdmin();
   }
 
@@ -1967,6 +1969,95 @@
       const productId = document.getElementById('addReelProduct').value;
       if(!productId){ toast('Choose a product first', 'error'); return; }
       try{ await adminApiFetch('/admin/reels', {method:'POST', body: JSON.stringify({productId})}); toast('Added to Sarees in Motion'); renderReelsAdmin(); }
+      catch(e){ toast(e.message, 'error'); }
+    });
+  }
+
+  // ---- Upcoming Sarees (launch teaser + "notify me" list) ----
+  // A separate, parallel system from the sold-out Pre-Book feature under
+  // Inventory — these entries have no real product/variant, so "going live"
+  // is always this admin's own Notify Now click, never an automatic signal.
+  async function renderUpcomingAdmin(){
+    const body = document.getElementById('storefrontTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const {upcomingSarees} = await adminApiFetch('/admin/upcoming-sarees');
+
+    body.innerHTML = `
+      <div style="overflow-x:auto;">
+        <table class="admin-table">
+          <thead><tr><th>Image</th><th>Name</th><th>Fabric</th><th>Expected</th><th>Active</th><th>Interested</th><th></th></tr></thead>
+          <tbody>${upcomingSarees.map(s=>`
+            <tr data-upcoming-id="${s.id}">
+              <td>${s.imageUrl ? `<img src="${s.imageUrl}" style="height:44px;width:44px;object-fit:cover;border-radius:3px;">` : '—'} <input type="file" accept="image/*" data-upcoming-image="${s.id}" style="max-width:110px;font-size:11px;"></td>
+              <td><input class="admin-input" style="width:100%;" data-upcoming-field="name" value="${s.name}"></td>
+              <td><input class="admin-input" style="width:100%;" data-upcoming-field="fabric" value="${s.fabric||''}" placeholder="e.g. Paithani"></td>
+              <td><input class="admin-input" style="width:100%;" data-upcoming-field="expectedLabel" value="${s.expectedLabel||''}" placeholder="e.g. Coming this Diwali"></td>
+              <td><input type="checkbox" data-upcoming-active="${s.id}" ${s.active?'checked':''}></td>
+              <td>
+                <button class="btn btn-sm btn-outline" data-upcoming-toggle="${s.id}">${s.requests.length} — View</button>
+                ${s.requests.some(r=>!r.notified) ? `<button class="btn btn-sm btn-primary" data-upcoming-notify="${s.id}">Notify Now</button>` : ''}
+              </td>
+              <td style="white-space:nowrap;">
+                <button class="btn btn-sm btn-outline" data-upcoming-save="${s.id}">Save</button>
+                <button class="btn btn-sm" style="color:var(--maroon);" data-upcoming-del="${s.id}">Remove</button>
+              </td>
+            </tr>
+            <tr id="upcomingDetail-${s.id}" style="display:none;"><td colspan="7">
+              <div style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;">
+                <div class="form-field" style="max-width:400px;margin-bottom:8px;"><label>Description (shown on the page)</label><textarea class="admin-input" rows="2" data-upcoming-field="description" data-upcoming-id-for="${s.id}">${s.description||''}</textarea></div>
+                ${s.requests.length ? s.requests.map(r=>`${r.email}${r.name?' ('+r.name+')':''} — ${new Date(r.createdAt).toLocaleDateString('en-IN')} ${r.notified?'<span class="status-pill status-confirmed">notified</span>':''}`).join('<br>') : 'No one has asked to be notified yet.'}
+              </div>
+            </td></tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <div class="admin-form" style="margin-top:16px;">
+        <div class="form-field"><label>Name</label><input class="admin-input" style="width:100%;" id="newUpcomingName" placeholder="e.g. Emerald Zari Kanjivaram"></div>
+        <button class="btn btn-sm btn-outline" id="addUpcomingBtn">+ Add Upcoming Saree</button>
+      </div>`;
+
+    document.querySelectorAll('[data-upcoming-toggle]').forEach(btn=>btn.addEventListener('click', ()=>{
+      const row = document.getElementById('upcomingDetail-' + btn.dataset.upcomingToggle);
+      row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+    }));
+    document.querySelectorAll('[data-upcoming-save]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const id = btn.dataset.upcomingSave;
+      const tr = document.querySelector(`tr[data-upcoming-id="${id}"]`);
+      const payload = {};
+      tr.querySelectorAll('[data-upcoming-field]').forEach(inp=>{ payload[inp.dataset.upcomingField] = inp.value; });
+      const descField = document.querySelector(`textarea[data-upcoming-id-for="${id}"]`);
+      if(descField) payload.description = descField.value;
+      try{ await adminApiFetch('/admin/upcoming-sarees/'+id, {method:'PUT', body: JSON.stringify(payload)}); toast('Saved'); renderUpcomingAdmin(); }
+      catch(e){ toast(e.message, 'error'); }
+    }));
+    document.querySelectorAll('[data-upcoming-active]').forEach(cb=>cb.addEventListener('change', async ()=>{
+      try{ await adminApiFetch('/admin/upcoming-sarees/'+cb.dataset.upcomingActive, {method:'PUT', body: JSON.stringify({active: cb.checked})}); toast('Updated'); }
+      catch(e){ toast(e.message, 'error'); }
+    }));
+    document.querySelectorAll('[data-upcoming-del]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const ok = await showConfirmDialog('This removes it from the Upcoming Sarees page — anyone who signed up to be notified will not be emailed.', {title:'Remove this entry?', confirmLabel:'Remove', danger:true});
+      if(!ok) return;
+      try{ await adminApiFetch('/admin/upcoming-sarees/'+btn.dataset.upcomingDel, {method:'DELETE'}); toast('Removed'); renderUpcomingAdmin(); }
+      catch(e){ toast(e.message, 'error'); }
+    }));
+    document.querySelectorAll('[data-upcoming-notify]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const ok = await showConfirmDialog('This emails everyone still waiting on this saree that it has launched.', {title:'Notify everyone waiting?', confirmLabel:'Notify Now'});
+      if(!ok) return;
+      btn.disabled = true;
+      try{
+        const r = await adminApiFetch('/admin/upcoming-sarees/'+btn.dataset.upcomingNotify+'/notify', {method:'POST'});
+        toast(r.message);
+        renderUpcomingAdmin();
+      }catch(e){ toast(e.message, 'error'); btn.disabled = false; }
+    }));
+    document.querySelectorAll('[data-upcoming-image]').forEach(input=>input.addEventListener('change', async e=>{
+      if(!e.target.files[0]) return;
+      try{ await uploadEntityImage('/api/admin/upcoming-sarees/'+input.dataset.upcomingImage+'/image', 'file', e.target.files[0]); toast('Image uploaded'); renderUpcomingAdmin(); }
+      catch(err){ toast(err.message, 'error'); }
+    }));
+    document.getElementById('addUpcomingBtn').addEventListener('click', async ()=>{
+      const name = document.getElementById('newUpcomingName').value.trim();
+      if(!name){ toast('Enter a name first', 'error'); return; }
+      try{ await adminApiFetch('/admin/upcoming-sarees', {method:'POST', body: JSON.stringify({name})}); toast('Added'); renderUpcomingAdmin(); }
       catch(e){ toast(e.message, 'error'); }
     });
   }

@@ -1505,6 +1505,98 @@ router.post('/reels/:id/video', uploadSingle, asyncRoute(async (req, res) => {
   res.json({ reelItem: updated });
 }));
 
+// ---- Upcoming Sarees (launch teaser + "notify me" list) ----
+// A separate, parallel system from the Pre-Book feature (prebook_requests) —
+// these entries have no real product/variant, so "going live" here is always
+// an admin action (the Notify Now button below), never an automatic
+// stock-crossed-zero signal the way prebookAlerts.js's background job is.
+async function shapeAdminUpcoming(row) {
+  const requests = must(
+    await supabase.from('upcoming_saree_notify_requests').select('*').eq('upcoming_saree_id', row.id).order('created_at', { ascending: false }),
+    'shapeAdminUpcoming:requests'
+  );
+  return {
+    id: row.id, name: row.name, fabric: row.fabric, imageUrl: row.image_url,
+    description: row.description, expectedLabel: row.expected_label, active: row.active, sortOrder: row.sort_order,
+    requests: requests.map(r => ({ id: r.id, email: r.email, name: r.name, createdAt: r.created_at, notified: !!r.notified }))
+  };
+}
+
+router.get('/upcoming-sarees', asyncRoute(async (req, res) => {
+  const rows = must(await supabase.from('upcoming_sarees').select('*').order('sort_order').order('id'), 'listAdminUpcoming');
+  res.json({ upcomingSarees: await Promise.all(rows.map(shapeAdminUpcoming)) });
+}));
+
+router.post('/upcoming-sarees', asyncRoute(async (req, res) => {
+  const { name, fabric, description, expectedLabel } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ message: 'Name is required.' });
+  const maxSort = must(await supabase.from('upcoming_sarees').select('sort_order').order('sort_order', { ascending: false }).limit(1), 'createUpcoming:maxSort');
+  const inserted = must(await supabase.from('upcoming_sarees').insert({
+    name: name.trim(), fabric: fabric || null, description: description || null, expected_label: expectedLabel || null,
+    active: true, sort_order: (maxSort[0]?.sort_order ?? -1) + 1
+  }).select().single(), 'createUpcoming:insert');
+  await record(req, 'created', 'upcoming_saree', inserted.id, null, { name });
+  res.status(201).json({ upcomingSaree: await shapeAdminUpcoming(inserted) });
+}));
+
+router.put('/upcoming-sarees/:id', asyncRoute(async (req, res) => {
+  const existing = must(await supabase.from('upcoming_sarees').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateUpcoming:lookup');
+  if (!existing) return res.status(404).json({ message: 'Not found.' });
+  const { name, fabric, description, expectedLabel, active, sortOrder } = req.body || {};
+  const updated = must(await supabase.from('upcoming_sarees').update({
+    name: name !== undefined ? name : existing.name,
+    fabric: fabric !== undefined ? fabric : existing.fabric,
+    description: description !== undefined ? description : existing.description,
+    expected_label: expectedLabel !== undefined ? expectedLabel : existing.expected_label,
+    active: active !== undefined ? !!active : existing.active,
+    sort_order: sortOrder !== undefined ? Number(sortOrder) : existing.sort_order
+  }).eq('id', existing.id).select().single(), 'updateUpcoming:update');
+  await record(req, 'updated', 'upcoming_saree', existing.id, { name: existing.name, active: existing.active }, { name, active });
+  res.json({ upcomingSaree: await shapeAdminUpcoming(updated) });
+}));
+
+router.delete('/upcoming-sarees/:id', asyncRoute(async (req, res) => {
+  must(await supabase.from('upcoming_sarees').delete().eq('id', Number(req.params.id)), 'deleteUpcoming');
+  await record(req, 'deleted', 'upcoming_saree', req.params.id);
+  res.json({ message: 'Deleted.' });
+}));
+
+router.post('/upcoming-sarees/:id/image', uploadSingle, asyncRoute(async (req, res) => {
+  const existing = must(await supabase.from('upcoming_sarees').select('id').eq('id', Number(req.params.id)).maybeSingle(), 'upcomingImage:lookup');
+  if (!existing) return res.status(404).json({ message: 'Not found.' });
+  if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
+  const updated = must(await supabase.from('upcoming_sarees').update({ image_url: `/uploads/${req.file.filename}` }).eq('id', existing.id).select().single(), 'upcomingImage:update');
+  res.json({ upcomingSaree: await shapeAdminUpcoming(updated) });
+}));
+
+router.post('/upcoming-sarees/:id/notify', asyncRoute(async (req, res) => {
+  const id = Number(req.params.id);
+  const entry = must(await supabase.from('upcoming_sarees').select('*').eq('id', id).maybeSingle(), 'notifyUpcoming:lookup');
+  if (!entry) return res.status(404).json({ message: 'Not found.' });
+
+  const pending = must(
+    await supabase.from('upcoming_saree_notify_requests').select('*').eq('upcoming_saree_id', id).eq('notified', false),
+    'notifyUpcoming:pending'
+  );
+  if (!pending.length) return res.status(400).json({ message: 'Everyone on this list has already been notified.' });
+
+  const now = new Date().toISOString();
+  for (const row of pending) {
+    await sendEmail({
+      to: row.email,
+      subject: `${entry.name} is here!`,
+      html: `<div style="font-family:Georgia,serif;max-width:480px;margin:0 auto;">
+        <h2 style="color:#7A1F2B;">Good news, ${row.name || 'there'}!</h2>
+        <p>You asked to be told when <strong>${entry.name}</strong> launched — it's live now.</p>
+        <p><a href="${process.env.SITE_URL || 'https://padmorasarees.com'}/shop" style="color:#7A1F2B;font-weight:bold;">Shop now →</a></p>
+      </div>`
+    });
+    must(await supabase.from('upcoming_saree_notify_requests').update({ notified: true, notified_at: now }).eq('id', row.id), 'notifyUpcoming:markNotified');
+  }
+  await record(req, 'notified', 'upcoming_saree', id, null, { sent: pending.length });
+  res.json({ message: `Notified ${pending.length} customer${pending.length === 1 ? '' : 's'}.` });
+}));
+
 // ---- FAQ ----
 router.get('/faq', asyncRoute(async (req, res) => {
   res.json({ faq: await getFaqItems({ activeOnly: false }) });

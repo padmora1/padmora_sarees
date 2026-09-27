@@ -26,6 +26,7 @@ const adminAuthRoutes = require('./routes/adminAuth');
 const returnsRoutes = require('./routes/returns');
 const paymentRoutes = require('./routes/payments');
 const sitemapRoutes = require('./routes/sitemap');
+const upcomingSareesRoutes = require('./routes/upcomingSarees');
 const { runBackup } = require('./utils/backup');
 const { checkWishlistAlerts } = require('./utils/wishlistAlerts');
 const { checkAbandonedCarts } = require('./utils/abandonedCart');
@@ -55,6 +56,7 @@ app.use('/api', contentRoutes);
 app.use('/api/admin-auth', adminAuthRoutes);
 app.use('/api/returns', returnsRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/upcoming-sarees', upcomingSareesRoutes);
 // Not under /api — a sitemap/robots.txt lives at the site root by convention,
 // and search engines only look there. Mounted ahead of the static/catch-all
 // handlers below so these real routes win over any same-named static file.
@@ -74,7 +76,8 @@ const FRONTEND_DIR = path.join(__dirname, 'frontend');
 const CLEAN_PAGES = [
   'shop', 'product', 'cart', 'checkout', 'account', 'wishlist', 'login', 'register',
   'track-order', 'about', 'our-weaves', 'trousseau', 'faq', 'contact',
-  'shipping-returns', 'terms', 'privacy-policy', 'admin', 'admin-login', 'packing-slip'
+  'shipping-returns', 'terms', 'privacy-policy', 'admin', 'admin-login', 'packing-slip',
+  'upcoming-sarees'
 ];
 function withQuery(req, cleanPath) {
   const qsIndex = req.url.indexOf('?');
