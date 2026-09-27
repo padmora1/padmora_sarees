@@ -613,7 +613,8 @@ router.get('/notifications', asyncRoute(async (req, res) => {
   res.json({
     notifications: rows.map(r => ({ ...r, customer_name: nameByOrder[r.order_id] })),
     emailConfigured: emailConfigured(),
-    smsConfigured: smsConfigured()
+    smsConfigured: smsConfigured(),
+    razorpayConfigured: razorpayUtil.isConfigured()
   });
 }));
 
@@ -1099,6 +1100,37 @@ router.put('/contact/:id/read', asyncRoute(async (req, res) => {
   res.json({ message: 'Marked as read.' });
 }));
 
+router.put('/contact/:id/reply', asyncRoute(async (req, res) => {
+  const { reply } = req.body || {};
+  const cleanReply = String(reply || '').trim();
+  if (!cleanReply) return res.status(400).json({ message: 'Write a reply before sending.' });
+
+  const existing = must(await supabase.from('contact_messages').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'replyContact:lookup');
+  if (!existing) return res.status(404).json({ message: 'Message not found.' });
+
+  const sent = await sendEmail({
+    to: existing.email,
+    subject: `Re: ${existing.subject}`,
+    html: `<div style="font-family:Georgia,serif;max-width:480px;margin:0 auto;">
+      <h2 style="color:#7A1F2B;">A reply from Padmora</h2>
+      <p>Hi ${existing.name || 'there'},</p>
+      <p>${cleanReply.replace(/\n/g, '<br>')}</p>
+      <p style="color:#6f5a5c;font-size:12px;margin-top:20px;">In reply to your message: "${existing.message}"</p>
+    </div>`
+  });
+
+  must(await supabase.from('contact_messages').update({
+    admin_reply: cleanReply, replied_at: new Date().toISOString(), read: true
+  }).eq('id', existing.id), 'replyContact:update');
+  await record(req, 'replied', 'contact_message', existing.id, null, { reply: cleanReply });
+
+  const updated = must(await supabase.from('contact_messages').select('*').eq('id', existing.id).single(), 'replyContact:reread');
+  res.json({
+    message: sent.status === 'sent' ? 'Reply sent.' : 'Reply saved, but email delivery is not configured — the customer will not receive it by email.',
+    contactMessage: updated
+  });
+}));
+
 // ---- Fabrics / Weaves ----
 router.get('/fabrics', asyncRoute(async (req, res) => {
   res.json({ fabrics: await getFabrics({ activeOnly: false }) });
@@ -1578,9 +1610,40 @@ router.get('/reviews', asyncRoute(async (req, res) => {
     reviews: rows.map(r => ({
       id: r.id, productId: r.product_id, productName: nameById[r.product_id] || '', userName: r.user_name,
       rating: r.rating, title: r.title, body: r.body, verified: !!r.verified, featured: !!r.featured,
-      status: r.status, createdAt: r.created_at
+      status: r.status, createdAt: r.created_at, adminReply: r.admin_reply, repliedAt: r.replied_at
     }))
   });
+}));
+
+router.put('/reviews/:id/reply', asyncRoute(async (req, res) => {
+  const { reply } = req.body || {};
+  const cleanReply = String(reply || '').trim();
+  if (!cleanReply) return res.status(400).json({ message: 'Write a reply before sending.' });
+
+  const existing = must(await supabase.from('reviews').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'replyReview:lookup');
+  if (!existing) return res.status(404).json({ message: 'Review not found.' });
+
+  must(await supabase.from('reviews').update({
+    admin_reply: cleanReply, replied_at: new Date().toISOString()
+  }).eq('id', existing.id), 'replyReview:update');
+  await record(req, 'replied', 'review', existing.id, null, { reply: cleanReply });
+
+  const customer = must(await supabase.from('users').select('name, email').eq('id', existing.user_id).maybeSingle(), 'replyReview:customer');
+  if (customer && customer.email) {
+    await sendEmail({
+      to: customer.email,
+      subject: `Padmora replied to your review`,
+      html: `<div style="font-family:Georgia,serif;max-width:480px;margin:0 auto;">
+        <h2 style="color:#7A1F2B;">A reply to your review</h2>
+        <p>Hi ${customer.name || 'there'},</p>
+        <p>${cleanReply.replace(/\n/g, '<br>')}</p>
+        <p style="color:#6f5a5c;font-size:12px;margin-top:20px;">In response to your review: "${existing.body}"</p>
+      </div>`,
+      userId: existing.user_id
+    });
+  }
+
+  res.json({ message: 'Reply posted — it now shows on the product page.' });
 }));
 
 router.put('/reviews/:id', asyncRoute(async (req, res) => {
@@ -1601,6 +1664,35 @@ router.delete('/reviews/:id', asyncRoute(async (req, res) => {
   must(await supabase.from('reviews').delete().eq('id', Number(req.params.id)), 'deleteReview');
   await record(req, 'deleted', 'review', req.params.id);
   res.json({ message: 'Review deleted.' });
+}));
+
+// ---- Revenue trend (last N days, cancelled orders excluded) ----
+router.get('/analytics/revenue-trend', asyncRoute(async (req, res) => {
+  const days = Math.min(90, Math.max(7, Number(req.query.days) || 30));
+  const since = new Date();
+  since.setDate(since.getDate() - (days - 1));
+  since.setHours(0, 0, 0, 0);
+
+  const orders = must(
+    await supabase.from('orders').select('placed_at, total, cancelled_at').gte('placed_at', since.toISOString()),
+    'revenueTrend:orders'
+  );
+
+  // One bucket per calendar day (server-local), oldest first, zero-filled so
+  // a quiet day still shows as a real bar instead of a gap in the axis.
+  const byDay = new Map();
+  for (let i = 0; i < days; i++) {
+    const d = new Date(since); d.setDate(d.getDate() + i);
+    byDay.set(d.toISOString().slice(0, 10), { date: d.toISOString().slice(0, 10), revenue: 0, orders: 0 });
+  }
+  orders.forEach(o => {
+    if (o.cancelled_at) return;
+    const key = new Date(o.placed_at).toISOString().slice(0, 10);
+    const bucket = byDay.get(key);
+    if (bucket) { bucket.revenue += o.total; bucket.orders += 1; }
+  });
+
+  res.json({ days: Array.from(byDay.values()) });
 }));
 
 // ---- Wishlist analytics ----

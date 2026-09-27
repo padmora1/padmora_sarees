@@ -56,7 +56,7 @@
             <h2>Overview</h2>
             <div class="stat-grid" id="statGrid"></div>
             <p id="lastBackupNote" style="font-size:12px;color:var(--ink-soft);margin-top:10px;"></p>
-            <h3 style="font-size:15px;margin:26px 0 12px;">Low Stock (10 or fewer)</h3>
+            <h3 style="font-size:15px;margin:26px 0 12px;">Low Stock (below each variant's threshold)</h3>
             <div id="lowStockList"></div>
           </div>
 
@@ -133,6 +133,7 @@
             <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
               <button class="btn btn-outline btn-sm" id="exportOrdersCsv">Export CSV</button>
               <button class="btn btn-outline btn-sm" id="printSelectedSlips" style="display:none;">Print Packing Slips (<span id="selectedSlipCount">0</span>)</button>
+              <input type="search" class="admin-input" id="orderSearchBox" placeholder="Search order #, customer name or email…" style="max-width:280px;margin-left:auto;">
             </div>
             <div class="order-filter-row" id="orderStatusFilters"></div>
             <div style="overflow-x:auto;">
@@ -182,6 +183,9 @@
 
           <div id="panel-customers" style="display:none;">
             <h2>Customers</h2>
+            <div style="margin-bottom:14px;">
+              <input type="search" class="admin-input" id="customerSearchBox" placeholder="Search name or email…" style="max-width:280px;">
+            </div>
             <div style="overflow-x:auto;">
               <table class="admin-table" id="customersTable"></table>
             </div>
@@ -199,7 +203,8 @@
           <div id="panel-analytics" style="display:none;">
             <h2>Analytics</h2>
             <div class="editor-tabs" id="analyticsTabs">
-              <button data-atab="wishlist" class="active">Wishlist</button>
+              <button data-atab="revenue" class="active">Revenue</button>
+              <button data-atab="wishlist">Wishlist</button>
               <button data-atab="search">Search</button>
             </div>
             <div id="analyticsTabBody"></div>
@@ -300,6 +305,16 @@
     if(tab==='activitylog') loadActivityLog();
   }
   document.querySelectorAll('.account-nav button').forEach(b=>b.addEventListener('click', ()=>switchTab(b.dataset.tab)));
+
+  // Jumps to the Orders tab and opens one specific order's detail — used from
+  // places like a customer's order history that only show a summary line.
+  async function viewOrderFromElsewhere(orderId){
+    orderFilter = 'all';
+    document.getElementById('orderSearchBox').value = '';
+    switchTab('orders');
+    openOrderId = orderId;
+    await renderOrderDetail();
+  }
 
   async function loadOverview(){
     try{
@@ -625,6 +640,11 @@
     }catch(e){ toast(e.message, 'error'); }
   });
 
+  function debounce(fn, ms){
+    let t;
+    return (...args)=>{ clearTimeout(t); t = setTimeout(()=>fn(...args), ms); };
+  }
+
   let orderFilter = 'all';
   let openOrderId = null;
   let selectedOrderIds = new Set();
@@ -638,6 +658,8 @@
     if(!selectedOrderIds.size) return;
     window.open('/packing-slip?ids=' + Array.from(selectedOrderIds).map(encodeURIComponent).join(','), '_blank');
   });
+  document.getElementById('orderSearchBox').addEventListener('input', debounce(()=>loadOrders(), 250));
+  document.getElementById('customerSearchBox').addEventListener('input', debounce(()=>renderCustomersTable(), 200));
 
   function updateSelectedSlipUI(){
     const btn = document.getElementById('printSelectedSlips');
@@ -654,6 +676,14 @@
       const q = (orderFilter !== 'all' && orderFilter !== 'Cancellation Requested') ? ('?status=' + encodeURIComponent(orderFilter)) : '';
       let {orders} = await adminApiFetch('/admin/orders' + q);
       if(orderFilter === 'Cancellation Requested') orders = orders.filter(o=>o.cancelRequestStatus === 'Requested');
+      const searchTerm = document.getElementById('orderSearchBox').value.trim().toLowerCase();
+      if(searchTerm){
+        orders = orders.filter(o=>
+          o.id.toLowerCase().includes(searchTerm) ||
+          (o.customerName||'').toLowerCase().includes(searchTerm) ||
+          (o.customerEmail||'').toLowerCase().includes(searchTerm)
+        );
+      }
       // Selection shouldn't silently hold onto orders that scrolled out of the
       // current filter view — keep only what's still visible.
       const visibleIds = new Set(orders.map(o=>o.id));
@@ -849,7 +879,7 @@
   const RETURN_FILTERS = ['all','Requested','Approved','Rejected','Received','Refunded'];
   const REFUND_METHOD_LABEL = { original: 'Original payment method', bank_transfer: 'Bank transfer / UPI', store_credit: 'Store credit' };
   const CANCEL_REASON_LABEL = {
-    wrong_choice: 'Chose the wrong color/size', changed_mind: 'Changed my mind', ordered_by_mistake: 'Ordered by mistake',
+    wrong_choice: 'Chose the wrong colour', changed_mind: 'Changed my mind', ordered_by_mistake: 'Ordered by mistake',
     found_better_price: 'Found a better price elsewhere', other: 'Other'
   };
   let returnFilter = 'all';
@@ -1273,10 +1303,11 @@
 
   async function loadNotificationsLog(){
     try{
-      const {notifications, emailConfigured, smsConfigured} = await adminApiFetch('/admin/notifications');
+      const {notifications, emailConfigured, smsConfigured, razorpayConfigured} = await adminApiFetch('/admin/notifications');
       document.getElementById('notifyConfigStatus').innerHTML = `
         <span class="status-pill ${emailConfigured?'status-confirmed':'status-pending'}">Email: ${emailConfigured?'configured':'not configured'}</span>
-        <span class="status-pill ${smsConfigured?'status-confirmed':'status-pending'}">SMS: ${smsConfigured?'configured':'not configured'}</span>`;
+        <span class="status-pill ${smsConfigured?'status-confirmed':'status-pending'}">SMS: ${smsConfigured?'configured':'not configured'}</span>
+        <span class="status-pill ${razorpayConfigured?'status-confirmed':'status-pending'}">Razorpay: ${razorpayConfigured?'configured':'not configured'}</span>`;
       const table = document.getElementById('notificationsLogTable');
       if(!notifications.length){
         table.innerHTML = `<tr><td style="color:var(--ink-soft);padding:14px 0;">No notifications sent yet — place an order to see attempts appear here.</td></tr>`;
@@ -1652,7 +1683,7 @@
             <td>${money(c.min_subtotal)}</td>
             <td>${c.usedCount}${c.usage_limit ? ' / '+c.usage_limit : ''}</td>
             <td>${c.active ? 'Yes' : 'No'}</td>
-            <td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" data-coupon-toggle="${c.code}" data-active="${c.active}">${c.active?'Deactivate':'Activate'}</button> <button class="btn btn-sm" style="color:var(--maroon);" data-coupon-del="${c.code}">Delete</button></td>
+            <td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" data-coupon-edit="${c.code}">Edit</button> <button class="btn btn-sm btn-outline" data-coupon-toggle="${c.code}" data-active="${c.active}">${c.active?'Deactivate':'Activate'}</button> <button class="btn btn-sm" style="color:var(--maroon);" data-coupon-del="${c.code}">Delete</button></td>
           </tr>`).join('')}</tbody>`;
 
       document.querySelectorAll('[data-coupon-toggle]').forEach(btn=>btn.addEventListener('click', async ()=>{
@@ -1660,6 +1691,9 @@
           await adminApiFetch('/admin/coupons/'+btn.dataset.couponToggle, {method:'PUT', body: JSON.stringify({active: btn.dataset.active !== '1'})});
           toast('Coupon updated'); loadCoupons();
         }catch(e){ toast(e.message, 'error'); }
+      }));
+      document.querySelectorAll('[data-coupon-edit]').forEach(btn=>btn.addEventListener('click', ()=>{
+        openCouponForm(coupons.find(c=>c.code === btn.dataset.couponEdit));
       }));
       document.querySelectorAll('[data-coupon-del]').forEach(btn=>btn.addEventListener('click', async ()=>{
         const ok = await showConfirmDialog('Any past orders keep their applied discount — this just retires the code.', {title:'Delete coupon '+btn.dataset.couponDel+'?', confirmLabel:'Delete', danger:true});
@@ -1670,47 +1704,63 @@
     }catch(e){ toast(e.message, 'error'); }
   }
 
+  // Shared by both "+ Add Coupon" and each row's "Edit" — pass an existing
+  // coupon to pre-fill and PUT instead of POST. The code field is locked
+  // once editing, since it's the primary key everything else references.
+  function openCouponForm(coupon){
+    const form = document.getElementById('addCouponForm');
+    const editing = !!coupon;
+    form.innerHTML = `
+      <h4 style="margin:0 0 4px;font-size:14px;">${editing ? 'Edit Coupon '+coupon.code : 'New Coupon'}</h4>
+      <div class="form-row-2">
+        <div class="form-field"><label>Code</label><input id="ncCode" placeholder="DIWALI25" style="text-transform:uppercase;" value="${editing?coupon.code:''}" ${editing?'disabled':''}></div>
+        <div class="form-field"><label>Type</label><select id="ncType"><option value="percent" ${editing&&coupon.type==='percent'?'selected':''}>Percent off</option><option value="flat" ${editing&&coupon.type==='flat'?'selected':''}>Flat amount off</option></select></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-field"><label>Value</label><input type="number" id="ncValue" value="${editing?coupon.value:''}"></div>
+        <div class="form-field"><label>Max Discount (₹, optional)</label><input type="number" id="ncMaxDiscount" value="${editing&&coupon.max_discount!=null?coupon.max_discount:''}"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-field"><label>Min Order Value (₹)</label><input type="number" id="ncMinSubtotal" value="${editing?coupon.min_subtotal:0}"></div>
+        <div class="form-field"><label>Description</label><input id="ncDesc" placeholder="Diwali sale" value="${editing?(coupon.description||''):''}"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-field"><label>Total Usage Limit (optional)</label><input type="number" id="ncUsageLimit" value="${editing&&coupon.usage_limit!=null?coupon.usage_limit:''}"></div>
+        <div class="form-field"><label>Per-Customer Limit (optional)</label><input type="number" id="ncPerCustomer" value="${editing&&coupon.per_customer_limit!=null?coupon.per_customer_limit:''}"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-field"><label>Start Date (optional)</label><input type="date" id="ncStart" value="${editing&&coupon.start_date?coupon.start_date.slice(0,10):''}"></div>
+        <div class="form-field"><label>End Date (optional)</label><input type="date" id="ncEnd" value="${editing&&coupon.end_date?coupon.end_date.slice(0,10):''}"></div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-primary btn-sm" id="saveCoupon">${editing?'Save Changes':'Create Coupon'}</button>
+        ${editing?'<button class="btn btn-sm btn-outline" id="cancelCouponEdit">Cancel</button>':''}
+      </div>`;
+    form.style.display = 'block';
+    const cancelBtn = document.getElementById('cancelCouponEdit');
+    if(cancelBtn) cancelBtn.addEventListener('click', ()=>{ form.style.display = 'none'; });
+    document.getElementById('saveCoupon').addEventListener('click', async ()=>{
+      const payload = {
+        code: document.getElementById('ncCode').value, type: document.getElementById('ncType').value,
+        value: document.getElementById('ncValue').value, maxDiscount: document.getElementById('ncMaxDiscount').value || null,
+        minSubtotal: document.getElementById('ncMinSubtotal').value, description: document.getElementById('ncDesc').value,
+        usageLimit: document.getElementById('ncUsageLimit').value || null, perCustomerLimit: document.getElementById('ncPerCustomer').value || null,
+        startDate: document.getElementById('ncStart').value || null, endDate: document.getElementById('ncEnd').value || null
+      };
+      try{
+        if(editing) await adminApiFetch('/admin/coupons/'+coupon.code, {method:'PUT', body: JSON.stringify(payload)});
+        else await adminApiFetch('/admin/coupons', {method:'POST', body: JSON.stringify(payload)});
+        toast(editing?'Coupon updated':'Coupon created');
+        form.style.display = 'none';
+        loadCoupons();
+      }catch(e){ toast(e.message, 'error'); }
+    });
+  }
+
   document.getElementById('showAddCoupon').addEventListener('click', ()=>{
     const form = document.getElementById('addCouponForm');
-    if(form.style.display === 'none'){
-      form.innerHTML = `
-        <div class="form-row-2">
-          <div class="form-field"><label>Code</label><input id="ncCode" placeholder="DIWALI25" style="text-transform:uppercase;"></div>
-          <div class="form-field"><label>Type</label><select id="ncType"><option value="percent">Percent off</option><option value="flat">Flat amount off</option></select></div>
-        </div>
-        <div class="form-row-2">
-          <div class="form-field"><label>Value</label><input type="number" id="ncValue"></div>
-          <div class="form-field"><label>Max Discount (₹, optional)</label><input type="number" id="ncMaxDiscount"></div>
-        </div>
-        <div class="form-row-2">
-          <div class="form-field"><label>Min Order Value (₹)</label><input type="number" id="ncMinSubtotal" value="0"></div>
-          <div class="form-field"><label>Description</label><input id="ncDesc" placeholder="Diwali sale"></div>
-        </div>
-        <div class="form-row-2">
-          <div class="form-field"><label>Total Usage Limit (optional)</label><input type="number" id="ncUsageLimit"></div>
-          <div class="form-field"><label>Per-Customer Limit (optional)</label><input type="number" id="ncPerCustomer"></div>
-        </div>
-        <div class="form-row-2">
-          <div class="form-field"><label>Start Date (optional)</label><input type="date" id="ncStart"></div>
-          <div class="form-field"><label>End Date (optional)</label><input type="date" id="ncEnd"></div>
-        </div>
-        <button class="btn btn-primary btn-sm" id="createCoupon">Create Coupon</button>`;
-      document.getElementById('createCoupon').addEventListener('click', async ()=>{
-        try{
-          await adminApiFetch('/admin/coupons', {method:'POST', body: JSON.stringify({
-            code: document.getElementById('ncCode').value, type: document.getElementById('ncType').value,
-            value: document.getElementById('ncValue').value, maxDiscount: document.getElementById('ncMaxDiscount').value || null,
-            minSubtotal: document.getElementById('ncMinSubtotal').value, description: document.getElementById('ncDesc').value,
-            usageLimit: document.getElementById('ncUsageLimit').value || null, perCustomerLimit: document.getElementById('ncPerCustomer').value || null,
-            startDate: document.getElementById('ncStart').value || null, endDate: document.getElementById('ncEnd').value || null
-          })});
-          toast('Coupon created');
-          form.style.display = 'none';
-          loadCoupons();
-        }catch(e){ toast(e.message, 'error'); }
-      });
-    }
-    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    if(form.style.display === 'none' || !form.innerHTML) openCouponForm(null);
+    else form.style.display = 'none';
   });
 
   // ==== Storefront CMS (Hero / Promo Band / Sarees in Motion / FAQ) ====
@@ -1956,11 +2006,22 @@
 
   // ==== Customers ====
   let openCustomerId = null;
+  let allCustomers = [];
 
   async function loadCustomers(){
     try{
       const {customers} = await adminApiFetch('/admin/customers');
-      document.getElementById('customersTable').innerHTML = `
+      allCustomers = customers;
+      renderCustomersTable();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  function renderCustomersTable(){
+    const term = document.getElementById('customerSearchBox').value.trim().toLowerCase();
+    const customers = term
+      ? allCustomers.filter(c => (c.name||'').toLowerCase().includes(term) || (c.email||'').toLowerCase().includes(term))
+      : allCustomers;
+    document.getElementById('customersTable').innerHTML = `
         <thead><tr><th>Name</th><th>Email</th><th>Orders</th><th>Total Spent</th><th>Last Order</th><th>Status</th><th></th></tr></thead>
         <tbody>${customers.length ? customers.map(c=>`
           <tr>
@@ -1973,11 +2034,10 @@
             <td><button class="btn btn-sm btn-outline" data-cust-view="${c.id}">View</button></td>
           </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:24px;">No customers yet.</td></tr>`}</tbody>`;
 
-      document.querySelectorAll('[data-cust-view]').forEach(btn=>btn.addEventListener('click', ()=>{
-        openCustomerId = btn.dataset.custView;
-        renderCustomerDetail();
-      }));
-    }catch(e){ toast(e.message, 'error'); }
+    document.querySelectorAll('[data-cust-view]').forEach(btn=>btn.addEventListener('click', ()=>{
+      openCustomerId = btn.dataset.custView;
+      renderCustomerDetail();
+    }));
   }
 
   async function renderCustomerDetail(){
@@ -2015,7 +2075,7 @@
             </div>
             <div class="detail-block">
               <h5>Order History (${orders.length})</h5>
-              ${orders.length ? orders.map(o=>`<p>#${o.id} — ${o.status} — ${money(o.total)}</p>`).join('') : '<p>No orders yet.</p>'}
+              ${orders.length ? orders.map(o=>`<p><a href="#" data-view-cust-order="${o.id}" style="color:var(--maroon);text-decoration:underline;">#${o.id}</a> — ${o.status} — ${money(o.total)}</p>`).join('') : '<p>No orders yet.</p>'}
             </div>
             <div class="detail-block">
               <h5>Wishlist (${wishlist.length}) &amp; Bag (${cart.length})</h5>
@@ -2028,6 +2088,10 @@
         </div>`;
 
       document.getElementById('closeCustDetail').addEventListener('click', ()=>{ openCustomerId = null; renderCustomerDetail(); });
+      document.querySelectorAll('[data-view-cust-order]').forEach(a=>a.addEventListener('click', (e)=>{
+        e.preventDefault();
+        viewOrderFromElsewhere(a.dataset.viewCustOrder);
+      }));
       document.getElementById('saveCustFlag').addEventListener('click', async ()=>{
         try{
           await adminApiFetch('/admin/customers/' + c.id + '/flag', {method:'PUT', body: JSON.stringify({
@@ -2074,7 +2138,11 @@
             <td style="font-size:12.5px;">${r.productName}</td>
             <td style="font-size:12.5px;">${r.userName}</td>
             <td>${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</td>
-            <td style="font-size:12px;max-width:220px;">${r.title?`<strong>${r.title}</strong><br>`:''}${r.body}</td>
+            <td style="font-size:12px;max-width:220px;">
+              ${r.title?`<strong>${r.title}</strong><br>`:''}${r.body}
+              ${r.adminReply ? `<div style="margin-top:6px;padding:6px 8px;background:var(--ivory-deep);border-radius:3px;"><strong style="font-size:10.5px;color:var(--maroon);text-transform:uppercase;">Your reply</strong><br>${r.adminReply}</div>`
+                : `<div style="margin-top:6px;"><textarea class="admin-input" id="revReply-${r.id}" rows="2" style="width:100%;font-size:12px;" placeholder="Reply to this review…"></textarea><button class="btn btn-sm btn-outline" data-rev-reply="${r.id}" style="margin-top:4px;">Send Reply</button></div>`}
+            </td>
             <td>${r.verified?'Yes':'No'}</td>
             <td>${r.status}${r.featured?' ⭐':''}</td>
             <td style="white-space:nowrap;">
@@ -2097,6 +2165,14 @@
         try{ await adminApiFetch('/admin/reviews/'+btn.dataset.revFeature, {method:'PUT', body: JSON.stringify({featured: btn.dataset.featured !== '1'})}); toast('Updated'); loadReviews(); }
         catch(e){ toast(e.message, 'error'); }
       }));
+      document.querySelectorAll('[data-rev-reply]').forEach(btn=>btn.addEventListener('click', async ()=>{
+        const id = btn.dataset.revReply;
+        const text = document.getElementById('revReply-'+id).value.trim();
+        if(!text){ toast('Write a reply first', 'error'); return; }
+        btn.disabled = true;
+        try{ await adminApiFetch('/admin/reviews/'+id+'/reply', {method:'PUT', body: JSON.stringify({reply: text})}); toast('Reply posted'); loadReviews(); }
+        catch(e){ toast(e.message, 'error'); btn.disabled = false; }
+      }));
       document.querySelectorAll('[data-rev-del]').forEach(btn=>btn.addEventListener('click', async ()=>{
         const ok = await showConfirmDialog('This cannot be undone.', {title:'Delete this review?', confirmLabel:'Delete', danger:true});
         if(!ok) return;
@@ -2107,7 +2183,7 @@
   }
 
   // ==== Analytics ====
-  let analyticsTab = 'wishlist';
+  let analyticsTab = 'revenue';
   document.querySelectorAll('#analyticsTabs button').forEach(b=>b.addEventListener('click', ()=>{
     analyticsTab = b.dataset.atab;
     document.querySelectorAll('#analyticsTabs button').forEach(x=>x.classList.toggle('active', x===b));
@@ -2115,8 +2191,34 @@
   }));
 
   function renderAnalyticsTab(){
-    if(analyticsTab==='wishlist') renderWishlistAnalytics();
+    if(analyticsTab==='revenue') renderRevenueAnalytics();
+    else if(analyticsTab==='wishlist') renderWishlistAnalytics();
     else renderSearchAnalytics();
+  }
+
+  async function renderRevenueAnalytics(){
+    const body = document.getElementById('analyticsTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const {days} = await adminApiFetch('/admin/analytics/revenue-trend?days=30');
+    const total = days.reduce((s,d)=>s+d.revenue, 0);
+    const totalOrders = days.reduce((s,d)=>s+d.orders, 0);
+    const max = Math.max(1, ...days.map(d=>d.revenue));
+    const w = 900, h = 220, padL = 4, padR = 4, padB = 26, barGap = 3;
+    const barW = (w - padL - padR) / days.length - barGap;
+    const bars = days.map((d,i)=>{
+      const barH = (d.revenue / max) * (h - padB - 10);
+      const x = padL + i * (barW + barGap);
+      const y = h - padB - barH;
+      const isToday = i === days.length - 1;
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" rx="2" fill="${isToday?'var(--maroon)':'var(--gold-soft)'}"><title>${d.date}: ${money(d.revenue)} (${d.orders} order${d.orders===1?'':'s'})</title></rect>`;
+    }).join('');
+    // A tick label every ~5 days keeps the axis readable without crowding.
+    const ticks = days.map((d,i)=> i % 5 === 0 || i === days.length-1 ? `<text x="${(padL+i*(barW+barGap)+barW/2).toFixed(1)}" y="${h-6}" font-size="10" fill="var(--ink-soft)" text-anchor="middle">${new Date(d.date).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</text>` : '').join('');
+    body.innerHTML = `
+      <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">${money(total)} across ${totalOrders} order${totalOrders===1?'':'s'} in the last 30 days (cancelled orders excluded).</p>
+      <div style="overflow-x:auto;">
+        <svg viewBox="0 0 ${w} ${h}" style="width:100%;max-width:900px;height:auto;">${bars}${ticks}</svg>
+      </div>`;
   }
 
   async function renderWishlistAnalytics(){
@@ -2263,11 +2365,27 @@
           <p style="font-size:12.5px;color:var(--gold);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">${m.subject}</p>
           <p style="font-size:13.5px;color:var(--ink-soft);">${m.message}</p>
           ${!m.read ? `<div class="cancel-order-btn" data-read="${m.id}" style="color:var(--teal);">Mark as read</div>` : ''}
+          ${m.admin_reply ? `<div class="detail-block" style="margin-top:10px;"><h5>Your reply${m.replied_at?' — '+new Date(m.replied_at).toLocaleString('en-IN'):''}</h5><p style="font-size:13px;">${m.admin_reply}</p></div>` : `
+          <div style="margin-top:10px;">
+            <textarea class="admin-input" id="replyText-${m.id}" rows="2" style="width:100%;" placeholder="Write a reply…"></textarea>
+            <button class="btn btn-sm btn-primary" data-reply-send="${m.id}" style="margin-top:6px;">Send Reply</button>
+          </div>`}
         </div>`).join('') : `<p style="color:var(--ink-soft);">No messages yet.</p>`;
 
       document.querySelectorAll('[data-read]').forEach(el=>el.addEventListener('click', async ()=>{
         try{ await adminApiFetch('/admin/contact/' + el.dataset.read + '/read', {method:'PUT'}); loadMessages(); }
         catch(e){ toast(e.message, 'error'); }
+      }));
+      document.querySelectorAll('[data-reply-send]').forEach(btn=>btn.addEventListener('click', async ()=>{
+        const id = btn.dataset.replySend;
+        const text = document.getElementById('replyText-'+id).value.trim();
+        if(!text){ toast('Write a reply first', 'error'); return; }
+        btn.disabled = true;
+        try{
+          const r = await adminApiFetch('/admin/contact/' + id + '/reply', {method:'PUT', body: JSON.stringify({reply: text})});
+          toast(r.message);
+          loadMessages();
+        }catch(e){ toast(e.message, 'error'); btn.disabled = false; }
       }));
     }catch(e){ toast(e.message, 'error'); }
   }
