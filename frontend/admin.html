@@ -204,6 +204,10 @@
             <h2>Analytics</h2>
             <div class="editor-tabs" id="analyticsTabs">
               <button data-atab="revenue" class="active">Revenue</button>
+              <button data-atab="products">Products</button>
+              <button data-atab="customers">Customers</button>
+              <button data-atab="orders">Orders</button>
+              <button data-atab="marketing">Marketing</button>
               <button data-atab="wishlist">Wishlist</button>
               <button data-atab="search">Search</button>
             </div>
@@ -2192,32 +2196,233 @@
 
   function renderAnalyticsTab(){
     if(analyticsTab==='revenue') renderRevenueAnalytics();
+    else if(analyticsTab==='products') renderProductsAnalytics();
+    else if(analyticsTab==='customers') renderCustomersAnalytics();
+    else if(analyticsTab==='orders') renderOrdersAnalytics();
+    else if(analyticsTab==='marketing') renderMarketingAnalytics();
     else if(analyticsTab==='wishlist') renderWishlistAnalytics();
     else renderSearchAnalytics();
   }
 
+  // ---- Shared chart building blocks (plain SVG/CSS, no chart library) ----
+  const CHART_PALETTE = ['var(--maroon)','var(--gold)','var(--teal)','var(--gold-soft)','var(--blush)','var(--maroon-deep)','#8a8fd1','#c98a4b'];
+
+  // Donut chart via stacked stroke-dasharray circles — no arc-path math needed.
+  // Returns {svg, legend} so callers can lay them out side by side.
+  function donutChart(rows, {size=170, thickness=30} = {}){
+    const total = rows.reduce((s,r)=>s+r.value,0) || 1;
+    const r = (size - thickness) / 2;
+    const c = 2 * Math.PI * r;
+    let offset = 0;
+    const circles = rows.map((row,i)=>{
+      const frac = row.value / total;
+      const dash = frac * c;
+      const seg = `<circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${CHART_PALETTE[i%CHART_PALETTE.length]}" stroke-width="${thickness}" stroke-dasharray="${dash.toFixed(1)} ${(c-dash).toFixed(1)}" stroke-dashoffset="${(-offset).toFixed(1)}" transform="rotate(-90 ${size/2} ${size/2})"><title>${row.label}: ${row.value} (${Math.round(frac*100)}%)</title></circle>`;
+      offset += dash;
+      return seg;
+    }).join('');
+    const svg = `<svg viewBox="0 0 ${size} ${size}" style="width:${size}px;height:${size}px;flex-shrink:0;">${circles}</svg>`;
+    const legend = `<div style="display:flex;flex-direction:column;gap:8px;justify-content:center;min-width:0;flex:1;">${rows.map((row,i)=>`
+      <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;flex-wrap:wrap;">
+        <span style="width:10px;height:10px;border-radius:2px;background:${CHART_PALETTE[i%CHART_PALETTE.length]};display:inline-block;flex-shrink:0;"></span>
+        <span style="overflow-wrap:anywhere;">${row.label}</span>
+        <span style="margin-left:auto;padding-left:14px;color:var(--ink-soft);">${row.display ?? row.value} (${Math.round(row.value/total*100)}%)</span>
+      </div>`).join('')}</div>`;
+    return `<div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;max-width:100%;">${svg}${legend}</div>`;
+  }
+
+  // Small vertical bar chart for a handful of categories (day-of-week, etc).
+  function miniBarChart(rows, {labelFn, valueFn, height=140} = {}){
+    const max = Math.max(1, ...rows.map(valueFn));
+    const w = 500, padB = 20, barGap = 8;
+    const barW = (w - padB) / rows.length - barGap;
+    const bars = rows.map((row,i)=>{
+      const val = valueFn(row);
+      const barH = (val / max) * (height - padB - 6);
+      const x = i * (barW + barGap) + barGap/2;
+      const y = height - padB - barH;
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(barH,1).toFixed(1)}" rx="2" fill="var(--maroon)"><title>${labelFn(row)}: ${val}</title></rect>
+        <text x="${(x+barW/2).toFixed(1)}" y="${height-6}" font-size="10" fill="var(--ink-soft)" text-anchor="middle">${labelFn(row).slice(0,3)}</text>`;
+    }).join('');
+    return `<svg viewBox="0 0 ${w} ${height}" style="width:100%;max-width:500px;height:auto;">${bars}</svg>`;
+  }
+
+  // Ranked horizontal bar list — top products/customers/coupons/slow-movers.
+  // Any label here can be raw customer/search input, not just our own product
+  // names — truncate defensively so one absurd string can't blow out the row.
+  function truncateLabel(str, max=60){
+    str = String(str ?? '');
+    return str.length > max ? str.slice(0, max) + '…' : str;
+  }
+
+  function hbarList(rows, {labelFn, valueFn, sublabelFn, emptyText='No data yet.'} = {}){
+    if(!rows.length) return `<p style="font-size:13px;color:var(--ink-soft);">${emptyText}</p>`;
+    const max = Math.max(1, ...rows.map(valueFn));
+    return rows.map(row=>`
+      <div style="margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;gap:10px;">
+          <span style="overflow-wrap:anywhere;min-width:0;">${truncateLabel(labelFn(row))}</span><span style="color:var(--ink-soft);white-space:nowrap;flex-shrink:0;">${sublabelFn ? sublabelFn(row) : valueFn(row)}</span>
+        </div>
+        <div style="background:var(--ivory-deep);border-radius:3px;height:10px;overflow:hidden;">
+          <div style="width:${Math.max(2,(valueFn(row)/max*100)).toFixed(1)}%;background:var(--maroon);height:100%;"></div>
+        </div>
+      </div>`).join('');
+  }
+
+  let revenueRangeDays = 30;
   async function renderRevenueAnalytics(){
     const body = document.getElementById('analyticsTabBody');
     body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
-    const {days} = await adminApiFetch('/admin/analytics/revenue-trend?days=30');
+    const {days} = await adminApiFetch('/admin/analytics/revenue-trend?days=' + revenueRangeDays);
     const total = days.reduce((s,d)=>s+d.revenue, 0);
     const totalOrders = days.reduce((s,d)=>s+d.orders, 0);
     const max = Math.max(1, ...days.map(d=>d.revenue));
-    const w = 900, h = 220, padL = 4, padR = 4, padB = 26, barGap = 3;
+    const w = 900, h = 220, padL = 4, padR = 4, padB = 26, barGap = days.length > 45 ? 1 : 3;
     const barW = (w - padL - padR) / days.length - barGap;
     const bars = days.map((d,i)=>{
       const barH = (d.revenue / max) * (h - padB - 10);
       const x = padL + i * (barW + barGap);
       const y = h - padB - barH;
       const isToday = i === days.length - 1;
-      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" rx="2" fill="${isToday?'var(--maroon)':'var(--gold-soft)'}"><title>${d.date}: ${money(d.revenue)} (${d.orders} order${d.orders===1?'':'s'})</title></rect>`;
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(barH,0).toFixed(1)}" rx="2" fill="${isToday?'var(--maroon)':'var(--gold-soft)'}"><title>${d.date}: ${money(d.revenue)} (${d.orders} order${d.orders===1?'':'s'})</title></rect>`;
     }).join('');
-    // A tick label every ~5 days keeps the axis readable without crowding.
-    const ticks = days.map((d,i)=> i % 5 === 0 || i === days.length-1 ? `<text x="${(padL+i*(barW+barGap)+barW/2).toFixed(1)}" y="${h-6}" font-size="10" fill="var(--ink-soft)" text-anchor="middle">${new Date(d.date).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</text>` : '').join('');
+    const tickEvery = Math.ceil(days.length / 8);
+    const ticks = days.map((d,i)=> i % tickEvery === 0 || i === days.length-1 ? `<text x="${(padL+i*(barW+barGap)+barW/2).toFixed(1)}" y="${h-6}" font-size="10" fill="var(--ink-soft)" text-anchor="middle">${new Date(d.date).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</text>` : '').join('');
     body.innerHTML = `
-      <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">${money(total)} across ${totalOrders} order${totalOrders===1?'':'s'} in the last 30 days (cancelled orders excluded).</p>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:6px;">
+        <p style="font-size:13px;color:var(--ink-soft);">${money(total)} across ${totalOrders} order${totalOrders===1?'':'s'} in the last ${revenueRangeDays} days (cancelled orders excluded).</p>
+        <div style="display:flex;gap:6px;">
+          ${[7,30,90].map(d=>`<button class="btn btn-sm ${revenueRangeDays===d?'btn-primary':'btn-outline'}" data-range="${d}">${d}d</button>`).join('')}
+        </div>
+      </div>
       <div style="overflow-x:auto;">
         <svg viewBox="0 0 ${w} ${h}" style="width:100%;max-width:900px;height:auto;">${bars}${ticks}</svg>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:10px;font-size:12px;color:var(--ink-soft);">
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--gold-soft);border-radius:2px;margin-right:5px;vertical-align:-1px;"></span>Revenue</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--maroon);border-radius:2px;margin-right:5px;vertical-align:-1px;"></span>Today</span>
+      </div>`;
+    document.querySelectorAll('[data-range]').forEach(btn=>btn.addEventListener('click', ()=>{
+      revenueRangeDays = Number(btn.dataset.range);
+      renderRevenueAnalytics();
+    }));
+  }
+
+  async function renderProductsAnalytics(){
+    const body = document.getElementById('analyticsTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const [{fabrics, totalRevenue}, {products: topProducts}, {products: slowMovers}] = await Promise.all([
+      adminApiFetch('/admin/analytics/sales-by-fabric'),
+      adminApiFetch('/admin/analytics/top-products?days=30'),
+      adminApiFetch('/admin/analytics/slow-movers?days=30')
+    ]);
+    const topFabric = fabrics[0];
+    body.innerHTML = `
+      <div class="detail-block">
+        <h5>Sales by Fabric</h5>
+        <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">${topFabric ? `${topFabric.fabric} is your top earner — ${Math.round(topFabric.revenue/(totalRevenue||1)*100)}% of all revenue (${money(topFabric.revenue)}).` : 'No sales recorded yet.'}</p>
+        ${fabrics.length ? donutChart(fabrics.map(f=>({label:f.fabric, value:f.revenue, display:money(f.revenue)}))) : '<p style="font-size:13px;color:var(--ink-soft);">No sales recorded yet.</p>'}
+      </div>
+      <div class="detail-block" style="margin-top:16px;">
+        <h5>Top-Selling Products (last 30 days)</h5>
+        <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">${topProducts.length ? `Your best seller is ${topProducts[0].name}, with ${topProducts[0].units} sold worth ${money(topProducts[0].revenue)}.` : 'No sales in the last 30 days.'}</p>
+        ${hbarList(topProducts, {labelFn:p=>p.name, valueFn:p=>p.revenue, sublabelFn:p=>`${money(p.revenue)} · ${p.units} sold`, emptyText:'No sales in the last 30 days.'})}
+      </div>
+      <div class="detail-block" style="margin-top:16px;">
+        <h5>Slow Movers</h5>
+        <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">${slowMovers.length ? `${slowMovers.length} product${slowMovers.length===1?'':'s'} with stock on hand haven't sold in 30 days — worth a discount push or a re-photograph.` : "Everything with stock has sold in the last 30 days — nothing sitting idle."}</p>
+        ${hbarList(slowMovers, {labelFn:p=>`${p.name} (${p.fabric})`, valueFn:p=>p.stock, sublabelFn:p=>`${p.stock} in stock`, emptyText:'Nothing idle right now.'})}
+      </div>`;
+  }
+
+  async function renderCustomersAnalytics(){
+    const body = document.getElementById('analyticsTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const [{weeks}, {guestOrders, registeredOrders}, {customers}] = await Promise.all([
+      adminApiFetch('/admin/analytics/customer-growth?weeks=12'),
+      adminApiFetch('/admin/analytics/customer-mix'),
+      adminApiFetch('/admin/analytics/top-customers')
+    ]);
+    const totalNew = weeks.reduce((s,w)=>s+w.newCustomers,0);
+    const totalReturning = weeks.reduce((s,w)=>s+w.returningCustomers,0);
+    const wTotal = Math.max(1, ...weeks.map(w=>w.newCustomers+w.returningCustomers));
+    const w = 700, h = 150, padB = 20, gap = 4;
+    const barW = (w) / weeks.length - gap;
+    const stackedBars = weeks.map((wk,i)=>{
+      const x = i*(barW+gap) + gap/2;
+      const newH = (wk.newCustomers/wTotal) * (h-padB-4);
+      const retH = (wk.returningCustomers/wTotal) * (h-padB-4);
+      const yNew = h - padB - newH;
+      const yRet = yNew - retH;
+      return `<rect x="${x.toFixed(1)}" y="${yNew.toFixed(1)}" width="${barW.toFixed(1)}" height="${newH.toFixed(1)}" fill="var(--maroon)"><title>Week of ${wk.weekStart}: ${wk.newCustomers} new</title></rect>
+        <rect x="${x.toFixed(1)}" y="${yRet.toFixed(1)}" width="${barW.toFixed(1)}" height="${retH.toFixed(1)}" fill="var(--gold-soft)"><title>Week of ${wk.weekStart}: ${wk.returningCustomers} returning</title></rect>`;
+    }).join('');
+    const guestTotal = guestOrders + registeredOrders;
+    body.innerHTML = `
+      <div class="detail-block">
+        <h5>New vs. Returning Customers (last 12 weeks)</h5>
+        <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">${totalNew+totalReturning ? `${Math.round(totalNew/(totalNew+totalReturning)*100)}% of your orders are from first-time customers — ${totalReturning} order${totalReturning===1?'':'s'} came from someone buying again.` : 'Not enough order history yet to show a trend.'}</p>
+        <svg viewBox="0 0 ${w} ${h}" style="width:100%;max-width:700px;height:auto;">${stackedBars}</svg>
+        <div style="display:flex;gap:16px;margin-top:8px;font-size:12px;color:var(--ink-soft);">
+          <span><span style="display:inline-block;width:10px;height:10px;background:var(--maroon);border-radius:2px;margin-right:5px;vertical-align:-1px;"></span>New customer</span>
+          <span><span style="display:inline-block;width:10px;height:10px;background:var(--gold-soft);border-radius:2px;margin-right:5px;vertical-align:-1px;"></span>Returning customer</span>
+        </div>
+      </div>
+      <div class="detail-block" style="margin-top:16px;">
+        <h5>Guest vs. Registered Checkout</h5>
+        <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">${guestTotal ? `${Math.round(guestOrders/guestTotal*100)}% of orders are guest checkouts, not signed-in accounts.` : 'No orders yet.'}</p>
+        ${guestTotal ? donutChart([{label:'Registered', value:registeredOrders},{label:'Guest', value:guestOrders}]) : '<p style="font-size:13px;color:var(--ink-soft);">No orders yet.</p>'}
+      </div>
+      <div class="detail-block" style="margin-top:16px;">
+        <h5>Top Customers by Spend</h5>
+        <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">${customers.length ? `${customers[0].name} is your top customer, having spent ${money(customers[0].spend)} across ${customers[0].orders} order${customers[0].orders===1?'':'s'}.` : 'No orders yet.'}</p>
+        ${hbarList(customers, {labelFn:c=>c.name+(c.isGuest?' (guest)':''), valueFn:c=>c.spend, sublabelFn:c=>`${money(c.spend)} · ${c.orders} order${c.orders===1?'':'s'}`, emptyText:'No orders yet.'})}
+      </div>`;
+  }
+
+  async function renderOrdersAnalytics(){
+    const body = document.getElementById('analyticsTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const [{counts, total}, {reasons, total: cancelTotal}, {byCategory, byReason, total: returnTotal}] = await Promise.all([
+      adminApiFetch('/admin/analytics/order-pipeline'),
+      adminApiFetch('/admin/analytics/cancellation-reasons'),
+      adminApiFetch('/admin/analytics/return-reasons')
+    ]);
+    const pipelineRows = Object.entries(counts).map(([label,value])=>({label, value}));
+    const cancelledCount = counts['Cancelled'] || 0;
+    body.innerHTML = `
+      <div class="detail-block">
+        <h5>Order Pipeline (right now)</h5>
+        <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">${total} order${total===1?'':'s'} total — ${cancelledCount} cancelled, ${counts['Delivered']||0} delivered, ${total-cancelledCount-(counts['Delivered']||0)} still in progress.</p>
+        ${pipelineRows.length ? donutChart(pipelineRows) : '<p style="font-size:13px;color:var(--ink-soft);">No orders yet.</p>'}
+      </div>
+      <div class="detail-block" style="margin-top:16px;">
+        <h5>Why Customers Cancel</h5>
+        <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">${cancelTotal ? `"${reasons[0].label}" is the most common reason (${reasons[0].count} of ${cancelTotal}).` : 'No cancellation requests recorded yet.'}</p>
+        ${reasons.length ? donutChart(reasons.map(r=>({label:r.label, value:r.count}))) : '<p style="font-size:13px;color:var(--ink-soft);">No cancellation requests recorded yet.</p>'}
+      </div>
+      <div class="detail-block" style="margin-top:16px;">
+        <h5>Why Customers Return Items</h5>
+        <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">${returnTotal ? `${byCategory.find(c=>c.key==='seller_fault')?.count || 0} of ${returnTotal} returns were our fault (damaged/wrong item) — the rest were customer preference.` : 'No returns recorded yet.'}</p>
+        ${byReason.length ? donutChart(byReason.map(r=>({label: RETURN_REASON_LABEL[r.key] || r.key, value:r.count}))) : '<p style="font-size:13px;color:var(--ink-soft);">No returns recorded yet.</p>'}
+      </div>`;
+  }
+
+  const RETURN_REASON_LABEL = {
+    wrong_item: 'Wrong item shipped', damaged: 'Arrived damaged', not_as_described: 'Not as described',
+    quality_issue: 'Quality issue', color_mismatch: 'Colour mismatch', wrong_choice: 'Ordered wrong colour/fabric',
+    changed_mind: 'Changed my mind', other: 'Other'
+  };
+
+  async function renderMarketingAnalytics(){
+    const body = document.getElementById('analyticsTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const {coupons} = await adminApiFetch('/admin/analytics/coupon-performance');
+    const totalDiscount = coupons.reduce((s,c)=>s+c.totalDiscount,0);
+    body.innerHTML = `
+      <div class="detail-block">
+        <h5>Coupon Performance</h5>
+        ${coupons.length ? `<p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">${money(totalDiscount)} given away in discounts across ${coupons.reduce((s,c)=>s+c.uses,0)} coupon uses. "${coupons[0].code}" is your most-used code.</p>${hbarList(coupons, {labelFn:c=>c.code, valueFn:c=>c.totalDiscount, sublabelFn:c=>`${money(c.totalDiscount)} · ${c.uses} use${c.uses===1?'':'s'}`})}` : '<p style="font-size:13px;color:var(--ink-soft);">No coupon has been used on a real order yet.</p>'}
       </div>`;
   }
 
@@ -2225,8 +2430,10 @@
     const body = document.getElementById('analyticsTabBody');
     body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
     const {products, totalWishlistAdds} = await adminApiFetch('/admin/analytics/wishlist');
+    const topWishlisted = products.slice(0,8);
     body.innerHTML = `
-      <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">${totalWishlistAdds} total wishlist adds across the store.</p>
+      <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">${totalWishlistAdds} total wishlist adds across the store.${products.length ? ` "${products[0].name}" is the most-wishlisted item.` : ''}</p>
+      ${topWishlisted.length ? `<div class="detail-block" style="margin-bottom:16px;"><h5>Most Wishlisted</h5>${hbarList(topWishlisted, {labelFn:p=>p.name, valueFn:p=>p.wishlistCount, sublabelFn:p=>`${p.wishlistCount} adds · ${p.purchaseCount} bought`})}</div>` : ''}
       <div style="overflow-x:auto;">
         <table class="admin-table">
           <thead><tr><th>Product</th><th>Fabric</th><th>Wishlist Adds</th><th>Purchases by Wishlisters</th><th>Conversion</th></tr></thead>
@@ -2247,7 +2454,8 @@
     body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
     const {topSearches, noResults, totalSearches} = await adminApiFetch('/admin/analytics/search');
     body.innerHTML = `
-      <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">${totalSearches} total searches logged.</p>
+      <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">${totalSearches} total searches logged.${noResults.length ? ` ${noResults.length} search term${noResults.length===1?'':'s'} found nothing — possible demand for a product you don't carry.` : ''}</p>
+      ${topSearches.length ? `<div class="detail-block" style="margin-bottom:16px;">${hbarList(topSearches.slice(0,8), {labelFn:s=>s.query, valueFn:s=>s.searches})}</div>` : ''}
       <div class="detail-grid">
         <div>
           <h5 style="font-size:11px;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px;">Top Searches</h5>
