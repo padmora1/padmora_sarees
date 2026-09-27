@@ -66,7 +66,7 @@ async function isCancellable(order) {
 // Shown to the customer when requesting a cancellation, and to the admin
 // reviewing it. 'other' is the only key that requires a detail note.
 const CANCEL_REASONS = [
-  { key: 'wrong_choice', label: 'Chose the wrong color/size' },
+  { key: 'wrong_choice', label: 'Chose the wrong colour' },
   { key: 'changed_mind', label: 'Changed my mind' },
   { key: 'ordered_by_mistake', label: 'Ordered by mistake' },
   { key: 'found_better_price', label: 'Found a better price elsewhere' },

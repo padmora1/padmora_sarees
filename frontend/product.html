@@ -440,6 +440,10 @@
           <span class="stars">${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</span>
           ${r.title ? `<p style="font-weight:600;color:var(--ink);margin-top:6px;">${escapeHtml(r.title)}</p>` : ''}
           <p>${escapeHtml(r.body)}</p>
+          ${r.adminReply ? `<div style="margin-top:10px;padding:10px 12px;background:var(--ivory-deep);border-radius:4px;border-left:2px solid var(--maroon);">
+            <p style="font-size:11px;font-weight:600;color:var(--maroon);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px;">Response from Padmora</p>
+            <p style="font-size:13px;">${escapeHtml(r.adminReply)}</p>
+          </div>` : ''}
         </div>`).join('');
     }catch(e){ /* ignore */ }
   }

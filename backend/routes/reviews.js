@@ -8,7 +8,8 @@ const router = express.Router({ mergeParams: true });
 function shapeReview(r) {
   return {
     id: r.id, userName: r.user_name, rating: r.rating, title: r.title, body: r.body,
-    verified: !!r.verified, featured: !!r.featured, createdAt: r.created_at
+    verified: !!r.verified, featured: !!r.featured, createdAt: r.created_at,
+    adminReply: r.admin_reply || null, repliedAt: r.replied_at || null
   };
 }
 

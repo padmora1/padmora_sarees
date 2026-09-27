@@ -54,6 +54,11 @@ const ROLE_SCOPES = {
 // activity log — is visible to every admin role, since those are read-only
 // and useful regardless of what a role can edit.
 const PATH_SCOPES = [
+  // Stock CSV import/export/template live on the Inventory *screen* (orders
+  // scope), even though they update the same variants table Catalog Manager
+  // edits directly — checked ahead of the general /variants rule below so an
+  // Order Manager who can see these buttons in the UI can also use them.
+  ['/variants/export.csv', 'orders'], ['/variants/template.csv', 'orders'], ['/variants/import', 'orders'],
   ['/products', 'catalog'], ['/variants', 'catalog'], ['/media', 'catalog'],
   ['/fabrics', 'catalog'], ['/occasions', 'catalog'], ['/badges', 'catalog'], ['/collections', 'catalog'],
   ['/coupons', 'catalog'],
