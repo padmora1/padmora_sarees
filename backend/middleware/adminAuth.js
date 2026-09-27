@@ -64,7 +64,7 @@ const PATH_SCOPES = [
   ['/coupons', 'catalog'],
   ['/inventory', 'orders'], ['/orders', 'orders'], ['/notifications', 'orders'], ['/prebooks', 'orders'], ['/returns', 'orders'],
   ['/customers', 'support'], ['/reviews', 'support'], ['/contact', 'support'],
-  ['/content', 'content'], ['/reels', 'content'], ['/faq', 'content'],
+  ['/content', 'content'], ['/reels', 'content'], ['/faq', 'content'], ['/upcoming-sarees', 'content'],
   ['/settings', 'superadmin'], ['/admin-users', 'superadmin'], ['/backups', 'superadmin'], ['/jobs', 'superadmin']
 ];
 

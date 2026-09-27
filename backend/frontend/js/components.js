@@ -10,7 +10,8 @@ const NAV_LINKS = [
   { href: '/', page: 'index.html', label: 'Home' },
   { href: '/shop', page: 'shop.html', label: 'Menu' },
   { href: '/shop?sort=low', page: 'shop.html', label: 'Sale' },
-  { href: '/our-weaves', page: 'our-weaves.html', label: 'Our Weaves' }
+  { href: '/our-weaves', page: 'our-weaves.html', label: 'Our Weaves' },
+  { href: '/upcoming-sarees', page: 'upcoming-sarees.html', label: 'Upcoming' }
 ];
 
 // "Menu" and "Sale" are two different links to the same shop.html page, only

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/images/favicon-192.png">
+<link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+<title>Upcoming Sarees — Padmora Sarees by Yashi</title>
+<meta name="description" content="A first look at sarees on their way to Padmora — leave your email and we'll write to you the moment each one launches.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Upcoming Sarees — Padmora Sarees by Yashi">
+<meta property="og:description" content="A first look at sarees on their way to Padmora — be the first to know when they launch.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="upcoming-sarees.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="page-banner">
+    <div class="container">
+      <p class="breadcrumb"><a href="/">Home</a> / Upcoming</p>
+      <h1>Upcoming Sarees</h1>
+      <p>A first look at what's coming to the loom next — leave your email and we'll write the moment it's ready.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:36px;">
+    <div class="container">
+      <div class="product-grid" id="upcomingGrid"></div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<!-- Notify Me — same interaction shape as the sold-out Pre Book dialog on a
+     product page, just posting to the upcoming-sarees endpoint instead. -->
+<div class="confirm-backdrop" id="notifyBackdrop"></div>
+<div class="size-guide-dialog prebook-dialog" id="notifyDialog" role="dialog" aria-modal="true">
+  <button class="sg-close" id="notifyClose" aria-label="Close">&times;</button>
+  <h3><span class="ribbon-lotus" style="color:var(--gold);display:inline-flex;width:16px;height:16px;vertical-align:-2px;margin-right:4px;"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 20 C10 15 9.3 10 12 5 C14.7 10 14 15 12 20 Z"/><path d="M12 19 C8 16.5 6 13 6.6 9 C10 11 11.6 15 12 19 Z"/><path d="M12 19 C16 16.5 18 13 17.4 9 C14 11 12.4 15 12 19 Z"/><path d="M11.5 18 C7.8 16 5.3 13.3 5.7 10.3 C8.7 11.8 10.7 14.6 11.5 18 Z"/><path d="M12.5 18 C16.2 16 18.7 13.3 18.3 10.3 C15.3 11.8 13.3 14.6 12.5 18 Z"/></svg></span><span id="notifyTitle">Notify Me</span></h3>
+  <p style="margin-top:2px;">Leave your email and we'll write to you the moment this saree launches — no payment needed today.</p>
+  <div class="form-field" id="notifyEmailField">
+    <label>Email Address</label>
+    <input type="email" id="notifyEmail" placeholder="you@example.com">
+  </div>
+  <div class="form-error" id="notifyError"></div>
+  <button class="btn btn-primary btn-block" id="notifySubmit" style="justify-content:center;">Notify Me When Available</button>
+  <p id="notifySuccess" style="display:none;color:#2E7D45;font-size:13.5px;font-weight:600;margin-top:12px;">✓ You're on the list — we'll email you the moment it launches.</p>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  let currentNotifyId = null;
+
+  function upcomingCardHTML(s){
+    const media = s.imageUrl
+      ? `<img src="${s.imageUrl}" alt="${escapeHtml(s.name)}" style="width:100%;height:100%;object-fit:cover;">`
+      : '';
+    return `
+    <div class="product-card">
+      <div class="product-media" style="${s.imageUrl ? '' : 'background:var(--ivory-deep);'}">
+        ${media}
+        <span class="product-badge new">Coming Soon</span>
+        <span class="quick-add" data-notify="${s.id}" data-name="${escapeHtml(s.name)}" style="cursor:pointer;">Notify Me</span>
+      </div>
+      <div class="product-info">
+        ${s.fabric ? `<div class="product-fabric">${escapeHtml(s.fabric)}</div>` : ''}
+        <div class="product-name">${escapeHtml(s.name)}</div>
+        ${s.description ? `<p style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;">${escapeHtml(s.description)}</p>` : ''}
+        ${s.expectedLabel ? `<p style="font-size:12px;color:var(--maroon);margin-top:6px;font-weight:600;">${escapeHtml(s.expectedLabel)}</p>` : ''}
+      </div>
+    </div>`;
+  }
+
+  async function loadUpcoming(){
+    const grid = document.getElementById('upcomingGrid');
+    try{
+      const {upcomingSarees} = await apiFetch('/upcoming-sarees');
+      grid.innerHTML = upcomingSarees.length ? upcomingSarees.map(upcomingCardHTML).join('') :
+        `<div class="empty-state" style="grid-column:1/-1;">Nothing on the loom to announce just yet — check back soon.</div>`;
+      document.querySelectorAll('[data-notify]').forEach(el=>el.addEventListener('click', ()=>openNotifyForm(el.dataset.notify, el.dataset.name)));
+    }catch(e){
+      grid.innerHTML = `<p style="grid-column:1/-1;text-align:center;color:var(--ink-soft);">Could not load this page — is the backend server running?</p>`;
+    }
+  }
+
+  function openNotifyForm(id, name){
+    currentNotifyId = id;
+    const user = getStoredUser();
+    document.getElementById('notifyTitle').textContent = name ? `Notify Me — ${name}` : 'Notify Me';
+    const emailField = document.getElementById('notifyEmailField');
+    emailField.style.display = (isLoggedIn() && user && user.email) ? 'none' : 'block';
+    document.getElementById('notifyEmail').value = '';
+    document.getElementById('notifyError').classList.remove('show');
+    document.getElementById('notifySuccess').style.display = 'none';
+    document.getElementById('notifySubmit').style.display = 'block';
+    document.getElementById('notifyEmailField').style.display = (isLoggedIn() && user && user.email) ? 'none' : 'block';
+    document.getElementById('notifyBackdrop').classList.add('open');
+    document.getElementById('notifyDialog').classList.add('open');
+  }
+  function closeNotifyForm(){
+    document.getElementById('notifyBackdrop').classList.remove('open');
+    document.getElementById('notifyDialog').classList.remove('open');
+  }
+  document.getElementById('notifyClose').addEventListener('click', closeNotifyForm);
+  document.getElementById('notifyBackdrop').addEventListener('click', closeNotifyForm);
+
+  document.getElementById('notifySubmit').addEventListener('click', async ()=>{
+    const user = getStoredUser();
+    const email = (isLoggedIn() && user && user.email) ? user.email : document.getElementById('notifyEmail').value.trim();
+    const errBox = document.getElementById('notifyError');
+    errBox.classList.remove('show');
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+      errBox.textContent = 'Enter a valid email address.';
+      errBox.classList.add('show');
+      return;
+    }
+    try{
+      await apiFetch('/upcoming-sarees/' + currentNotifyId + '/notify-me', {
+        method: 'POST',
+        body: JSON.stringify({ email, name: (user && user.name) || undefined })
+      });
+      document.getElementById('notifySubmit').style.display = 'none';
+      document.getElementById('notifyEmailField').style.display = 'none';
+      document.getElementById('notifySuccess').style.display = 'block';
+      toast("You're on the list — we'll email you when it launches");
+    }catch(e){
+      errBox.textContent = e.message;
+      errBox.classList.add('show');
+    }
+  });
+
+  loadUpcoming();
+</script>
+</body>
+</html>
