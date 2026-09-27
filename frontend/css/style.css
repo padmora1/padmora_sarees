@@ -32,8 +32,17 @@
    doesn't leave a gap or clip content the way a bare 100vh does — vh is a
    safe fallback for browsers that don't know dvh yet (an unsupported value
    is ignored, not applied, so this is a pure upgrade, no regression). */
+/* overflow-x:hidden lives on <html> only, never on <body> — setting it on
+   body too (as this used to) makes body a second, nested scroll container,
+   and per spec, declaring overflow-x without overflow-y forces overflow-y
+   to 'auto' as well. That nested auto-scroll container is what silently
+   broke position:sticky on .site-header (and anything else sticky) — the
+   header stuck relative to body's own scrollport, not the real page
+   viewport, so it just scrolled away like a normal element. One axis on
+   the true root element is enough to catch accidental overflow; body
+   doesn't need its own copy. */
 html{overflow-x:hidden;}
-body{font-family:var(--font-body);background:var(--ivory);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;position:relative;overflow-x:hidden;}
+body{font-family:var(--font-body);background:var(--ivory);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;position:relative;}
 img{max-width:100%;display:block;}
 a{color:inherit;text-decoration:none;}
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;}
@@ -170,6 +179,20 @@ body::after{right:0;transform:scaleX(-1);}
   min-height:calc(38px + 68px);
   background:linear-gradient(to bottom, var(--maroon-deep) 0 38px, rgba(250,245,236,0.96) 38px 100%);
 }
+
+/* Once components.js fills this mount div, collapse it out of the box tree
+   entirely so .topbar and .site-header become direct flex items of <body>
+   (which is display:flex;flex-direction:column — see body{} below), instead
+   of grandchildren nested inside this wrapper. That nesting is exactly what
+   silently breaks position:sticky on .site-header: a flex item that's a
+   plain block containing a sticky descendant doesn't give the browser a
+   stable enough containing block for sticky to compute against, so the
+   header would just scroll away like a static element despite every sticky
+   rule being correctly applied. display:contents removes the div's own box
+   (so it can't do that) while leaving its children's own layout untouched —
+   confirmed by isolated repro, not a guess. Scoped to :not(:empty) so the
+   placeholder rule above still gets a real box to paint before JS runs. */
+#site-header:not(:empty){display:contents;}
 
 /* Topbar */
 .topbar{background:var(--maroon-deep);color:var(--ivory-deep);font-size:12.5px;padding:8px 0;text-align:center;}
