@@ -9,8 +9,13 @@ const { sendEmail } = require('./notify');
 
 const SITE_URL = process.env.SITE_URL || 'https://padmorasarees.com';
 
-async function checkPrebookNotifications() {
-  const pending = must(await supabase.from('prebook_requests').select('*').eq('notified', false), 'checkPrebookNotifications:pending');
+// variantId is optional — omitted, this checks every pending request
+// (the 15-minute background job's normal behaviour); passed, it only
+// notifies that one saree/colour, for the admin's manual "Notify Now".
+async function checkPrebookNotifications(variantId) {
+  let query = supabase.from('prebook_requests').select('*').eq('notified', false);
+  if (variantId) query = query.eq('variant_id', variantId);
+  const pending = must(await query, 'checkPrebookNotifications:pending');
   if (!pending.length) return { checked: 0, sent: 0 };
 
   const variantIds = [...new Set(pending.map(p => p.variant_id))];
