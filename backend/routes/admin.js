@@ -1695,6 +1695,197 @@ router.get('/analytics/revenue-trend', asyncRoute(async (req, res) => {
   res.json({ days: Array.from(byDay.values()) });
 }));
 
+// ---- Revenue by day of week (which days actually sell) ----
+router.get('/analytics/day-of-week', asyncRoute(async (req, res) => {
+  const orders = must(await supabase.from('orders').select('placed_at, total, cancelled_at'), 'dayOfWeek:orders');
+  const DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const buckets = DOW.map(name => ({ day: name, revenue: 0, orders: 0 }));
+  orders.forEach(o => {
+    if (o.cancelled_at) return;
+    buckets[new Date(o.placed_at).getDay()].revenue += o.total;
+    buckets[new Date(o.placed_at).getDay()].orders += 1;
+  });
+  res.json({ days: buckets });
+}));
+
+// ---- Sales by fabric (revenue + units, non-cancelled orders only) ----
+router.get('/analytics/sales-by-fabric', asyncRoute(async (req, res) => {
+  const liveOrderIds = must(await supabase.from('orders').select('id').is('cancelled_at', null), 'salesByFabric:orders').map(o => o.id);
+  if (!liveOrderIds.length) return res.json({ fabrics: [], totalRevenue: 0 });
+
+  const items = must(await supabase.from('order_items').select('product_id, qty, price').in('order_id', liveOrderIds), 'salesByFabric:items');
+  const productIds = [...new Set(items.map(i => i.product_id))];
+  const products = productIds.length ? must(await supabase.from('products').select('id, fabric').in('id', productIds), 'salesByFabric:products') : [];
+  const fabricByProduct = Object.fromEntries(products.map(p => [p.id, p.fabric || 'Other']));
+
+  const byFabric = new Map();
+  items.forEach(i => {
+    const fabric = fabricByProduct[i.product_id] || 'Other';
+    if (!byFabric.has(fabric)) byFabric.set(fabric, { fabric, revenue: 0, units: 0 });
+    const bucket = byFabric.get(fabric);
+    bucket.revenue += i.price * i.qty;
+    bucket.units += i.qty;
+  });
+
+  const rows = Array.from(byFabric.values()).sort((a, b) => b.revenue - a.revenue);
+  const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
+  res.json({ fabrics: rows, totalRevenue });
+}));
+
+// ---- Top-selling products (last N days, non-cancelled orders) ----
+router.get('/analytics/top-products', asyncRoute(async (req, res) => {
+  const days = Math.min(365, Math.max(7, Number(req.query.days) || 30));
+  const since = new Date(); since.setDate(since.getDate() - days);
+
+  const liveOrders = must(
+    await supabase.from('orders').select('id').is('cancelled_at', null).gte('placed_at', since.toISOString()),
+    'topProducts:orders'
+  ).map(o => o.id);
+  if (!liveOrders.length) return res.json({ products: [] });
+
+  const items = must(await supabase.from('order_items').select('product_id, name, color, qty, price').in('order_id', liveOrders), 'topProducts:items');
+  const byProduct = new Map();
+  items.forEach(i => {
+    if (!byProduct.has(i.product_id)) byProduct.set(i.product_id, { productId: i.product_id, name: i.name, revenue: 0, units: 0 });
+    const bucket = byProduct.get(i.product_id);
+    bucket.revenue += i.price * i.qty;
+    bucket.units += i.qty;
+  });
+
+  const rows = Array.from(byProduct.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+  res.json({ products: rows, days });
+}));
+
+// ---- Slow movers: active products with stock but no sales in the window ----
+router.get('/analytics/slow-movers', asyncRoute(async (req, res) => {
+  const days = Math.min(180, Math.max(7, Number(req.query.days) || 30));
+  const since = new Date(); since.setDate(since.getDate() - days);
+
+  const products = must(await supabase.from('products').select('id, name, fabric').eq('status', 'active'), 'slowMovers:products');
+  const variants = must(await supabase.from('product_variants').select('product_id, stock').eq('archived', false), 'slowMovers:variants');
+  const stockByProduct = {};
+  variants.forEach(v => { stockByProduct[v.product_id] = (stockByProduct[v.product_id] || 0) + v.stock; });
+
+  const recentOrders = must(await supabase.from('orders').select('id').is('cancelled_at', null).gte('placed_at', since.toISOString()), 'slowMovers:orders').map(o => o.id);
+  const recentItems = recentOrders.length
+    ? must(await supabase.from('order_items').select('product_id').in('order_id', recentOrders), 'slowMovers:items')
+    : [];
+  const soldRecently = new Set(recentItems.map(i => i.product_id));
+
+  const rows = products
+    .filter(p => (stockByProduct[p.id] || 0) > 0 && !soldRecently.has(p.id))
+    .map(p => ({ productId: p.id, name: p.name, fabric: p.fabric, stock: stockByProduct[p.id] || 0 }))
+    .sort((a, b) => b.stock - a.stock);
+
+  res.json({ products: rows, days });
+}));
+
+// ---- New vs returning customers, weekly buckets over the last N weeks ----
+router.get('/analytics/customer-growth', asyncRoute(async (req, res) => {
+  const weeks = Math.min(26, Math.max(4, Number(req.query.weeks) || 12));
+  const orders = must(await supabase.from('orders').select('user_id, placed_at, cancelled_at').is('cancelled_at', null).order('placed_at', { ascending: true }), 'customerGrowth:orders');
+
+  const firstOrderAt = new Map();
+  orders.forEach(o => { if (!firstOrderAt.has(o.user_id)) firstOrderAt.set(o.user_id, o.placed_at); });
+
+  const since = new Date(); since.setDate(since.getDate() - weeks * 7); since.setHours(0, 0, 0, 0);
+  const buckets = [];
+  for (let i = 0; i < weeks; i++) {
+    const start = new Date(since); start.setDate(start.getDate() + i * 7);
+    const end = new Date(start); end.setDate(end.getDate() + 7);
+    buckets.push({ weekStart: start.toISOString().slice(0, 10), newCustomers: 0, returningCustomers: 0, _start: start, _end: end });
+  }
+  orders.forEach(o => {
+    const placed = new Date(o.placed_at);
+    const bucket = buckets.find(b => placed >= b._start && placed < b._end);
+    if (!bucket) return;
+    const isNew = firstOrderAt.get(o.user_id) === o.placed_at;
+    if (isNew) bucket.newCustomers += 1; else bucket.returningCustomers += 1;
+  });
+
+  res.json({ weeks: buckets.map(({ _start, _end, ...b }) => b) });
+}));
+
+// ---- Guest vs registered order share (all-time snapshot) ----
+router.get('/analytics/customer-mix', asyncRoute(async (req, res) => {
+  const orders = must(await supabase.from('orders').select('user_id').is('cancelled_at', null), 'customerMix:orders');
+  const userIds = [...new Set(orders.map(o => o.user_id))];
+  const users = userIds.length ? must(await supabase.from('users').select('id, is_guest').in('id', userIds), 'customerMix:users') : [];
+  const guestByUser = Object.fromEntries(users.map(u => [u.id, !!u.is_guest]));
+  let guestOrders = 0, registeredOrders = 0;
+  orders.forEach(o => { if (guestByUser[o.user_id]) guestOrders += 1; else registeredOrders += 1; });
+  res.json({ guestOrders, registeredOrders });
+}));
+
+// ---- Top customers by lifetime spend (non-cancelled orders) ----
+router.get('/analytics/top-customers', asyncRoute(async (req, res) => {
+  const orders = must(await supabase.from('orders').select('user_id, total').is('cancelled_at', null), 'topCustomers:orders');
+  const byUser = new Map();
+  orders.forEach(o => {
+    if (!byUser.has(o.user_id)) byUser.set(o.user_id, { userId: o.user_id, spend: 0, orders: 0 });
+    const bucket = byUser.get(o.user_id);
+    bucket.spend += o.total;
+    bucket.orders += 1;
+  });
+  const top = Array.from(byUser.values()).sort((a, b) => b.spend - a.spend).slice(0, 10);
+  const userIds = top.map(t => t.userId);
+  const users = userIds.length ? must(await supabase.from('users').select('id, name, email, is_guest').in('id', userIds), 'topCustomers:users') : [];
+  const userById = Object.fromEntries(users.map(u => [u.id, u]));
+  res.json({
+    customers: top.map(t => ({ ...t, name: userById[t.userId]?.name || 'Unknown', email: userById[t.userId]?.email || '', isGuest: !!userById[t.userId]?.is_guest }))
+  });
+}));
+
+// ---- Current order pipeline snapshot (computed status for every order) ----
+router.get('/analytics/order-pipeline', asyncRoute(async (req, res) => {
+  const orders = must(await supabase.from('orders').select('*'), 'orderPipeline:orders');
+  const statuses = await Promise.all(orders.map(o => computeStatus(o)));
+  const counts = {};
+  statuses.forEach(s => { counts[s] = (counts[s] || 0) + 1; });
+  res.json({ counts, total: orders.length });
+}));
+
+// ---- Cancellation reasons (from the cancellation-request flow) ----
+router.get('/analytics/cancellation-reasons', asyncRoute(async (req, res) => {
+  const orders = must(await supabase.from('orders').select('cancel_request_reason').not('cancel_request_reason', 'is', null), 'cancellationReasons:orders');
+  const counts = {};
+  orders.forEach(o => { counts[o.cancel_request_reason] = (counts[o.cancel_request_reason] || 0) + 1; });
+  const reasons = Object.entries(counts).map(([key, count]) => ({
+    key, label: (CANCEL_REASONS.find(r => r.key === key) || {}).label || key, count
+  })).sort((a, b) => b.count - a.count);
+  res.json({ reasons, total: orders.length });
+}));
+
+// ---- Return reasons (category + specific reason) ----
+router.get('/analytics/return-reasons', asyncRoute(async (req, res) => {
+  const returns = must(await supabase.from('return_requests').select('reason, reason_category'), 'returnReasons:rows');
+  const byCategory = {};
+  const byReason = {};
+  returns.forEach(r => {
+    byCategory[r.reason_category] = (byCategory[r.reason_category] || 0) + 1;
+    byReason[r.reason] = (byReason[r.reason] || 0) + 1;
+  });
+  res.json({
+    byCategory: Object.entries(byCategory).map(([key, count]) => ({ key, count })),
+    byReason: Object.entries(byReason).map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count),
+    total: returns.length
+  });
+}));
+
+// ---- Coupon performance (non-cancelled orders that used a coupon) ----
+router.get('/analytics/coupon-performance', asyncRoute(async (req, res) => {
+  const orders = must(await supabase.from('orders').select('coupon_code, discount').is('cancelled_at', null).not('coupon_code', 'is', null), 'couponPerformance:orders');
+  const byCode = new Map();
+  orders.forEach(o => {
+    if (!byCode.has(o.coupon_code)) byCode.set(o.coupon_code, { code: o.coupon_code, uses: 0, totalDiscount: 0 });
+    const bucket = byCode.get(o.coupon_code);
+    bucket.uses += 1;
+    bucket.totalDiscount += o.discount || 0;
+  });
+  const rows = Array.from(byCode.values()).sort((a, b) => b.totalDiscount - a.totalDiscount);
+  res.json({ coupons: rows });
+}));
+
 // ---- Wishlist analytics ----
 router.get('/analytics/wishlist', asyncRoute(async (req, res) => {
   const wishlistRows = must(await supabase.from('wishlist_items').select('user_id, product_id'), 'wishlistAnalytics:rows');
