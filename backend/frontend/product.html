@@ -115,56 +115,107 @@
   let selectedVariant = null;
   let qty = 1;
 
-  // Multi-image gallery for #pdMedia — a horizontally scroll-snapping strip
-  // (one real slide per photo) instead of a single background-image. A
-  // colour with no uploaded photos falls back to the same swatch-colour
-  // placeholder as before, with no dots/arrows — visually identical to the
-  // old single-image behaviour for the common one-photo case.
+  // Multi-image gallery for #pdMedia — each photo is a stacked 3D card that
+  // flips in/out like a book page turning, instead of a single
+  // background-image. A colour with no uploaded photos falls back to the
+  // same swatch-colour placeholder as before, with no dots/arrows/autoplay
+  // — visually identical to the old single-image behaviour for the common
+  // one-photo case.
   function variantImages(v){
     return ((v && v.media) || []).filter(m => m.type === 'image');
   }
 
+  let galleryAutoplayTimer = null;
+
   function galleryHTML(v){
     const images = variantImages(v);
     if (!images.length) {
-      return `<div class="pd-media-track"><div class="pd-media-slide" style="background:${swatchBg(v ? v.swatch : 'maroon')};"></div></div>`;
+      return `<div class="pd-media-flip"><div class="pd-flip-slide active" style="background:${swatchBg(v ? v.swatch : 'maroon')};"></div></div>`;
     }
-    const slides = images.map(m =>
-      `<div class="pd-media-slide" style="background-image:url('${m.url}');background-size:cover;background-position:center;"></div>`
+    const slides = images.map((m, i) =>
+      `<div class="pd-flip-slide${i===0?' active':''}" style="background-image:url('${m.url}');"></div>`
     ).join('');
-    if (images.length === 1) return `<div class="pd-media-track">${slides}</div>`;
+    if (images.length === 1) return `<div class="pd-media-flip">${slides}</div>`;
     const dots = images.map((_, i) => `<span class="pd-media-dot${i===0?' active':''}" data-index="${i}"></span>`).join('');
     return `
-      <div class="pd-media-track">${slides}</div>
+      <div class="pd-media-flip">${slides}</div>
       <div class="pd-media-dots">${dots}</div>
       <button type="button" class="pd-media-arrow prev" aria-label="Previous photo">&#8249;</button>
       <button type="button" class="pd-media-arrow next" aria-label="Next photo">&#8250;</button>`;
   }
 
-  // Manual swipe/dot/arrow browsing only — deliberately no autoplay, which
-  // would fight a shopper studying one photo rather than help them.
+  // Book-style page flip: the outgoing photo rotates away in 3D while the
+  // incoming one rotates in from the other side. Auto-advances every 4.5s
+  // when there's more than one photo, pausing on hover/touch so it never
+  // fights someone actually looking at a photo; a dot/arrow/swipe jumps
+  // straight to that photo with the same flip. Respects
+  // prefers-reduced-motion by skipping the animation and the autoplay.
   function wireGallery(){
     const wrap = document.getElementById('pdMedia');
-    const track = wrap.querySelector('.pd-media-track');
+    const slides = [...wrap.querySelectorAll('.pd-flip-slide')];
     const dots = [...wrap.querySelectorAll('.pd-media-dot')];
     const prevBtn = wrap.querySelector('.pd-media-arrow.prev');
     const nextBtn = wrap.querySelector('.pd-media-arrow.next');
-    const slideCount = track.children.length;
-    if (slideCount <= 1) return;
+    clearInterval(galleryAutoplayTimer);
+    galleryAutoplayTimer = null;
+    if (slides.length <= 1) return;
 
-    const currentSlide = () => Math.round(track.scrollLeft / track.clientWidth);
-    const goTo = (index) => {
-      const clamped = Math.max(0, Math.min(slideCount - 1, index));
-      track.scrollTo({ left: clamped * track.clientWidth, behavior: 'smooth' });
-    };
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let active = 0;
 
-    dots.forEach(dot => dot.addEventListener('click', () => goTo(Number(dot.dataset.index))));
-    if (prevBtn) prevBtn.addEventListener('click', () => goTo(currentSlide() - 1));
-    if (nextBtn) nextBtn.addEventListener('click', () => goTo(currentSlide() + 1));
-    track.addEventListener('scroll', () => {
-      const idx = currentSlide();
-      dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+    function goTo(index){
+      const target = ((index % slides.length) + slides.length) % slides.length;
+      if (target === active) return;
+      const forward = target > active || (active === slides.length - 1 && target === 0);
+      const current = slides[active];
+      const next = slides[target];
+
+      next.style.transition = 'none';
+      next.classList.remove('active');
+      next.classList.add(forward ? 'from-right' : 'from-left');
+      void next.offsetHeight; // force reflow so the entry position applies before animating
+      next.style.transition = '';
+
+      current.classList.remove('active');
+      current.classList.add(forward ? 'from-left' : 'from-right');
+
+      requestAnimationFrame(() => {
+        next.classList.remove('from-right', 'from-left');
+        next.classList.add('active');
+      });
+      setTimeout(() => current.classList.remove('from-left', 'from-right'), 700);
+
+      dots[active] && dots[active].classList.remove('active');
+      dots[target] && dots[target].classList.add('active');
+      active = target;
+    }
+
+    function startAutoplay(){
+      if (reduceMotion) return;
+      clearInterval(galleryAutoplayTimer);
+      galleryAutoplayTimer = setInterval(() => goTo(active + 1), 4500);
+    }
+    function pauseAutoplay(){ clearInterval(galleryAutoplayTimer); }
+
+    dots.forEach(dot => dot.addEventListener('click', () => { goTo(Number(dot.dataset.index)); startAutoplay(); }));
+    if (prevBtn) prevBtn.addEventListener('click', () => { goTo(active - 1); startAutoplay(); });
+    if (nextBtn) nextBtn.addEventListener('click', () => { goTo(active + 1); startAutoplay(); });
+
+    wrap.addEventListener('mouseenter', pauseAutoplay);
+    wrap.addEventListener('mouseleave', startAutoplay);
+
+    // Swipe: a real horizontal drag (not just a tap) flips forward/back.
+    let touchStartX = null;
+    wrap.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; pauseAutoplay(); }, { passive: true });
+    wrap.addEventListener('touchend', (e) => {
+      if (touchStartX === null) return;
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      if (Math.abs(dx) > 40) goTo(active + (dx < 0 ? 1 : -1));
+      touchStartX = null;
+      startAutoplay();
     });
+
+    startAutoplay();
   }
 
   function renderGallery(v){
