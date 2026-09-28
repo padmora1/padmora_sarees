@@ -96,9 +96,9 @@
             <h2>Change Password</h2>
             <div class="form-error" id="securityError"></div>
             <form id="securityForm">
-              <div class="form-field"><label>Current Password</label><input type="password" id="sCurrentPassword" required></div>
-              <div class="form-field"><label>New Password</label><input type="password" id="sNewPassword" placeholder="At least 6 characters" required minlength="6"></div>
-              <div class="form-field"><label>Confirm New Password</label><input type="password" id="sConfirmPassword" required minlength="6"></div>
+              <div class="form-field"><label>Current Password</label><input type="password" id="sCurrentPassword" name="current-password" autocomplete="current-password" required></div>
+              <div class="form-field"><label>New Password</label><input type="password" id="sNewPassword" name="new-password" autocomplete="new-password" placeholder="At least 6 characters" required minlength="6"></div>
+              <div class="form-field"><label>Confirm New Password</label><input type="password" id="sConfirmPassword" name="confirm-new-password" autocomplete="new-password" required minlength="6"></div>
               <button type="submit" class="btn btn-primary">Change Password</button>
             </form>
           </div>
