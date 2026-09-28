@@ -43,7 +43,22 @@
           </div>
           <button type="submit" class="btn btn-primary btn-block" style="justify-content:center;">Create Account</button>
         </form>
-        <p class="form-note">Already have an account? <a href="/login">Log in</a></p>
+
+        <!-- Shown only when this email already has guest orders on file
+             (registerForm's response comes back with requiresVerification)
+             — same name/email/password already typed, just an ownership
+             check before we attach a password to that existing record. -->
+        <form id="verifyForm" style="display:none;">
+          <p class="sub" style="margin-top:0;">We found previous orders under this email — enter the code we just sent to finish setting up your account.</p>
+          <div class="form-field">
+            <label>Verification Code</label>
+            <input type="text" id="verifyCode" inputmode="numeric" maxlength="6" placeholder="123456" required>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block" style="justify-content:center;">Verify &amp; Create Account</button>
+          <p class="form-note"><a href="#" id="resendVerifyLink">Didn't get a code? Send again</a></p>
+        </form>
+
+        <p class="form-note" id="loginNote">Already have an account? <a href="/login">Log in</a></p>
       </div>
     </div>
   </section>
@@ -55,18 +70,59 @@
 <script src="js/components.js"></script>
 <script src="js/cursor.js"></script>
 <script>
+  let pendingClaim = null; // {name, email, password} — held only in memory while step 2 is shown
+
+  function showVerifyStep(){
+    document.getElementById('registerForm').style.display = 'none';
+    document.getElementById('loginNote').style.display = 'none';
+    document.getElementById('verifyForm').style.display = 'block';
+  }
+
+  async function submitRegister(){
+    const errBox = document.getElementById('formError');
+    errBox.classList.remove('show');
+    const name = document.getElementById('name').value;
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    try{
+      const data = await apiFetch('/auth/register', {
+        method:'POST',
+        body: JSON.stringify({ name, email, password })
+      });
+      if(data.requiresVerification){
+        pendingClaim = { name, email, password };
+        showVerifyStep();
+        return;
+      }
+      setToken(data.token);
+      setStoredUser(data.user);
+      await mergeGuestDataIntoAccount();
+      toast('Welcome to Padmora, ' + data.user.name.split(' ')[0] + '!');
+      window.location.href = '/account';
+    }catch(err){
+      errBox.textContent = err.message;
+      errBox.classList.add('show');
+    }
+  }
+
   document.getElementById('registerForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    await submitRegister();
+  });
+
+  document.getElementById('resendVerifyLink').addEventListener('click', async (e)=>{
+    e.preventDefault();
+    if(pendingClaim) await submitRegister();
+  });
+
+  document.getElementById('verifyForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
     const errBox = document.getElementById('formError');
     errBox.classList.remove('show');
     try{
-      const { token, user } = await apiFetch('/auth/register', {
+      const { token, user } = await apiFetch('/auth/register/verify', {
         method:'POST',
-        body: JSON.stringify({
-          name: document.getElementById('name').value,
-          email: document.getElementById('email').value,
-          password: document.getElementById('password').value
-        })
+        body: JSON.stringify({ ...pendingClaim, code: document.getElementById('verifyCode').value.trim() })
       });
       setToken(token);
       setStoredUser(user);

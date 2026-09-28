@@ -115,7 +115,7 @@ router.get('/:id', async (req, res) => {
     // that reflected on the button itself, not just re-discover it by
     // re-opening the dialog. No account, no way to know without their email —
     // the frontend covers that case itself with a per-browser memory instead.
-    const userId = getUserIdIfPresent(req);
+    const userId = await getUserIdIfPresent(req);
     if (userId && shaped.variants.length) {
       const user = must(await supabase.from('users').select('email').eq('id', userId).maybeSingle(), 'getProduct:user');
       if (user) {

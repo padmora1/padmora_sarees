@@ -75,6 +75,7 @@ const FRONTEND_DIR = path.join(__dirname, 'frontend');
 // content at two URLs.
 const CLEAN_PAGES = [
   'shop', 'product', 'cart', 'checkout', 'account', 'wishlist', 'login', 'register',
+  'forgot-password',
   'track-order', 'about', 'our-weaves', 'trousseau', 'faq', 'contact',
   'shipping-returns', 'terms', 'privacy-policy', 'admin', 'admin-login', 'packing-slip',
   'upcoming-sarees'

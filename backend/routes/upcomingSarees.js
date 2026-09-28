@@ -27,7 +27,7 @@ router.get('/', async (req, res) => {
     // Same idea as the product page's alreadyPreBooked: a logged-in customer
     // who already asked to be notified should see that on the card itself.
     // Guests are covered client-side (per-browser memory) instead.
-    const userId = getUserIdIfPresent(req);
+    const userId = await getUserIdIfPresent(req);
     if (userId && shaped.length) {
       const user = must(await supabase.from('users').select('email').eq('id', userId).maybeSingle(), 'listUpcoming:user');
       if (user) {

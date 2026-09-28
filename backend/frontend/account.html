@@ -32,6 +32,7 @@
           <button data-tab="address">Addresses</button>
           <button data-tab="orders">Order History</button>
           <button data-tab="returns">Returns</button>
+          <button data-tab="security">Security</button>
           <button data-tab="logout">Log Out</button>
         </nav>
 
@@ -90,6 +91,17 @@
             <p style="font-size:13px;color:var(--ink-soft);margin-top:-8px;margin-bottom:18px;">Delivered an order you need to send back? Request it from that order in <a href="#" data-goto-orders style="color:var(--maroon);text-decoration:underline;">Order History</a> — every request you've submitted shows up here as it's processed.</p>
             <div id="returnsList"><div class="loading-state"><span class="zari-spinner"></span>Loading…</div></div>
           </div>
+
+          <div id="panel-security" style="display:none;">
+            <h2>Change Password</h2>
+            <div class="form-error" id="securityError"></div>
+            <form id="securityForm">
+              <div class="form-field"><label>Current Password</label><input type="password" id="sCurrentPassword" required></div>
+              <div class="form-field"><label>New Password</label><input type="password" id="sNewPassword" placeholder="At least 6 characters" required minlength="6"></div>
+              <div class="form-field"><label>Confirm New Password</label><input type="password" id="sConfirmPassword" required minlength="6"></div>
+              <button type="submit" class="btn btn-primary">Change Password</button>
+            </form>
+          </div>
         </div>
       </div>
     </div>
@@ -106,7 +118,7 @@
   function switchTab(tab){
     if(tab === 'logout'){ logout(); return; }
     document.querySelectorAll('.account-nav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
-    ['profile','address','orders','returns'].forEach(t=>{
+    ['profile','address','orders','returns','security'].forEach(t=>{
       document.getElementById('panel-'+t).style.display = (t===tab) ? 'block' : 'none';
     });
     if(tab === 'orders') loadOrders();
@@ -139,6 +151,31 @@
       setStoredUser(user);
       toast('Profile updated');
     }catch(err){ toast(err.message, 'error'); }
+  });
+
+  document.getElementById('securityForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const errBox = document.getElementById('securityError');
+    errBox.classList.remove('show');
+    const newPassword = document.getElementById('sNewPassword').value;
+    const confirmPassword = document.getElementById('sConfirmPassword').value;
+    if(newPassword !== confirmPassword){
+      errBox.textContent = 'New passwords do not match.';
+      errBox.classList.add('show');
+      return;
+    }
+    try{
+      const { token } = await apiFetch('/auth/change-password', {
+        method: 'PUT',
+        body: JSON.stringify({ currentPassword: document.getElementById('sCurrentPassword').value, newPassword })
+      });
+      setToken(token); // keeps this tab's own session working — every other device now needs a fresh login
+      document.getElementById('securityForm').reset();
+      toast('Password changed');
+    }catch(err){
+      errBox.textContent = err.message;
+      errBox.classList.add('show');
+    }
   });
 
   let currentAddresses = [];
