@@ -45,4 +45,20 @@ async function requireAdmin(req, res, next) {
   }
 }
 
-module.exports = { requireAuth, requireAdmin };
+// Best-effort identity for public routes that personalize when a token is
+// present but must still work fine with none — unlike requireAuth, this
+// never rejects the request; it just returns null on anything unusable
+// (missing header, expired token, admin token, blocked account).
+function getUserIdIfPresent(req) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return null;
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET || 'dev_secret');
+    return payload.userId || null;
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { requireAuth, requireAdmin, getUserIdIfPresent };

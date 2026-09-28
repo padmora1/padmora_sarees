@@ -60,16 +60,37 @@
 <script>
   let currentNotifyId = null;
 
+  // A guest has no account to check server-side, so their own browser
+  // remembers what it already submitted — a logged-in customer's status
+  // comes from the server instead (s.alreadyNotified), checked first.
+  function getGuestNotifySet(){
+    try{ return new Set(JSON.parse(localStorage.getItem('zaree_notified_upcoming') || '[]')); }
+    catch{ return new Set(); }
+  }
+  function markGuestNotified(id){
+    try{
+      const s = getGuestNotifySet();
+      s.add(id);
+      localStorage.setItem('zaree_notified_upcoming', JSON.stringify([...s]));
+    }catch{}
+  }
+  function isAlreadyNotified(s){
+    return !!(s.alreadyNotified || getGuestNotifySet().has(s.id));
+  }
+
   function upcomingCardHTML(s){
     const media = s.imageUrl
       ? `<img src="${s.imageUrl}" alt="${escapeHtml(s.name)}" style="width:100%;height:100%;object-fit:cover;">`
       : '';
+    const already = isAlreadyNotified(s);
     return `
     <div class="product-card">
       <div class="product-media" style="${s.imageUrl ? '' : 'background:var(--ivory-deep);'}">
         ${media}
         <span class="product-badge new">Coming Soon</span>
-        <span class="quick-add" data-notify="${s.id}" data-name="${escapeHtml(s.name)}" style="cursor:pointer;">Notify Me</span>
+        ${already
+          ? `<span class="quick-add" style="cursor:default;">You're on the List ✓</span>`
+          : `<span class="quick-add" data-notify="${s.id}" data-name="${escapeHtml(s.name)}" style="cursor:pointer;">Notify Me</span>`}
       </div>
       <div class="product-info">
         ${s.fabric ? `<div class="product-fabric">${escapeHtml(s.fabric)}</div>` : ''}
@@ -128,6 +149,8 @@
         method: 'POST',
         body: JSON.stringify({ email, name: (user && user.name) || undefined })
       });
+      markGuestNotified(Number(currentNotifyId));
+      loadUpcoming();
       document.getElementById('notifySubmit').style.display = 'none';
       document.getElementById('notifyEmailField').style.display = 'none';
       document.getElementById('notifySuccess').style.display = 'block';

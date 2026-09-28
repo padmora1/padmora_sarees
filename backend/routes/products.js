@@ -1,6 +1,7 @@
 const express = require('express');
 const { supabase, must, getProducts, getProductById, getVariantById, getReelProducts, logSearchQuery } = require('../utils/db');
 const { toProductApiShape } = require('../utils/shape');
+const { getUserIdIfPresent } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -108,7 +109,26 @@ router.get('/:id', async (req, res) => {
     if (!Number.isInteger(id)) return res.status(404).json({ message: 'Saree not found.' });
     const row = await getProductById(id);
     if (!row) return res.status(404).json({ message: 'Saree not found.' });
-    res.json({ product: toProductApiShape(row) });
+    const shaped = toProductApiShape(row);
+
+    // Logged-in customers who already pre-booked a sold-out colour should see
+    // that reflected on the button itself, not just re-discover it by
+    // re-opening the dialog. No account, no way to know without their email —
+    // the frontend covers that case itself with a per-browser memory instead.
+    const userId = getUserIdIfPresent(req);
+    if (userId && shaped.variants.length) {
+      const user = must(await supabase.from('users').select('email').eq('id', userId).maybeSingle(), 'getProduct:user');
+      if (user) {
+        const variantIds = shaped.variants.map(v => v.id).filter(Boolean);
+        const existing = variantIds.length
+          ? must(await supabase.from('prebook_requests').select('variant_id').in('variant_id', variantIds).eq('email', user.email.toLowerCase()), 'getProduct:prebooks')
+          : [];
+        const bookedVariantIds = new Set(existing.map(r => r.variant_id));
+        shaped.variants.forEach(v => { v.alreadyPreBooked = bookedVariantIds.has(v.id); });
+      }
+    }
+
+    res.json({ product: shaped });
   } catch (err) {
     console.error('GET /products/:id failed:', err);
     res.status(500).json({ message: 'Something went wrong on the server.' });
