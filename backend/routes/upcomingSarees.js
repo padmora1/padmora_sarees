@@ -5,6 +5,7 @@
 // and "going live" here is an admin action (Notify Now), not a stock signal.
 const express = require('express');
 const { supabase, must } = require('../utils/db');
+const { getUserIdIfPresent } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -21,7 +22,26 @@ router.get('/', async (req, res) => {
       await supabase.from('upcoming_sarees').select('*').eq('active', true).order('sort_order').order('id'),
       'listUpcoming'
     );
-    res.json({ upcomingSarees: rows.map(shapeUpcoming) });
+    const shaped = rows.map(shapeUpcoming);
+
+    // Same idea as the product page's alreadyPreBooked: a logged-in customer
+    // who already asked to be notified should see that on the card itself.
+    // Guests are covered client-side (per-browser memory) instead.
+    const userId = getUserIdIfPresent(req);
+    if (userId && shaped.length) {
+      const user = must(await supabase.from('users').select('email').eq('id', userId).maybeSingle(), 'listUpcoming:user');
+      if (user) {
+        const ids = shaped.map(s => s.id);
+        const existing = must(
+          await supabase.from('upcoming_saree_notify_requests').select('upcoming_saree_id').in('upcoming_saree_id', ids).eq('email', user.email.toLowerCase()),
+          'listUpcoming:notified'
+        );
+        const requestedIds = new Set(existing.map(r => r.upcoming_saree_id));
+        shaped.forEach(s => { s.alreadyNotified = requestedIds.has(s.id); });
+      }
+    }
+
+    res.json({ upcomingSarees: shaped });
   } catch (err) {
     console.error('GET /upcoming-sarees failed:', err);
     res.status(500).json({ message: 'Something went wrong on the server.' });

@@ -302,7 +302,27 @@
   function addToCartButtonHTML(id){
     return `<button class="btn btn-primary" id="${id}">Add to Bag</button>`;
   }
-  function preBookButtonHTML(id){
+  // A guest has no account to check server-side, so their own browser
+  // remembers what it already submitted — a logged-in customer's status
+  // comes from the server instead (variant.alreadyPreBooked), checked first.
+  function getGuestPrebookSet(){
+    try{ return new Set(JSON.parse(localStorage.getItem('zaree_prebooked_variants') || '[]')); }
+    catch{ return new Set(); }
+  }
+  function markGuestPreBooked(variantId){
+    try{
+      const s = getGuestPrebookSet();
+      s.add(variantId);
+      localStorage.setItem('zaree_prebooked_variants', JSON.stringify([...s]));
+    }catch{}
+  }
+  function isAlreadyPreBooked(variant){
+    return !!(variant.alreadyPreBooked || getGuestPrebookSet().has(variant.id));
+  }
+  function preBookButtonHTML(id, variant){
+    if(isAlreadyPreBooked(variant)){
+      return `<button class="btn btn-outline prebook-btn" id="${id}" disabled style="opacity:.8;cursor:default;"><span class="ribbon-lotus">${LOTUS_GLYPH_SVG}</span>You're on the List ✓</button>`;
+    }
     return `<button class="btn btn-primary prebook-btn" id="${id}"><span class="ribbon-lotus">${LOTUS_GLYPH_SVG}</span>Pre Book</button>`;
   }
   function qtyStepperControlHTML(id, lineQty){
@@ -324,10 +344,12 @@
     if(!mainWrap) return;
 
     if(selectedVariant.stock <= 0){
-      mainWrap.innerHTML = preBookButtonHTML('pdPreBook');
-      stickyWrap.innerHTML = preBookButtonHTML('stickyPreBook');
-      document.getElementById('pdPreBook').addEventListener('click', openPreBookForm);
-      document.getElementById('stickyPreBook').addEventListener('click', openPreBookForm);
+      mainWrap.innerHTML = preBookButtonHTML('pdPreBook', selectedVariant);
+      stickyWrap.innerHTML = preBookButtonHTML('stickyPreBook', selectedVariant);
+      if(!isAlreadyPreBooked(selectedVariant)){
+        document.getElementById('pdPreBook').addEventListener('click', openPreBookForm);
+        document.getElementById('stickyPreBook').addEventListener('click', openPreBookForm);
+      }
       if(preAddQty) preAddQty.hidden = true;
       return;
     }
@@ -553,6 +575,9 @@
         method: 'POST',
         body: JSON.stringify({ variantId: selectedVariant.id, email, name: (user && user.name) || undefined })
       });
+      markGuestPreBooked(selectedVariant.id);
+      selectedVariant.alreadyPreBooked = true;
+      syncCartControls();
       document.getElementById('preBookSubmit').style.display = 'none';
       document.getElementById('preBookEmailField').style.display = 'none';
       document.getElementById('preBookSuccess').style.display = 'block';
