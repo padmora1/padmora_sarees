@@ -1025,7 +1025,11 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
   .sticky-add-bar strong{color:var(--maroon-deep);font-size:15px;}
   .sticky-add-bar span{font-size:11px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;}
   .sticky-add-bar .btn{flex-shrink:0;padding:12px 20px;}
-  .pd-actions{padding-bottom:70px;}
+  /* Reserves clearance from the fixed sticky bar below — belongs on the
+     end of the whole info column (not .pd-actions specifically), so it
+     shows up as breathing room after the last thing in the panel rather
+     than as an odd gap wherever .pd-actions happens to sit in the order. */
+  .pd-info{padding-bottom:70px;}
 }
 
 /* ================= Animated order tracker ================= */
