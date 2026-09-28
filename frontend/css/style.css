@@ -121,7 +121,6 @@ body::after{right:0;transform:scaleX(-1);}
 .wishlist-toggle{transition:transform .25s ease, background .25s ease, border-color .25s ease;}
 .wishlist-toggle:hover{transform:scale(1.12);}
 .wishlist-toggle:hover svg{animation:heartBeat .7s ease;}
-.wishlist-toggle.active{background:var(--blush);border:2px solid var(--maroon);}
 .wishlist-toggle.active svg{animation:heartPop .35s ease;}
 
 .cat-item{transition:transform .3s ease;}
@@ -408,11 +407,25 @@ body::after{right:0;transform:scaleX(-1);}
 .product-badge.sale{background:var(--maroon);color:var(--ivory);}
 .product-badge.new{background:var(--teal);color:var(--ivory);}
 .product-badge.bestseller{background:var(--gold);color:var(--maroon-deep);}
-.wishlist-toggle{position:absolute;top:10px;right:10px;z-index:2;width:34px;height:34px;border-radius:50%;border:2px solid transparent;background:rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;transition:transform .2s ease, background .2s ease, border-color .2s ease;}
+.wishlist-toggle{position:absolute;top:10px;right:10px;z-index:2;width:40px;height:40px;border-radius:50%;border:2px solid transparent;background:rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;transition:transform .2s ease, background .2s ease, border-color .2s ease;}
 .wishlist-toggle:hover{transform:scale(1.1);}
-.wishlist-toggle svg{width:16px;height:16px;stroke:var(--maroon);fill:none;transition:fill .2s ease, stroke .2s ease;}
-.wishlist-toggle.active{background:var(--blush);border-color:var(--maroon);}
-.wishlist-toggle.active svg{fill:#D6336C;stroke:#D6336C;}
+.wishlist-toggle svg{width:25px;height:25px;overflow:visible;}
+/* Not wishlisted: a bold, clearly-legible 3-petal lotus outline (centre +
+   left + right), sized and stroked heavily enough to actually read as a
+   lotus at this small size rather than an abstract squiggle. */
+.wishlist-toggle svg path{fill:none;stroke:var(--maroon);stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round;transition:fill .2s ease, stroke .2s ease;}
+/* Wishlisted: circle stays white, just its border turns pink, with the
+   petals themselves a light pink (centre) and light green (left + right)
+   — a softer, more elegant palette than the site's bold maroon/teal,
+   purpose-picked for this icon. Each petal gets a fine border in its own
+   darker shade (not a shared colour) so the light fills stay clearly
+   defined against the white circle. The centre (pink) path is last in the
+   markup so it paints in front of the two green side petals at their
+   shared base, instead of green cutting across on top of it. */
+.wishlist-toggle.active{background:#fff;border-color:#D9718F;}
+.wishlist-toggle.active svg path{stroke-width:0.9;}
+.wishlist-toggle.active svg path.petal-a{fill:#E8A0B0;stroke:var(--maroon);}
+.wishlist-toggle.active svg path.petal-b{fill:#A8CB88;stroke:#3F6B2E;stroke-width:1.2;}
 .quick-add{position:absolute;left:12px;right:12px;bottom:-46px;z-index:2;background:var(--ivory);color:var(--maroon-deep);text-align:center;padding:12px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;border-radius:2px;transition:bottom .25s ease;}
 .product-card:hover .quick-add{bottom:12px;}
 .wishlist-alert-badge{display:inline-block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:3px 9px;border-radius:10px;margin-bottom:6px;}
@@ -457,6 +470,22 @@ body::after{right:0;transform:scaleX(-1);}
 .pd-grid{display:grid;grid-template-columns:1fr 1fr;gap:50px;}
 .pd-grid > *{min-width:0;}
 .pd-media{aspect-ratio:3/4;border-radius:4px;position:relative;overflow:hidden;box-shadow:var(--shadow);background-image:repeating-linear-gradient(115deg, rgba(255,255,255,0.12) 0 2px, transparent 2px 24px);}
+/* Gallery: a horizontally scroll-snapping strip of real slides (one per
+   photo) so a swipe feels like turning a page — native touch scrolling,
+   no JS animation library, and it automatically respects
+   prefers-reduced-motion since nothing but scroll position is animating.
+   A colour with only one photo (or none) renders one slide and no
+   dots/arrows, identical to the old single-image look. */
+.pd-media-track{display:flex;width:100%;height:100%;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;-ms-overflow-style:none;}
+.pd-media-track::-webkit-scrollbar{display:none;}
+.pd-media-slide{flex:0 0 100%;width:100%;height:100%;scroll-snap-align:center;}
+.pd-media-dots{position:absolute;left:0;right:0;bottom:14px;z-index:2;display:flex;justify-content:center;gap:7px;}
+.pd-media-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.65);border:1px solid rgba(0,0,0,0.15);cursor:pointer;padding:0;transition:background .2s ease, transform .2s ease;}
+.pd-media-dot.active{background:var(--maroon);border-color:var(--maroon);transform:scale(1.25);}
+.pd-media-arrow{position:absolute;top:50%;transform:translateY(-50%);z-index:2;width:34px;height:34px;border-radius:50%;border:none;background:rgba(255,255,255,0.85);color:var(--maroon-deep);font-size:22px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 6px rgba(43,16,21,0.15);transition:background .2s ease, transform .2s ease;}
+.pd-media-arrow:hover{background:#fff;transform:translateY(-50%) scale(1.08);}
+.pd-media-arrow.prev{left:12px;}
+.pd-media-arrow.next{right:12px;}
 .pd-info h1{font-size:28px;margin:10px 0;}
 .pd-desc{font-size:14px;color:var(--ink-soft);margin:16px 0;line-height:1.75;}
 .swatch-row{display:flex;gap:10px;margin:8px 0 20px;}
@@ -837,6 +866,15 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
   .summary-card{position:static;}
   .account-layout{grid-template-columns:1fr;}
   .footer-grid{grid-template-columns:1fr 1fr;}
+}
+/* Phone widths only — desktop's 3:4 portrait image is fine since the
+   details sit beside it, but stacked full-width on a phone that same
+   ratio runs ~500-570px tall before the colour swatches even start.
+   Square cuts that down to roughly the screen's own width. Arrows are
+   hidden here too since swipe already covers touch devices. */
+@media (max-width:760px){
+  .pd-media{aspect-ratio:1/1;}
+  .pd-media-arrow{display:none;}
 }
 @media (max-width:560px){
   .product-grid{grid-template-columns:1fr 1fr;gap:14px;}
