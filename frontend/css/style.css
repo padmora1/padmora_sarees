@@ -381,9 +381,11 @@ body::after{right:0;transform:scaleX(-1);}
 .admin-return-photo{width:110px;height:110px;transition:transform .15s ease;}
 .admin-return-photo:hover{transform:scale(1.04);}
 
-/* Product-page "add to bag" quantity stepper (shown once the item is in the bag) */
-.cart-control-stepper{border-color:var(--maroon);}
-.cart-control-stepper button{color:var(--maroon-deep);font-weight:600;}
+/* Product-page "add to bag" quantity stepper (shown once the item is in the
+   bag) sits right next to the Wishlist button in .pd-actions — match the
+   Wishlist .btn's own height so the two don't look mismatched. */
+.cart-control-stepper{border-color:var(--maroon);height:49px;box-sizing:border-box;}
+.cart-control-stepper button{color:var(--maroon-deep);font-weight:600;height:47px;}
 .cart-control-stepper span{font-weight:600;color:var(--maroon-deep);}
 .shop-layout{display:grid;grid-template-columns:240px 1fr;gap:36px;align-items:flex-start;}
 .shop-layout > *{min-width:0;}
@@ -470,15 +472,21 @@ body::after{right:0;transform:scaleX(-1);}
 .pd-grid{display:grid;grid-template-columns:1fr 1fr;gap:50px;}
 .pd-grid > *{min-width:0;}
 .pd-media{aspect-ratio:3/4;border-radius:4px;position:relative;overflow:hidden;box-shadow:var(--shadow);background-image:repeating-linear-gradient(115deg, rgba(255,255,255,0.12) 0 2px, transparent 2px 24px);}
-/* Gallery: a horizontally scroll-snapping strip of real slides (one per
-   photo) so a swipe feels like turning a page — native touch scrolling,
-   no JS animation library, and it automatically respects
-   prefers-reduced-motion since nothing but scroll position is animating.
-   A colour with only one photo (or none) renders one slide and no
-   dots/arrows, identical to the old single-image look. */
-.pd-media-track{display:flex;width:100%;height:100%;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;-ms-overflow-style:none;}
-.pd-media-track::-webkit-scrollbar{display:none;}
-.pd-media-slide{flex:0 0 100%;width:100%;height:100%;scroll-snap-align:center;}
+/* Gallery: a real page-flip between photos — each slide is a 3D-rotated
+   card, the outgoing one turning away while the incoming one turns in,
+   like a page of a book. Auto-advances on its own when there's more than
+   one photo, and a swipe/tap/dot/arrow triggers the same flip manually.
+   A colour with only one photo (or none) renders one static slide with no
+   dots/arrows/autoplay, identical to the old single-image look. */
+.pd-media-flip{position:relative;width:100%;height:100%;perspective:1400px;}
+.pd-flip-slide{position:absolute;inset:0;background-size:cover;background-position:center;backface-visibility:hidden;opacity:0;transform:rotateY(0deg);transition:transform .65s cubic-bezier(.45,.05,.25,1), opacity .5s ease;z-index:1;}
+.pd-flip-slide.active{opacity:1;transform:rotateY(0deg);z-index:2;}
+.pd-flip-slide.from-right{opacity:0;transform:rotateY(78deg);}
+.pd-flip-slide.from-left{opacity:0;transform:rotateY(-78deg);}
+@media (prefers-reduced-motion: reduce){
+  .pd-flip-slide{transition:opacity .3s ease;}
+  .pd-flip-slide.from-right,.pd-flip-slide.from-left{transform:none;}
+}
 .pd-media-dots{position:absolute;left:0;right:0;bottom:14px;z-index:2;display:flex;justify-content:center;gap:7px;}
 .pd-media-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.65);border:1px solid rgba(0,0,0,0.15);cursor:pointer;padding:0;transition:background .2s ease, transform .2s ease;}
 .pd-media-dot.active{background:var(--maroon);border-color:var(--maroon);transform:scale(1.25);}
@@ -870,10 +878,10 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 /* Phone widths only — desktop's 3:4 portrait image is fine since the
    details sit beside it, but stacked full-width on a phone that same
    ratio runs ~500-570px tall before the colour swatches even start.
-   Square cuts that down to roughly the screen's own width. Arrows are
+   5:4 (shorter than square) cuts that down further still. Arrows are
    hidden here too since swipe already covers touch devices. */
 @media (max-width:760px){
-  .pd-media{aspect-ratio:1/1;}
+  .pd-media{aspect-ratio:5/4;}
   .pd-media-arrow{display:none;}
 }
 @media (max-width:560px){
@@ -1017,7 +1025,11 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
   .sticky-add-bar strong{color:var(--maroon-deep);font-size:15px;}
   .sticky-add-bar span{font-size:11px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;}
   .sticky-add-bar .btn{flex-shrink:0;padding:12px 20px;}
-  .pd-actions{padding-bottom:70px;}
+  /* Reserves clearance from the fixed sticky bar below — belongs on the
+     end of the whole info column (not .pd-actions specifically), so it
+     shows up as breathing room after the last thing in the panel rather
+     than as an odd gap wherever .pd-actions happens to sit in the order. */
+  .pd-info{padding-bottom:70px;}
 }
 
 /* ================= Animated order tracker ================= */
