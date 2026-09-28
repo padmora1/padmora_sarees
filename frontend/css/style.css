@@ -381,9 +381,11 @@ body::after{right:0;transform:scaleX(-1);}
 .admin-return-photo{width:110px;height:110px;transition:transform .15s ease;}
 .admin-return-photo:hover{transform:scale(1.04);}
 
-/* Product-page "add to bag" quantity stepper (shown once the item is in the bag) */
-.cart-control-stepper{border-color:var(--maroon);}
-.cart-control-stepper button{color:var(--maroon-deep);font-weight:600;}
+/* Product-page "add to bag" quantity stepper (shown once the item is in the
+   bag) sits right next to the Wishlist button in .pd-actions — match the
+   Wishlist .btn's own height so the two don't look mismatched. */
+.cart-control-stepper{border-color:var(--maroon);height:49px;box-sizing:border-box;}
+.cart-control-stepper button{color:var(--maroon-deep);font-weight:600;height:47px;}
 .cart-control-stepper span{font-weight:600;color:var(--maroon-deep);}
 .shop-layout{display:grid;grid-template-columns:240px 1fr;gap:36px;align-items:flex-start;}
 .shop-layout > *{min-width:0;}

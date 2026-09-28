@@ -304,14 +304,6 @@
             <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews} reviews)</div>
             <div class="product-price" style="margin-top:10px;" id="pdPrice"></div>
             <p class="pd-desc" id="pdDesc"></p>
-            <div class="authenticity-card">
-              <svg viewBox="0 0 24 24" fill="none" stroke-width="1.4"><path d="M12 2l8 4v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg>
-              <div>
-                <h4>Loom-to-You Authenticity</h4>
-                <p>Woven by <strong>${p.weaverName || 'an independent weaver partner'}</strong> in ${p.weaverRegion || 'India'}. Loom type disclosed honestly — no fabric here is sold as handloom unless it truly is.</p>
-                <span class="loom-tag">${p.loomType || 'Handloom'}</span>
-              </div>
-            </div>
             <p class="stock-note" id="pdStockNote"></p>
             <div>
               <label style="font-size:12px;color:var(--ink-soft);">Choose colour<span id="pdShadeLabel" style="color:var(--ink);font-weight:600;"></span></label>
@@ -333,6 +325,14 @@
             <div class="pd-actions">
               <div id="pdCartControl"></div>
               <button class="btn btn-outline" id="pdWish">♡ Wishlist</button>
+            </div>
+            <div class="authenticity-card">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="1.4"><path d="M12 2l8 4v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg>
+              <div>
+                <h4>Loom-to-You Authenticity</h4>
+                <p>Woven by <strong>${p.weaverName || 'an independent weaver partner'}</strong> in ${p.weaverRegion || 'India'}. Loom type disclosed honestly — no fabric here is sold as handloom unless it truly is.</p>
+                <span class="loom-tag">${p.loomType || 'Handloom'}</span>
+              </div>
             </div>
           </div>
         </div>
