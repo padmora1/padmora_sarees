@@ -26,17 +26,17 @@
         <form id="registerForm">
           <div class="form-field">
             <label>Full Name</label>
-            <input type="text" id="name" placeholder="Ananya Sharma" required>
+            <input type="text" id="name" name="name" autocomplete="name" placeholder="Ananya Sharma" required>
           </div>
           <div class="form-field">
             <label>Email Address</label>
-            <input type="email" id="email" placeholder="you@example.com" required>
+            <input type="email" id="email" name="email" autocomplete="email" placeholder="you@example.com" required>
             <span class="field-hint" id="emailHint"></span>
           </div>
           <div class="form-field">
             <label>Password</label>
             <div class="password-field">
-              <input type="password" id="password" placeholder="At least 6 characters" required minlength="6">
+              <input type="password" id="password" name="new-password" autocomplete="new-password" placeholder="At least 6 characters" required minlength="6">
               <button type="button" class="password-toggle" id="togglePassword" aria-label="Show password">Show</button>
             </div>
             <div class="strength-meter" id="strengthMeter"><span></span></div>
@@ -47,12 +47,14 @@
         <!-- Shown only when this email already has guest orders on file
              (registerForm's response comes back with requiresVerification)
              — same name/email/password already typed, just an ownership
-             check before we attach a password to that existing record. -->
-        <form id="verifyForm" style="display:none;">
+             check before we attach a password to that existing record.
+             autocomplete="one-time-code" keeps the browser from mistaking
+             this for a username field next to a password form. -->
+        <form id="verifyForm" style="display:none;" autocomplete="off">
           <p class="sub" style="margin-top:0;">We found previous orders under this email — enter the code we just sent to finish setting up your account.</p>
           <div class="form-field">
             <label>Verification Code</label>
-            <input type="text" id="verifyCode" inputmode="numeric" maxlength="6" placeholder="123456" required>
+            <input type="text" id="verifyCode" name="otp" autocomplete="one-time-code" inputmode="numeric" maxlength="6" placeholder="123456" required>
           </div>
           <button type="submit" class="btn btn-primary btn-block" style="justify-content:center;">Verify &amp; Create Account</button>
           <p class="form-note"><a href="#" id="resendVerifyLink">Didn't get a code? Send again</a></p>
