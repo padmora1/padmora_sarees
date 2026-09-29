@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const {
-  supabase, must, getProducts, getVariantById, syncProductMirrorFromDefaultVariant, getSetting, setSetting,
+  supabase, must, getProducts, getVariantById, getPrimaryImagesByVariantIds, syncProductMirrorFromDefaultVariant, getSetting, setSetting,
   getFabrics, getOccasions, getBadges, getCollections, getCollectionProductIds, getReelItems, getFaqItems,
   ADMIN_ROLES, logActivity
 } = require('../utils/db');
@@ -476,12 +476,16 @@ async function attachOrderExtras(orders) {
 
 async function shapeAdminOrder(o, { full } = {}) {
   const items = must(await supabase.from('order_items').select('*').eq('order_id', o.id), 'shapeAdminOrder:items');
+  const imageByVariant = await getPrimaryImagesByVariantIds(items.map(li => li.variant_id));
   const status = await computeStatus(o);
   const base = {
     id: o.id,
     customerName: o.customer_name,
     customerEmail: o.customer_email,
-    items: items.map(li => ({ productId: li.product_id, variantId: li.variant_id, name: li.name, color: li.color, qty: li.qty, price: li.price })),
+    items: items.map(li => ({
+      productId: li.product_id, variantId: li.variant_id, name: li.name, color: li.color, qty: li.qty, price: li.price,
+      imageUrl: imageByVariant[li.variant_id] || null
+    })),
     subtotal: o.subtotal,
     discount: o.discount,
     shippingFee: o.shipping_fee,

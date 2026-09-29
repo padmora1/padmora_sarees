@@ -75,7 +75,11 @@
           <div class="success-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg></div>
           <h2>Order Confirmed!</h2>
           <p style="color:var(--ink-soft);margin:12px 0 6px;">Thank you for shopping with Padmora.</p>
-          <p style="color:var(--ink-soft);font-size:13px;">Order ID: <strong id="orderId">#ZR00000</strong></p>
+          <div class="order-confirm-id-badge">
+            <span class="order-confirm-id-label">Order ID</span>
+            <span class="order-confirm-id-value" id="orderId">#ZR00000</span>
+          </div>
+          <div class="order-confirm-items" id="orderConfirmItems"></div>
           <p id="guestTrackNote" style="display:none;color:var(--ink-soft);font-size:12.5px;margin-top:4px;">Track it anytime at Track Order using this Order ID and the email or phone you gave us.</p>
           <div style="display:flex;gap:12px;justify-content:center;margin-top:26px;flex-wrap:wrap;">
             <a href="/account" class="btn btn-outline" id="viewOrderLink">View Order</a>
@@ -198,6 +202,16 @@
       document.getElementById('guestTrackNote').style.display = 'none';
     }
     document.getElementById('orderId').textContent = '#' + order.id;
+    // Each saree thumbnail rises in with its own slight delay (set via CSS
+    // custom property, animation itself defined in css/style.css) — a small
+    // cascading reveal rather than everything appearing at once.
+    document.getElementById('orderConfirmItems').innerHTML = (order.items || []).map((it, i) => `
+      <div class="order-confirm-item" style="--order-item-delay:${0.15 + i * 0.12}s;">
+        ${it.imageUrl
+          ? `<img src="${it.imageUrl}" alt="${it.name}">`
+          : `<span class="order-confirm-item-empty">${LOTUS_GLYPH_SVG}</span>`}
+        <span class="order-confirm-item-name">${it.name}${it.color ? ' — ' + it.color : ''}</span>
+      </div>`).join('');
     goToStep(3);
     refreshBadgeCounts();
     fireConfetti();
