@@ -37,6 +37,23 @@ const { ready: dbReady } = require('./utils/db');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Admin subdomain isolation — once a real admin subdomain (e.g.
+// adminmanagement.padmorasarees.com) exists and points at this same app,
+// set ADMIN_HOST to it and the admin panel + its API become reachable only
+// from there; the main domain gets a plain 404 for /admin, /admin-login,
+// and /api/admin* instead of just an unlinked page (hiding the link alone
+// wouldn't stop someone typing the URL or hitting the login API directly).
+// Left unset, every route below behaves exactly as it always has — this
+// ships with zero behaviour change until deliberately turned on.
+const ADMIN_HOST = process.env.ADMIN_HOST || null;
+function isAdminHost(req) {
+  return !!ADMIN_HOST && req.hostname === ADMIN_HOST;
+}
+function adminHostOnly(req, res, next) {
+  if (!ADMIN_HOST || isAdminHost(req)) return next();
+  return res.status(404).json({ message: 'Not found.' });
+}
+
 app.use(cors());
 app.use(express.json());
 
@@ -48,12 +65,12 @@ app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/products/:productId/reviews', reviewRoutes);
 app.use('/api/contact', contactRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/admin', adminHostOnly, adminRoutes);
 app.use('/api/addresses', addressRoutes);
 app.use('/api/coupons', couponRoutes);
 app.use('/api', taxonomyRoutes);
 app.use('/api', contentRoutes);
-app.use('/api/admin-auth', adminAuthRoutes);
+app.use('/api/admin-auth', adminHostOnly, adminAuthRoutes);
 app.use('/api/returns', returnsRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/upcoming-sarees', upcomingSareesRoutes);
@@ -73,11 +90,14 @@ const FRONTEND_DIR = path.join(__dirname, 'frontend');
 // resolve the real page directly, and any lingering link/bookmark to the old
 // ".html" form 301s to its clean equivalent rather than serving duplicate
 // content at two URLs.
+// 'admin' and 'admin-login' are deliberately not in this list — they're
+// registered separately below, gated by adminHostOnly, so the main domain
+// never serves them (see the ADMIN_HOST block above).
 const CLEAN_PAGES = [
   'shop', 'product', 'cart', 'checkout', 'account', 'wishlist', 'login', 'register',
   'forgot-password',
   'track-order', 'about', 'our-weaves', 'trousseau', 'faq', 'contact',
-  'shipping-returns', 'terms', 'privacy-policy', 'admin', 'admin-login', 'packing-slip',
+  'shipping-returns', 'terms', 'privacy-policy', 'packing-slip',
   'upcoming-sarees'
 ];
 function withQuery(req, cleanPath) {
@@ -89,6 +109,23 @@ CLEAN_PAGES.forEach(name => {
   app.get(`/${name}.html`, (req, res) => res.redirect(301, withQuery(req, `/${name}`)));
 });
 app.get('/index.html', (req, res) => res.redirect(301, withQuery(req, '/')));
+
+// Admin pages — same clean-URL pattern as above, but only reachable from
+// the admin subdomain once ADMIN_HOST is configured. adminHostOnly also
+// covers the raw ".html" filename here, so express.static below never gets
+// a chance to serve admin.html/admin-login.html directly on the main domain.
+['admin', 'admin-login'].forEach(name => {
+  app.get(`/${name}`, adminHostOnly, (req, res) => res.sendFile(path.join(FRONTEND_DIR, `${name}.html`)));
+  app.get(`/${name}.html`, adminHostOnly, (req, res) => res.redirect(301, withQuery(req, `/${name}`)));
+});
+// The admin subdomain's own root shows the admin panel directly instead of
+// the customer homepage. admin.html's own requireAdminLogin() check already
+// redirects to /admin-login on its own if there's no valid session, so
+// "logged in vs not" needs no handling here.
+app.get('/', (req, res, next) => {
+  if (!isAdminHost(req)) return next();
+  res.sendFile(path.join(FRONTEND_DIR, 'admin.html'));
+});
 
 app.use(express.static(FRONTEND_DIR));
 
