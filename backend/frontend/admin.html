@@ -772,7 +772,13 @@
             </div>
             <div class="detail-block">
               <h5>Items</h5>
-              ${o.items.map(i=>`<p>${i.name}${i.color?' — '+i.color:''} × ${i.qty} — ${money(i.price*i.qty)}</p>`).join('')}
+              ${o.items.map(i=>`
+                <div class="order-line-item">
+                  ${i.imageUrl
+                    ? `<a href="${i.imageUrl}" target="_blank" rel="noopener"><img src="${i.imageUrl}" alt="${i.name}" class="order-line-thumb"></a>`
+                    : `<span class="order-line-thumb order-line-thumb-empty">${LOTUS_GLYPH_SVG}</span>`}
+                  <span>${i.name}${i.color?' — '+i.color:''} × ${i.qty} — ${money(i.price*i.qty)}</span>
+                </div>`).join('')}
             </div>
             <div class="detail-block">
               <h5>Payment &amp; Totals</h5>

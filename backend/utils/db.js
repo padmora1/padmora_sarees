@@ -55,6 +55,26 @@ async function getVariantMedia(variantId) {
   return must(await supabase.from('variant_media').select('*').eq('variant_id', variantId).order('sort_order').order('id'), 'getVariantMedia');
 }
 
+// One saree's primary photo per variant, for a whole batch of order line
+// items at once — used to show "which saree is this, really" on an order
+// (admin order detail, customer order confirmation/history) without an
+// N+1 query per line item. A variant with no photos at all (or a null
+// variant_id, e.g. a very old order) just doesn't get an entry.
+async function getPrimaryImagesByVariantIds(variantIds) {
+  const ids = [...new Set((variantIds || []).filter(Boolean))];
+  if (!ids.length) return {};
+  const media = must(
+    await supabase.from('variant_media').select('variant_id, url').in('variant_id', ids).eq('type', 'image')
+      .order('is_primary', { ascending: false }).order('sort_order'),
+    'getPrimaryImagesByVariantIds'
+  );
+  const imageByVariant = {};
+  for (const m of media) {
+    if (!(m.variant_id in imageByVariant)) imageByVariant[m.variant_id] = m.url;
+  }
+  return imageByVariant;
+}
+
 async function getVariants(productId) {
   const variants = must(
     await supabase.from('product_variants').select('*').eq('product_id', productId).eq('archived', false).order('sort_order').order('id'),
@@ -505,7 +525,7 @@ const ready = (async () => {
 module.exports = {
   supabase, ready,
   getProducts, getProductById, getReelProducts,
-  getVariants, getVariantById, getVariantMedia, getDefaultVariant, syncProductMirrorFromDefaultVariant,
+  getVariants, getVariantById, getVariantMedia, getPrimaryImagesByVariantIds, getDefaultVariant, syncProductMirrorFromDefaultVariant,
   getSetting, setSetting,
   getFabrics, getOccasions, getBadges, getCollections, getCollectionBySlug, getCollectionProductIds,
   getReelItems, getFaqItems, logSearchQuery,

@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { supabase, must, getProducts, getVariantById } = require('../utils/db');
+const { supabase, must, getProducts, getVariantById, getPrimaryImagesByVariantIds } = require('../utils/db');
 const { requireAuth } = require('../middleware/auth');
 const { resolveCoupon, computeOrderTotals } = require('../utils/pricing');
 const { computeStatus, buildTimeline, isCancellable, CANCEL_REASONS } = require('../utils/orderStatus');
@@ -18,6 +18,7 @@ class OrderError extends Error {
 
 async function shapeOrder(order) {
   const items = must(await supabase.from('order_items').select('*').eq('order_id', order.id), 'shapeOrder:items');
+  const imageByVariant = await getPrimaryImagesByVariantIds(items.map(li => li.variant_id));
   const status = await computeStatus(order); // may stamp delivered_at as a side effect — must run before reading it below
   const existingReturn = must(await supabase.from('return_requests').select('id, status').eq('order_id', order.id).maybeSingle(), 'shapeOrder:return');
   const cancellable = await isCancellable(order);
@@ -26,7 +27,8 @@ async function shapeOrder(order) {
   return {
     id: order.id,
     items: items.map(li => ({
-      id: li.id, productId: li.product_id, variantId: li.variant_id, name: li.name, color: li.color, qty: li.qty, price: li.price
+      id: li.id, productId: li.product_id, variantId: li.variant_id, name: li.name, color: li.color, qty: li.qty, price: li.price,
+      imageUrl: imageByVariant[li.variant_id] || null
     })),
     subtotal: order.subtotal,
     discount: order.discount,
