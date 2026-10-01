@@ -183,7 +183,10 @@
     try{
       const {fabrics} = await apiFetch('/fabrics');
       const rail = document.getElementById('catRail');
-      rail.innerHTML = fabrics.map(f=>`
+      // A fabric with no products yet (admin added the taxonomy entry ahead
+      // of stocking it) would just lead to an empty shop grid — hide it from
+      // this clickable rail until there's something to actually show.
+      rail.innerHTML = fabrics.filter(f=>f.productCount > 0).map(f=>`
         <a class="cat-item" href="/shop?fabric=${encodeURIComponent(f.name)}">
           <div class="cat-swatch"><div class="cat-swatch-inner" style="background:${swatchBg(f.swatch)};"></div></div>
           <strong>${f.name}</strong>

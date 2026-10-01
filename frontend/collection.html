@@ -51,7 +51,7 @@
       return;
     }
     try{
-      const [{collection: c}, {fabrics}] = await Promise.all([apiFetch('/collections/' + encodeURIComponent(slug)), apiFetch('/fabrics')]);
+      const [{collection: c, products}, {fabrics}] = await Promise.all([apiFetch('/collections/' + encodeURIComponent(slug)), apiFetch('/fabrics')]);
       const swatchByName = {};
       fabrics.forEach(f => { swatchByName[f.name] = f.swatch; });
 
@@ -65,7 +65,13 @@
       document.getElementById('collHeading').textContent = `Padmora — ${c.name} Collection`;
       document.getElementById('collTagline').textContent = c.tagline || '';
 
-      const weaves = c.weaves || [];
+      // A weave assigned to this collection but with no product actually in
+      // it yet (admin curated ahead of stocking it) would just be a tile
+      // leading to an empty shop grid — hide it until there's a real saree
+      // behind it, same treatment as the Fabric filter / homepage rail.
+      const fabricCounts = {};
+      products.forEach(p => { fabricCounts[p.fabric] = (fabricCounts[p.fabric] || 0) + 1; });
+      const weaves = (c.weaves || []).filter(w => fabricCounts[w] > 0);
       section.innerHTML = `
         <div class="container">
           ${c.description ? `<p style="color:var(--ink-soft);font-size:14px;line-height:1.8;max-width:680px;margin-bottom:28px;">${c.description}</p>` : ''}
@@ -73,7 +79,7 @@
           <div class="section-head"><p class="eyebrow">Shop By Weave</p><h2>Weaves In This Collection</h2></div>
           <div class="cat-rail-wrap" id="collCatRailWrap">
             <div class="container" style="padding:0;"><div class="cat-rail" id="collCatRail"></div></div>
-          </div>` : `<p style="text-align:center;color:var(--ink-soft);">No weaves assigned to this collection yet.</p>`}
+          </div>` : `<p style="text-align:center;color:var(--ink-soft);">No sarees in this collection just yet — check back soon.</p>`}
         </div>`;
 
       if(weaves.length){

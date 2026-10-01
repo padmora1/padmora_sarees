@@ -124,7 +124,10 @@
   async function loadTaxonomy(){
     try{
       const [{fabrics}, {occasions}, {products}] = await Promise.all([apiFetch('/fabrics'), apiFetch('/occasions'), apiFetch('/products')]);
-      allFabrics = fabrics.map(f=>f.name);
+      // A taxonomy fabric with zero products yet (admin added it ahead of
+      // stocking it) would just filter down to an empty grid — hide it from
+      // the checklist until there's something to actually show.
+      allFabrics = fabrics.filter(f=>f.productCount > 0).map(f=>f.name);
       allOccasions = occasions.map(o=>o.name);
       allColors = [...new Set(products.map(p=>p.swatch).filter(Boolean))].sort();
     }catch(e){
