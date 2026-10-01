@@ -171,8 +171,16 @@
     }
     document.getElementById('coShipping').textContent = cart.shippingFee > 0 ? money(cart.shippingFee) : 'Free';
     if(cart.taxAmount > 0){
-      document.getElementById('coTaxRow').style.display = 'flex';
-      document.getElementById('coTaxLabel').textContent = `${cart.taxLabel || 'GST'} (${cart.taxRate}%)`;
+      const taxRow = document.getElementById('coTaxRow');
+      taxRow.style.display = 'flex';
+      const label = document.getElementById('coTaxLabel');
+      if(cart.taxInclusive){
+        taxRow.style.color = 'var(--ink-soft)';
+        taxRow.style.fontSize = '12px';
+        label.textContent = `Includes ${cart.taxLabel || 'GST'} (${cart.taxRate}%)`;
+      }else{
+        label.textContent = `${cart.taxLabel || 'GST'} (${cart.taxRate}%)`;
+      }
       document.getElementById('coTax').textContent = money(cart.taxAmount);
     }
     document.getElementById('coTotal').textContent = money(cart.total);

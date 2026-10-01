@@ -54,8 +54,8 @@ async function cartResponse(userId) {
     must(await supabase.from('cart_meta').delete().eq('user_id', userId), 'cartResponse:dropCoupon');
   }
 
-  const { shippingFee, taxAmount, taxRate, taxLabel, total } = await computeOrderTotals(subtotal, discount);
-  return { items, subtotal, discount, shippingFee, taxAmount, taxRate, taxLabel, total, coupon: code };
+  const { shippingFee, taxAmount, taxRate, taxLabel, taxInclusive, total } = await computeOrderTotals(subtotal, discount);
+  return { items, subtotal, discount, shippingFee, taxAmount, taxRate, taxLabel, taxInclusive, total, coupon: code };
 }
 
 router.get('/', async (req, res) => {

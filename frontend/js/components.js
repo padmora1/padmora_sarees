@@ -9,7 +9,7 @@
 const NAV_LINKS = [
   { href: '/', page: 'index.html', label: 'Home' },
   { href: '/shop', page: 'shop.html', label: 'Menu' },
-  { href: '/shop?sort=low', page: 'shop.html', label: 'Sale' },
+  { href: '/sale', page: 'sale.html', label: 'Sale' },
   { href: '/our-weaves', page: 'our-weaves.html', label: 'Our Weaves' },
   { href: '/upcoming-sarees', page: 'upcoming-sarees.html', label: 'Upcoming' }
 ];
@@ -323,7 +323,10 @@ async function renderMiniCart() {
         <div class="mini-cart-thumb" style="background:${swatchBg(item.color)};"></div>
         <div class="mini-cart-line-info">
           <strong>${item.product.name}</strong>
-          <span>${item.qty} × ${money(item.product.price)}</span>
+          <span>${money(item.product.price)}</span>
+          <div class="qty-stepper mini-cart-stepper">
+            <button data-mini-dec="${item.id}">−</button><span>${item.qty}</span><button data-mini-inc="${item.id}">+</button>
+          </div>
         </div>
         <button class="remove-line" data-mini-remove="${item.id}" aria-label="Remove">&times;</button>
       </div>`).join('');
@@ -337,8 +340,110 @@ async function renderMiniCart() {
       renderMiniCart();
       refreshBadgeCounts();
     }));
+    async function changeMiniQty(itemId, delta) {
+      const item = cart.items.find(i => i.id === itemId);
+      const newQty = item.qty + delta;
+      if (newQty <= 0) { await cartRemoveItem(itemId); renderMiniCart(); refreshBadgeCounts(); return; }
+      if (delta > 0 && item.product && newQty > item.product.stock) {
+        toast(`Only ${item.product.stock} left in stock.`);
+        return;
+      }
+      try {
+        const updated = await cartUpdateQty(itemId, newQty);
+        if (updated.message) toast(updated.message);
+        renderMiniCart();
+        refreshBadgeCounts();
+      } catch (e) { toast(e.message, 'error'); }
+    }
+    document.querySelectorAll('[data-mini-inc]').forEach(btn => btn.addEventListener('click', () => changeMiniQty(btn.dataset.miniInc, 1)));
+    document.querySelectorAll('[data-mini-dec]').forEach(btn => btn.addEventListener('click', () => changeMiniQty(btn.dataset.miniDec, -1)));
   } catch (e) {
     body.innerHTML = `<p style="padding:20px;color:var(--ink-soft);font-size:13px;">Could not load your bag.</p>`;
+  }
+}
+
+// ---------------------------------------------------------------------
+// Quick View — a lightweight in-page preview from any product card (shop
+// grid, home bestsellers) so a shopper can see details or add to bag
+// without leaving the listing. One shared modal, lazily built on first use
+// (same pattern as initMiniCart/initSearchOverlay above), reused by every
+// page that loads this file instead of each page building its own.
+// ---------------------------------------------------------------------
+function initQuickView() {
+  if (document.getElementById('quickViewDialog')) return;
+  const wrap = document.createElement('div');
+  wrap.id = 'quickViewWrap';
+  wrap.innerHTML = `
+    <div class="confirm-backdrop" id="quickViewBackdrop"></div>
+    <div class="size-guide-dialog quick-view-dialog" id="quickViewDialog" role="dialog" aria-modal="true">
+      <button class="sg-close" id="quickViewClose" aria-label="Close">&times;</button>
+      <div id="quickViewBody"><div class="loading-state"><span class="zari-spinner"></span>Loading…</div></div>
+    </div>`;
+  document.body.appendChild(wrap);
+
+  function close() {
+    document.getElementById('quickViewBackdrop').classList.remove('open');
+    document.getElementById('quickViewDialog').classList.remove('open');
+  }
+  document.getElementById('quickViewClose').addEventListener('click', close);
+  document.getElementById('quickViewBackdrop').addEventListener('click', close);
+}
+
+async function openQuickView(productId) {
+  initQuickView();
+  const body = document.getElementById('quickViewBody');
+  body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+  document.getElementById('quickViewBackdrop').classList.add('open');
+  document.getElementById('quickViewDialog').classList.add('open');
+
+  try {
+    const { product: p } = await apiFetch('/products/' + productId);
+    const variants = (p.variants && p.variants.length) ? p.variants : [{
+      id: null, colorName: p.swatch, swatch: p.swatch, price: p.price, mrp: p.mrp, stock: p.stock, media: [], isDefault: true
+    }];
+    let selected = variants.find(v => v.isDefault) || variants[0];
+
+    function render() {
+      const off = Math.round((1 - selected.price / selected.mrp) * 100);
+      const primaryImage = selected.media && selected.media.find(m => m.type === 'image' && m.isPrimary) || (selected.media || []).find(m => m.type === 'image');
+      const soldOut = selected.stock <= 0;
+      body.innerHTML = `
+        <div class="quick-view-grid">
+          <div class="quick-view-media" style="${primaryImage ? `background-image:url('${primaryImage.url}');background-size:cover;background-position:center;` : `background:${swatchBg(selected.swatch)};`}"></div>
+          <div class="quick-view-info">
+            <div class="product-fabric">${p.fabric} · ${p.occasion}</div>
+            <h3>${p.name}</h3>
+            <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews})</div>
+            <div class="product-price" style="margin:8px 0;">
+              <span class="price-now">${money(selected.price)}</span>
+              <span class="price-mrp">${money(selected.mrp)}</span>
+              <span class="price-off">${off}% off</span>
+            </div>
+            ${variants.length > 1 ? `<div class="swatch-row" id="qvSwatches">${variants.map(v => `<span class="swatch-dot ${v.id === selected.id ? 'active' : ''}" data-qv-variant="${v.id}" title="${v.colorName}" style="background:${swatchBg(v.swatch)};"></span>`).join('')}</div>` : ''}
+            <p class="stock-note ${soldOut ? '' : 'ok'}" style="margin:6px 0 14px;">${soldOut ? 'Out of stock in this colour.' : `In stock · ${selected.stock} available`}</p>
+            <button class="btn btn-primary btn-block" id="qvAddToBag" style="justify-content:center;" ${soldOut ? 'disabled' : ''}>${soldOut ? 'Out of Stock' : 'Add to Bag'}</button>
+            <a href="/product?id=${p.id}" class="size-guide-link" style="display:block;margin-top:12px;">View Full Details →</a>
+          </div>
+        </div>`;
+
+      document.querySelectorAll('#qvSwatches [data-qv-variant]').forEach(dot => dot.addEventListener('click', () => {
+        const v = variants.find(x => String(x.id) === dot.dataset.qvVariant);
+        if (!v || v.id === selected.id) return;
+        selected = v;
+        render();
+      }));
+      const addBtn = document.getElementById('qvAddToBag');
+      if (addBtn) addBtn.addEventListener('click', async () => {
+        try {
+          await cartAdd(p.id, 1, selected.colorName, selected.id);
+          refreshBadgeCounts();
+          toast('Added to bag');
+        } catch (e) { toast(e.message, 'error'); }
+      });
+    }
+    render();
+  } catch (e) {
+    body.innerHTML = `<p style="padding:20px;color:var(--ink-soft);font-size:13px;">Could not load this saree.</p>`;
   }
 }
 

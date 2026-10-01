@@ -164,17 +164,20 @@ async function guestCartResponse() {
   // preview shown here must still match what /orders/guest actually charges,
   // or "Total Payable" at checkout would silently understate the real total.
   const taxableAmount = Math.max(0, subtotal - discount);
-  let shippingFee = 0, taxAmount = 0, taxRate = 0, taxLabel = 'GST';
+  let shippingFee = 0, taxAmount = 0, taxRate = 0, taxLabel = 'GST', taxInclusive = true;
   try {
     const [{ shipping }, { tax }] = await Promise.all([apiFetch('/settings/shipping'), apiFetch('/settings/tax')]);
     shippingFee = taxableAmount >= (shipping.freeShippingThreshold || 0) ? 0 : (shipping.fee || 0);
     taxRate = tax.enabled ? (tax.gstRate || 0) : 0;
-    taxAmount = Math.round(taxableAmount * (taxRate / 100));
+    taxInclusive = tax.inclusive !== false; // defaults true when unset, same as the backend
+    taxAmount = taxInclusive
+      ? Math.round(taxableAmount * (taxRate / (100 + taxRate)) || 0)
+      : Math.round(taxableAmount * (taxRate / 100));
     taxLabel = tax.label || 'GST';
   } catch { /* settings unreachable — fall back to no shipping/tax rather than blocking the cart */ }
 
-  const total = taxableAmount + shippingFee + taxAmount;
-  return { items: withDetails, subtotal, discount, shippingFee, taxAmount, taxRate, taxLabel, total, coupon: appliedCode };
+  const total = taxInclusive ? (taxableAmount + shippingFee) : (taxableAmount + shippingFee + taxAmount);
+  return { items: withDetails, subtotal, discount, shippingFee, taxAmount, taxRate, taxLabel, taxInclusive, total, coupon: appliedCode };
 }
 
 async function cartGet() {

@@ -324,6 +324,7 @@
             <button type="button" class="size-guide-link" id="openSizeGuide">📏 Size &amp; Fit Guide</button>
             <div class="pd-actions">
               <div id="pdCartControl"></div>
+              <button class="btn btn-primary" id="pdBuyNow">Buy Now</button>
               <button class="btn btn-outline" id="pdWish">♡ Wishlist</button>
             </div>
             <div class="authenticity-card">
@@ -370,6 +371,7 @@
     document.getElementById('qtyDec').addEventListener('click', ()=>{ qty = Math.max(1, qty-1); document.getElementById('qtyVal').textContent = qty; });
 
     document.getElementById('pdWish').addEventListener('click', wishCurrent);
+    document.getElementById('pdBuyNow').addEventListener('click', buyNow);
     document.getElementById('openSizeGuide').addEventListener('click', openSizeGuide);
 
     renderVariantDetails();
@@ -448,7 +450,9 @@
     const preAddQty = document.getElementById('pdPreAddQty');
     if(!mainWrap) return;
 
+    const buyNowBtn = document.getElementById('pdBuyNow');
     if(selectedVariant.stock <= 0){
+      if(buyNowBtn) buyNowBtn.style.display = 'none';
       mainWrap.innerHTML = preBookButtonHTML('pdPreBook', selectedVariant);
       stickyWrap.innerHTML = preBookButtonHTML('stickyPreBook', selectedVariant);
       if(!isAlreadyPreBooked(selectedVariant)){
@@ -458,6 +462,7 @@
       if(preAddQty) preAddQty.hidden = true;
       return;
     }
+    if(buyNowBtn) buyNowBtn.style.display = '';
 
     let line = null;
     try{
@@ -593,6 +598,16 @@
       toast(currentProduct.name + ' added to bag');
       refreshBadgeCounts();
       syncCartControls();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  // Same add-to-cart as above, then straight to checkout instead of staying
+  // on the page — for someone who already knows they want this one, no
+  // detour through the bag first.
+  async function buyNow(){
+    try{
+      await cartAdd(currentProduct.id, qty, selectedVariant.swatch, selectedVariant.id);
+      window.location.href = '/checkout';
     }catch(e){ toast(e.message, 'error'); }
   }
 

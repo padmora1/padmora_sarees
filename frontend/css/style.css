@@ -396,6 +396,7 @@ body::after{right:0;transform:scaleX(-1);}
 .filter-group h4{font-size:13px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px;color:var(--maroon-deep);font-weight:600;font-family:var(--font-body);}
 .filter-option{display:flex;align-items:center;gap:9px;font-size:13.5px;padding:5px 0;color:var(--ink-soft);cursor:pointer;}
 .filter-option input{accent-color:var(--maroon);}
+.color-filter-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;border:1px solid rgba(0,0,0,0.12);}
 .price-range{width:100%;accent-color:var(--maroon);}
 .clear-filters{font-size:12px;color:var(--teal);margin-top:14px;text-decoration:underline;}
 .search-page-input{width:100%;border:1px solid rgba(173,59,92,0.25);padding:11px 14px;border-radius:2px;font-size:13.5px;margin-bottom:14px;}
@@ -430,6 +431,12 @@ body::after{right:0;transform:scaleX(-1);}
 .wishlist-toggle.active svg path.petal-b{fill:#A8CB88;stroke:#3F6B2E;stroke-width:1.2;}
 .quick-add{position:absolute;left:12px;right:12px;bottom:-46px;z-index:2;background:var(--ivory);color:var(--maroon-deep);text-align:center;padding:12px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;border-radius:2px;transition:bottom .25s ease;}
 .product-card:hover .quick-add{bottom:12px;}
+/* Two-button version of the same slide-up slot — real "Add to Cart" +
+   "Quick View" instead of a single label that just navigated away. */
+.quick-actions{position:absolute;left:12px;right:12px;bottom:-46px;z-index:2;display:flex;gap:6px;transition:bottom .25s ease;}
+.product-card:hover .quick-actions{bottom:12px;}
+.quick-actions button{flex:1;background:var(--ivory);color:var(--maroon-deep);text-align:center;padding:12px 2px;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;font-weight:600;border-radius:2px;border:none;cursor:pointer;transition:background .2s ease, color .2s ease;}
+.quick-actions button:hover{background:var(--maroon);color:var(--ivory);}
 .wishlist-alert-badge{display:inline-block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:3px 9px;border-radius:10px;margin-bottom:6px;}
 .wishlist-alert-badge.drop{background:rgba(58,140,80,0.14);color:#2E7D45;}
 .wishlist-alert-badge.out{background:rgba(173,59,92,0.1);color:var(--maroon);}
@@ -811,6 +818,11 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 .size-guide-dialog table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12.5px;}
 .size-guide-dialog th,.size-guide-dialog td{text-align:left;padding:6px 8px;border-bottom:1px solid rgba(173,59,92,0.1);}
 .prebook-dialog{width:min(420px,90vw);}
+.quick-view-dialog{width:min(680px,92vw);padding:28px;}
+.quick-view-grid{display:grid;grid-template-columns:1fr 1.1fr;gap:24px;}
+.quick-view-media{aspect-ratio:3/4;border-radius:6px;background-repeat:no-repeat;}
+.quick-view-info h3{font-size:21px;margin:4px 0 6px;}
+@media (max-width:560px){ .quick-view-grid{grid-template-columns:1fr;} .quick-view-media{aspect-ratio:4/3;} }
 .prebook-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;}
 .prebook-btn .ribbon-lotus{display:inline-flex;color:var(--gold-soft);}
 .prebook-btn .ribbon-lotus svg{width:14px;height:14px;display:block;}
@@ -947,6 +959,7 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 .mini-cart-line-info{flex:1;}
 .mini-cart-line-info strong{display:block;font-size:13px;font-weight:500;}
 .mini-cart-line-info span{font-size:12px;color:var(--ink-soft);}
+.mini-cart-stepper{margin-top:6px;transform:scale(.85);transform-origin:left center;}
 .mini-cart-foot{padding:18px 22px calc(24px + env(safe-area-inset-bottom));border-top:1px solid rgba(173,59,92,0.1);}
 
 /* ================= Mobile bottom navigation ================= */
