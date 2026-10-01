@@ -210,22 +210,21 @@ async function getBadges({ activeOnly = false } = {}) {
   return must(await query, 'getBadges');
 }
 
-async function getCollectionProductIds(collectionId) {
-  const rows = must(await supabase.from('collection_products').select('product_id').eq('collection_id', collectionId), 'getCollectionProductIds');
-  return rows.map(r => r.product_id);
-}
-
+// A collection's product list is derived entirely from its own `weaves`
+// array (every active product whose fabric is one of those weaves) — not a
+// hand-picked list. This is what lets an admin tag a weave once and have
+// every saree of that fabric show up automatically, now and as more are
+// added later, instead of re-checking a product list by hand for every new
+// saree. (The old collection_products table/RPC from before this model are
+// left in place in the database but nothing here reads from them anymore.)
 async function getCollections({ activeOnly = true } = {}) {
   let query = supabase.from('collections').select('*').order('display_order').order('name');
   if (activeOnly) query = query.eq('active', true);
-  const rows = must(await query, 'getCollections');
-  return Promise.all(rows.map(async c => ({ ...c, productIds: await getCollectionProductIds(c.id) })));
+  return must(await query, 'getCollections');
 }
 
 async function getCollectionBySlug(slug) {
-  const row = must(await supabase.from('collections').select('*').eq('slug', slug).eq('active', true).maybeSingle(), 'getCollectionBySlug');
-  if (!row) return null;
-  return { ...row, productIds: await getCollectionProductIds(row.id) };
+  return must(await supabase.from('collections').select('*').eq('slug', slug).eq('active', true).maybeSingle(), 'getCollectionBySlug');
 }
 
 // ---- Settings (generic key/value store) ----
@@ -527,7 +526,7 @@ module.exports = {
   getProducts, getProductById, getReelProducts,
   getVariants, getVariantById, getVariantMedia, getPrimaryImagesByVariantIds, getDefaultVariant, syncProductMirrorFromDefaultVariant,
   getSetting, setSetting,
-  getFabrics, getOccasions, getBadges, getCollections, getCollectionBySlug, getCollectionProductIds,
+  getFabrics, getOccasions, getBadges, getCollections, getCollectionBySlug,
   getReelItems, getFaqItems, logSearchQuery,
   ADMIN_ROLES, logActivity,
   logNotification,

@@ -232,6 +232,38 @@ body::after{right:0;transform:scaleX(-1);}
 .mobile-nav{display:none;flex-direction:column;padding:0 28px 20px;gap:14px;}
 .mobile-nav a{font-size:14px;}
 
+/* Desktop "Collections" hover reveal — a plain CSS hover panel (and
+   :focus-within for keyboard users tabbing to the link) rather than a JS
+   click-toggle, since this is a nav reveal, not a form control. */
+/* display:flex here (not just position:relative) matters: a plain <a> that's
+   a direct child of .main-nav (display:flex) gets blockified by the flex
+   spec, which is what lets its padding:6px 0 center it in the stretched row.
+   The Collections <a> is one level deeper (inside this wrapper), so it never
+   gets blockified and would otherwise sit noticeably higher than its
+   siblings — centering it explicitly here fixes that regardless. */
+.nav-item{position:relative;display:flex;align-items:center;}
+.nav-dropdown{position:absolute;top:100%;left:50%;transform:translate(-50%,-6px);min-width:240px;background:var(--white);border-radius:4px;box-shadow:var(--shadow);padding:8px;opacity:0;pointer-events:none;transition:opacity .2s ease, transform .2s ease;z-index:70;}
+.nav-item:hover .nav-dropdown,.nav-item:focus-within .nav-dropdown{opacity:1;pointer-events:auto;transform:translate(-50%,0);}
+.nav-dropdown a{display:block;padding:10px 12px;border-radius:3px;text-align:center;transition:background .15s ease;}
+.nav-dropdown a:hover{background:var(--ivory);}
+.nav-dropdown a strong{display:block;font-size:13.5px;color:var(--ink);font-weight:500;}
+.nav-dropdown a span{display:block;font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+
+/* Mobile "Collections" accordion — same max-height transition pattern as the
+   FAQ page's answer reveal, under its own class names since this is nav
+   chrome, not FAQ content. */
+.mobile-nav-item{display:flex;flex-wrap:wrap;align-items:center;gap:10px;}
+.mobile-nav-item a{font-size:14px;}
+.mobile-nav-caret{width:26px;height:26px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.mobile-nav-caret svg{width:14px;height:14px;stroke:var(--maroon);transition:transform .2s ease;}
+.mobile-nav-caret[aria-expanded="true"] svg{transform:rotate(180deg);}
+.mobile-nav-dropdown-panel{flex-basis:100%;max-height:0;overflow:hidden;transition:max-height .25s ease;}
+.mobile-nav-dropdown-panel.open{max-height:220px;}
+.mobile-nav-dropdown-panel a{display:block;padding:8px 0;text-align:center;border-top:1px solid rgba(173,59,92,0.1);}
+.mobile-nav-dropdown-panel a:first-child{border-top:none;}
+.mobile-nav-dropdown-panel a strong{display:block;font-size:13.5px;font-weight:500;}
+.mobile-nav-dropdown-panel a span{display:block;font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+
 /* Header, narrow phones (confirmed via layout audit: hamburger + logo +
    search/account/wishlist/cart icons genuinely don't fit side by side under
    ~400px at the CSS's original sizes — the icons were shrinking/deforming
@@ -281,6 +313,15 @@ body::after{right:0;transform:scaleX(-1);}
 .page-banner .container{position:relative;z-index:1;}
 .page-banner h1{font-size:34px;}
 .page-banner p{color:var(--ink-soft);margin-top:10px;font-size:14px;}
+
+/* In-collection weave switcher (shop.html) — lets a shopper change weave
+   without backing out to the collection page first. */
+.weave-switcher{margin-top:18px;display:flex;flex-direction:column;align-items:center;gap:10px;}
+.weave-switcher-back{font-size:12.5px;color:var(--maroon-deep);font-weight:600;}
+.weave-switcher-pills{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;}
+.weave-switcher-pills a{font-size:12.5px;padding:7px 16px;border-radius:20px;border:1px solid rgba(173,59,92,0.25);color:var(--ink);background:var(--white);transition:background .15s ease, color .15s ease, border-color .15s ease;}
+.weave-switcher-pills a:hover{border-color:var(--maroon);color:var(--maroon-deep);}
+.weave-switcher-pills a.active{background:var(--maroon);border-color:var(--maroon);color:var(--ivory);}
 
 /* A fuller scatter of outlined lotus blooms — one large one via ::before,
    five more (varied size/position) layered on ::after — applies to every
@@ -876,6 +917,38 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 .weave-card-body h4{font-size:16px;margin-bottom:4px;}
 .weave-card-body span{font-size:12px;color:var(--gold);text-transform:uppercase;letter-spacing:.05em;font-weight:600;}
 .weave-card-body p{font-size:13px;color:var(--ink-soft);margin-top:8px;line-height:1.6;}
+/* Weave-tile rail — originally index.html-only, now shared with
+   collection.html so a collection's weave tiles look the same. Exactly 4
+   visible at a time; an admin adding more fabrics scrolls instead of
+   wrapping into a cramped row. */
+.cat-rail-wrap{position:relative;}
+.cat-rail{display:flex;gap:22px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding-bottom:2px;}
+.cat-rail::-webkit-scrollbar{display:none;}
+.cat-item{flex:0 0 calc(25% - 16.5px);scroll-snap-align:start;text-align:center;cursor:pointer;}
+.cat-swatch{width:100%;aspect-ratio:1;border-radius:50%;margin-bottom:12px;border:2px solid var(--gold-soft);padding:5px;}
+.cat-swatch-inner{width:100%;height:100%;border-radius:50%;}
+.cat-item strong{font-size:13px;font-weight:500;}
+.cat-rail-wrap .reel-scroll-btn{display:none;}
+.cat-rail-wrap.has-overflow .reel-scroll-btn{display:flex;}
+@media (max-width:760px){ .cat-rail-wrap .reel-scroll-btn{display:none !important;} }
+@media (max-width:980px){ .cat-item{flex:0 0 calc(50% - 11px);} }
+
+/* Weave tiles inside a single collection (collection.html) — a non-scrolling,
+   centered grid rather than the homepage's horizontal rail: a collection's
+   weave count is small and fixed per admin curation, so wrapping reads
+   better than forcing a scroll affordance for 3-8 items. Fixed column width
+   (not 1fr) keeps tiles a consistent, aesthetic size whether there are 2
+   weaves or 8; justify-content centers the whole grid when it doesn't fill
+   the row. */
+.weave-tile-grid{display:grid;grid-template-columns:repeat(auto-fit, 150px);justify-content:center;gap:32px 24px;}
+@media (max-width:480px){ .weave-tile-grid{grid-template-columns:repeat(auto-fit, 120px);gap:24px 16px;} }
+
+/* A collection's "meaning" copy (collection.html) — set apart as a small
+   centered editorial quote rather than a plain left-aligned paragraph. */
+.collection-meaning{max-width:620px;margin:0 auto 36px;text-align:center;}
+.collection-meaning p{color:var(--ink-soft);font-size:15.5px;font-style:italic;line-height:1.8;}
+.collection-meaning p::before{content:'“';}
+.collection-meaning p::after{content:'”';}
 .faq-item{border-bottom:1px solid rgba(173,59,92,0.12);}
 .faq-q{width:100%;text-align:left;padding:18px 4px;display:flex;justify-content:space-between;align-items:center;font-size:14.5px;font-weight:500;color:var(--ink);}
 .faq-q svg{width:16px;height:16px;stroke:var(--maroon);transition:transform .2s ease;flex-shrink:0;}

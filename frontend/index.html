@@ -34,19 +34,8 @@
   .trust-item svg{width:22px;height:22px;stroke:var(--maroon);flex-shrink:0;}
   .trust-item strong{display:block;font-size:13px;}
   .trust-item span{font-size:11.5px;color:var(--ink-soft);}
-  /* Exactly 4 visible at a time — an admin adding a 5th+ fabric (Catalog →
-     Fabrics) doesn't wrap into a cramped second row, it scrolls, same rail
-     pattern as "Sarees in Motion" below. */
-  .cat-rail-wrap{position:relative;}
-  .cat-rail{display:flex;gap:22px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding-bottom:2px;}
-  .cat-rail::-webkit-scrollbar{display:none;}
-  .cat-item{flex:0 0 calc(25% - 16.5px);scroll-snap-align:start;text-align:center;cursor:pointer;}
-  .cat-swatch{width:100%;aspect-ratio:1;border-radius:50%;margin-bottom:12px;border:2px solid var(--gold-soft);padding:5px;}
-  .cat-swatch-inner{width:100%;height:100%;border-radius:50%;}
-  .cat-item strong{font-size:13px;font-weight:500;}
-  .cat-rail-wrap .reel-scroll-btn{display:none;}
-  .cat-rail-wrap.has-overflow .reel-scroll-btn{display:flex;}
-  @media (max-width:760px){ .cat-rail-wrap .reel-scroll-btn{display:none !important;} }
+  /* .cat-rail / .cat-item / .cat-swatch now live in css/style.css (shared
+     with collection.html's weave-tile rail). */
   .occasion-grid{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:20px;}
   .occasion-card{position:relative;min-height:260px;border-radius:4px;overflow:hidden;padding:24px;display:flex;flex-direction:column;justify-content:flex-end;color:var(--ivory);}
   .occasion-card::before{content:'';position:absolute;inset:0;background:linear-gradient(180deg, transparent 30%, rgba(20,10,10,0.75));}
@@ -78,7 +67,6 @@
     .hero-inner{grid-template-columns:1fr;}
     .hero-drape{height:300px;}
     .trust-strip{grid-template-columns:repeat(2,1fr);}
-    .cat-item{flex:0 0 calc(50% - 11px);}
     .occasion-grid{grid-template-columns:1fr;}
   }
 </style>
@@ -125,7 +113,7 @@
     <div class="container">
       <div class="section-head"><p class="eyebrow">The Collection</p><h2>Bestselling Sarees</h2></div>
       <div class="product-grid" id="bestsellerGrid"></div>
-      <div class="load-more-wrap"><a href="/shop" class="btn btn-outline">View Full Menu</a></div>
+      <div class="load-more-wrap"><a href="/shop" class="btn btn-outline">View All Sarees</a></div>
     </div>
   </section>
 
@@ -195,7 +183,10 @@
     try{
       const {fabrics} = await apiFetch('/fabrics');
       const rail = document.getElementById('catRail');
-      rail.innerHTML = fabrics.map(f=>`
+      // A fabric with no products yet (admin added the taxonomy entry ahead
+      // of stocking it) would just lead to an empty shop grid — hide it from
+      // this clickable rail until there's something to actually show.
+      rail.innerHTML = fabrics.filter(f=>f.productCount > 0).map(f=>`
         <a class="cat-item" href="/shop?fabric=${encodeURIComponent(f.name)}">
           <div class="cat-swatch"><div class="cat-swatch-inner" style="background:${swatchBg(f.swatch)};"></div></div>
           <strong>${f.name}</strong>

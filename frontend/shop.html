@@ -23,9 +23,10 @@
 <main>
   <div class="page-banner">
     <div class="container">
-      <p class="breadcrumb"><a href="/">Home</a> / Menu</p>
-      <h1>Shop All Sarees</h1>
-      <p>Every weave, every occasion — filter to find the one.</p>
+      <p class="breadcrumb" id="shopBreadcrumb"><a href="/">Home</a> / All Sarees</p>
+      <h1 id="shopTitle">Shop All Sarees</h1>
+      <p id="shopSubtitle">Every weave, every occasion — filter to find the one.</p>
+      <div class="weave-switcher" id="weaveSwitcher" style="display:none;"></div>
     </div>
   </div>
 
@@ -34,7 +35,7 @@
       <div class="shop-layout">
         <aside class="filters">
           <input type="text" class="search-page-input" id="searchInput" placeholder="Search sarees...">
-          <div class="filter-group">
+          <div class="filter-group" id="fabricFilterGroup">
             <h4>Fabric</h4>
             <div id="fabricFilters"></div>
           </div>
@@ -90,6 +91,7 @@
 
   const params = new URLSearchParams(window.location.search);
   let state = {
+    collection: params.get('collection') || '',
     fabric: params.get('fabric') ? new Set([params.get('fabric')]) : new Set(),
     occasion: params.get('occasion') ? new Set([params.get('occasion')]) : new Set(),
     color: params.get('color') ? new Set([params.get('color')]) : new Set(),
@@ -97,6 +99,51 @@
     sort: params.get('sort') || 'popular',
     search: params.get('search') || ''
   };
+
+  // When arriving from a collection's weave tile, swap the generic "All
+  // Sarees" banner for one that names the collection (and weave, once
+  // chosen), and show a quick weave switcher + back link so changing weave
+  // doesn't mean backing all the way out to the collection page — the
+  // filtering itself just rides along on the `collection` query param
+  // already wired into loadProducts() below. The Fabric checkbox group in
+  // the sidebar is hidden while this switcher is showing — same job, one
+  // control, not two.
+  async function loadCollectionBanner(){
+    const fabricGroup = document.getElementById('fabricFilterGroup');
+    const switcher = document.getElementById('weaveSwitcher');
+    if(!state.collection){
+      fabricGroup.style.display = '';
+      switcher.style.display = 'none';
+      return;
+    }
+    try{
+      const {collection: c, products} = await apiFetch('/collections/' + encodeURIComponent(state.collection));
+      document.getElementById('shopBreadcrumb').innerHTML = `<a href="/">Home</a> / <a href="/collections">Collections</a> / <a href="/collection?slug=${encodeURIComponent(c.slug)}">${c.name}</a>`;
+      const fabricName = [...state.fabric][0];
+      document.getElementById('shopTitle').textContent = fabricName ? `${c.name} — ${fabricName}` : c.name;
+      document.getElementById('shopSubtitle').textContent = c.tagline || '';
+
+      fabricGroup.style.display = 'none';
+
+      // Only weaves with a real saree in this collection get a pill — same
+      // zero-count hiding already used for collection.html's weave tiles.
+      const fabricCounts = {};
+      products.forEach(p => { fabricCounts[p.fabric] = (fabricCounts[p.fabric] || 0) + 1; });
+      const weaves = (c.weaves || []).filter(w => fabricCounts[w] > 0);
+
+      switcher.style.display = weaves.length ? '' : 'none';
+      switcher.innerHTML = `
+        <a href="/collection?slug=${encodeURIComponent(c.slug)}" class="weave-switcher-back">← Back to ${c.name}</a>
+        <div class="weave-switcher-pills">
+          ${weaves.map(w => `<a href="/shop?collection=${encodeURIComponent(c.slug)}&fabric=${encodeURIComponent(w)}" class="${w === fabricName ? 'active' : ''}">${w}</a>`).join('')}
+        </div>`;
+    }catch(e){
+      // Unknown/inactive slug — leave the default "All Sarees" banner and
+      // keep the normal Fabric filter rather than showing a broken switcher.
+      fabricGroup.style.display = '';
+      switcher.style.display = 'none';
+    }
+  }
 
   // Colour has no dedicated admin taxonomy table (unlike fabric/occasion) —
   // it's a free-text swatch key on each product, so the filter list is
@@ -108,7 +155,10 @@
   async function loadTaxonomy(){
     try{
       const [{fabrics}, {occasions}, {products}] = await Promise.all([apiFetch('/fabrics'), apiFetch('/occasions'), apiFetch('/products')]);
-      allFabrics = fabrics.map(f=>f.name);
+      // A taxonomy fabric with zero products yet (admin added it ahead of
+      // stocking it) would just filter down to an empty grid — hide it from
+      // the checklist until there's something to actually show.
+      allFabrics = fabrics.filter(f=>f.productCount > 0).map(f=>f.name);
       allOccasions = occasions.map(o=>o.name);
       allColors = [...new Set(products.map(p=>p.swatch).filter(Boolean))].sort();
     }catch(e){
@@ -129,7 +179,7 @@
       <label class="filter-option color-filter-option"><input type="checkbox" value="${c}" class="colorCheck" ${state.color.has(c)?'checked':''}> <span class="color-filter-dot" style="background:${swatchBg(c)};"></span>${c.charAt(0).toUpperCase()+c.slice(1)}</label>`).join('');
 
     document.querySelectorAll('.fabricCheck').forEach(cb=>cb.addEventListener('change',()=>{
-      cb.checked ? state.fabric.add(cb.value) : state.fabric.delete(cb.value); loadProducts();
+      cb.checked ? state.fabric.add(cb.value) : state.fabric.delete(cb.value); loadProducts(); loadCollectionBanner();
     }));
     document.querySelectorAll('.occasionCheck').forEach(cb=>cb.addEventListener('change',()=>{
       cb.checked ? state.occasion.add(cb.value) : state.occasion.delete(cb.value); loadProducts();
@@ -146,13 +196,16 @@
   });
   document.getElementById('searchInput').addEventListener('input', e=>{ state.search = e.target.value; loadProducts(); });
   document.getElementById('clearFilters').addEventListener('click', ()=>{
-    state = { fabric:new Set(), occasion:new Set(), color:new Set(), maxPrice:25000, sort:'popular', search:'' };
+    // Keeps `collection` — clearing filters inside a collection shows the
+    // whole collection again, not an unscoped escape to the full catalog.
+    state = { collection: state.collection, fabric:new Set(), occasion:new Set(), color:new Set(), maxPrice:25000, sort:'popular', search:'' };
     document.getElementById('priceRange').value = 25000;
     document.getElementById('priceLabel').textContent = '25000';
     document.getElementById('searchInput').value = '';
     setSort('popular');
     renderFilterOptions();
     loadProducts();
+    loadCollectionBanner();
   });
 
   // ---- Custom sort dropdown ----
@@ -267,6 +320,7 @@
 
   async function loadProducts(){
     const q = new URLSearchParams();
+    if(state.collection) q.set('collection', state.collection);
     if(state.fabric.size) q.set('fabric', [...state.fabric].join(','));
     if(state.occasion.size) q.set('occasion', [...state.occasion].join(','));
     if(state.color.size) q.set('color', [...state.color].join(','));
@@ -294,6 +348,7 @@
     await loadTaxonomy();
     renderFilterOptions();
     loadProducts();
+    loadCollectionBanner();
   }
   init();
 </script>

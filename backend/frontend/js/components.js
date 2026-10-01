@@ -8,18 +8,19 @@
 // alike; keep them separate so a page name is never mistaken for a route.
 const NAV_LINKS = [
   { href: '/', page: 'index.html', label: 'Home' },
-  { href: '/shop', page: 'shop.html', label: 'Menu' },
+  { href: '/collections', page: 'collections.html', label: 'Collections', dropdown: true },
+  { href: '/shop', page: 'shop.html', label: 'All Sarees' },
   { href: '/sale', page: 'sale.html', label: 'Sale' },
   { href: '/our-weaves', page: 'our-weaves.html', label: 'Our Weaves' },
   { href: '/upcoming-sarees', page: 'upcoming-sarees.html', label: 'Upcoming' }
 ];
 
-// "Menu" and "Sale" are two different links to the same shop.html page, only
-// distinguished by query string — matching on `page` alone (as the header
-// markup below used to) lit up both of them together on every shop visit.
-// A link is active when its page matches AND, among links that share a page,
-// its own query string is the one that actually matches the current URL —
-// "Menu" (no query) wins whenever no more specific sibling does.
+// General rule: a link is active when its page matches AND, among links that
+// share a page (e.g. two different links to shop.html distinguished only by
+// query string), its own query string is the one that actually matches the
+// current URL — a plain link with no query wins whenever no more specific
+// sibling does. collection.html shares its data-page with collections.html
+// on purpose so viewing a single collection still highlights "Collections".
 function isNavLinkActive(link, activeHref) {
   if (link.page !== activeHref) return false;
   const query = link.href.includes('?') ? link.href.slice(link.href.indexOf('?')) : '';
@@ -72,6 +73,27 @@ function isAdminRealm() {
   return document.body.getAttribute('data-page') === 'admin.html';
 }
 
+// Populates the "Collections" nav item's hover panel (desktop) and
+// accordion sublist (mobile) from the same fetch — admin-managed, so a new
+// collection shows up here with no frontend changes. If this fails or comes
+// back empty, both dropdown/caret just stay unpopulated and the "Collections"
+// link itself still works as a plain link to /collections either way.
+async function loadNavCollectionsDropdown() {
+  const desktopPanel = document.getElementById('navDropdown-collections.html');
+  const mobilePanel = document.getElementById('mobileNavDropdown-collections.html');
+  if (!desktopPanel && !mobilePanel) return;
+  try {
+    const { collections } = await apiFetch('/collections');
+    if (!collections.length) return;
+    const rows = collections.map(c => `
+      <a href="/collection?slug=${encodeURIComponent(c.slug)}">
+        <strong>${c.name}</strong>${c.tagline ? `<span>${c.tagline}</span>` : ''}
+      </a>`).join('');
+    if (desktopPanel) desktopPanel.innerHTML = rows;
+    if (mobilePanel) mobilePanel.innerHTML = rows;
+  } catch (e) { /* nav still works as a plain link */ }
+}
+
 function initHeader(activeHref) {
   const mount = document.getElementById('site-header');
   if (!mount) return;
@@ -96,12 +118,23 @@ function initHeader(activeHref) {
         </button>
         <a href="/" class="logo" aria-label="Padmora — home"><img src="images/padmora-lotus.png" alt="" class="logo-mark"><span class="logo-text-stage" aria-hidden="true"><span class="logo-text-el active" id="logoTextEn">Padmora</span><span class="logo-text-el lang-mr" id="logoTextMr">पद्मोरा</span></span></a>
         <nav class="main-nav">
-          ${NAV_LINKS.map(l => `<a href="${l.href}" class="${isNavLinkActive(l, activeHref) ? 'active' : ''}">${l.label}</a>`).join('')}
+          ${NAV_LINKS.map(l => l.dropdown ? `
+            <div class="nav-item">
+              <a href="${l.href}" class="${isNavLinkActive(l, activeHref) ? 'active' : ''}">${l.label}</a>
+              <div class="nav-dropdown" id="navDropdown-${l.page}"></div>
+            </div>` : `<a href="${l.href}" class="${isNavLinkActive(l, activeHref) ? 'active' : ''}">${l.label}</a>`).join('')}
         </nav>
         <div class="header-actions">${headerIconsHTML()}</div>
       </div>
       <nav class="mobile-nav" id="mobileNav">
-        ${NAV_LINKS.map(l => `<a href="${l.href}">${l.label}</a>`).join('')}
+        ${NAV_LINKS.map(l => l.dropdown ? `
+          <div class="mobile-nav-item">
+            <a href="${l.href}">${l.label}</a>
+            <button type="button" class="mobile-nav-caret" id="mobileNavCaret-${l.page}" aria-label="Show ${l.label}" aria-expanded="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="mobile-nav-dropdown-panel" id="mobileNavDropdown-${l.page}"></div>
+          </div>` : `<a href="${l.href}">${l.label}</a>`).join('')}
         <a href="${isLoggedIn() ? '/account' : '/login'}">${isLoggedIn() ? 'My Account' : 'Log In'}</a>
       </nav>
     </header>`;
@@ -121,6 +154,22 @@ function initHeader(activeHref) {
       nav.style.display = 'none';
     }
   });
+
+  // Mobile caret(s) next to a dropdown nav item expand/collapse an inline
+  // sublist without navigating — the link text beside it still navigates
+  // normally to that section's own listing page.
+  NAV_LINKS.filter(l => l.dropdown).forEach(l => {
+    const caret = document.getElementById(`mobileNavCaret-${l.page}`);
+    if (!caret) return;
+    caret.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const panel = document.getElementById(`mobileNavDropdown-${l.page}`);
+      const open = panel.classList.toggle('open');
+      caret.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  });
+
+  loadNavCollectionsDropdown();
 
   const cartTrigger = document.getElementById('cartTrigger');
   if (cartTrigger) {
