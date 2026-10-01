@@ -59,7 +59,17 @@ router.get('/reels', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     let products = (await getProducts()).filter(p => p.status !== 'archived').map(toProductApiShape);
-    const { fabric, occasion, maxPrice, search, sort } = req.query;
+    const { fabric, occasion, color, maxPrice, search, sort, badge } = req.query;
+
+    // Sale-badged sarees live on their own page (see routes GET /?badge=sale
+    // and frontend/sale.html) — excluded from every general listing (shop
+    // grid, home bestsellers, instant search, the Saree Finder quiz) unless
+    // explicitly asked for, since all four call this same endpoint.
+    if (badge) {
+      products = products.filter(p => p.badge === badge);
+    } else {
+      products = products.filter(p => p.badge !== 'sale');
+    }
 
     if (fabric) {
       const fabrics = fabric.split(',');
@@ -68,6 +78,10 @@ router.get('/', async (req, res) => {
     if (occasion) {
       const occasions = occasion.split(',');
       products = products.filter(p => occasions.includes(p.occasion));
+    }
+    if (color) {
+      const colors = color.split(',');
+      products = products.filter(p => colors.includes(p.swatch));
     }
     if (maxPrice) {
       products = products.filter(p => p.price <= Number(maxPrice));
@@ -91,7 +105,18 @@ router.get('/', async (req, res) => {
     if (sort === 'low') products = [...products].sort((a, b) => a.price - b.price);
     else if (sort === 'high') products = [...products].sort((a, b) => b.price - a.price);
     else if (sort === 'rating') products = [...products].sort((a, b) => b.rating - a.rating);
-    else products = [...products].sort((a, b) => (b.badge === 'bestseller') - (a.badge === 'bestseller'));
+    else {
+      // "Popularity" with no real sales data yet: the admin's own manual
+      // bestseller tag is the primary, most intentional signal available —
+      // kept first — with rating x review-count as a secondary tie-break so
+      // the rest of the catalog still has a sensible order instead of
+      // whatever the database happens to return.
+      products = [...products].sort((a, b) => {
+        const bestsellerDiff = (b.badge === 'bestseller') - (a.badge === 'bestseller');
+        if (bestsellerDiff) return bestsellerDiff;
+        return (b.rating * b.reviews) - (a.rating * a.reviews);
+      });
+    }
 
     res.json({ products });
   } catch (err) {

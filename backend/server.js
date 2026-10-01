@@ -94,7 +94,7 @@ const FRONTEND_DIR = path.join(__dirname, 'frontend');
 // registered separately below, gated by adminHostOnly, so the main domain
 // never serves them (see the ADMIN_HOST block above).
 const CLEAN_PAGES = [
-  'shop', 'product', 'cart', 'checkout', 'account', 'wishlist', 'login', 'register',
+  'shop', 'sale', 'product', 'cart', 'checkout', 'account', 'wishlist', 'login', 'register',
   'forgot-password',
   'track-order', 'about', 'our-weaves', 'trousseau', 'faq', 'contact',
   'shipping-returns', 'terms', 'privacy-policy', 'packing-slip',

@@ -148,7 +148,7 @@ body::after{right:0;transform:scaleX(-1);}
 .occasion-card:hover{transform:scale(1.02);}
 .occasion-card::before{transition:background .4s ease;}
 
-.weave-card,.trousseau-card,.authenticity-card{transition:transform .3s ease, box-shadow .3s ease;}
+.weave-card,.trousseau-card{transition:transform .3s ease, box-shadow .3s ease;}
 .weave-card:hover{transform:translateY(-4px);box-shadow:var(--shadow);}
 
 @keyframes pageFadeIn{ from{opacity:0;transform:translateY(8px);} to{opacity:1;transform:translateY(0);} }
@@ -396,6 +396,7 @@ body::after{right:0;transform:scaleX(-1);}
 .filter-group h4{font-size:13px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px;color:var(--maroon-deep);font-weight:600;font-family:var(--font-body);}
 .filter-option{display:flex;align-items:center;gap:9px;font-size:13.5px;padding:5px 0;color:var(--ink-soft);cursor:pointer;}
 .filter-option input{accent-color:var(--maroon);}
+.color-filter-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;border:1px solid rgba(0,0,0,0.12);}
 .price-range{width:100%;accent-color:var(--maroon);}
 .clear-filters{font-size:12px;color:var(--teal);margin-top:14px;text-decoration:underline;}
 .search-page-input{width:100%;border:1px solid rgba(173,59,92,0.25);padding:11px 14px;border-radius:2px;font-size:13.5px;margin-bottom:14px;}
@@ -430,6 +431,19 @@ body::after{right:0;transform:scaleX(-1);}
 .wishlist-toggle.active svg path.petal-b{fill:#A8CB88;stroke:#3F6B2E;stroke-width:1.2;}
 .quick-add{position:absolute;left:12px;right:12px;bottom:-46px;z-index:2;background:var(--ivory);color:var(--maroon-deep);text-align:center;padding:12px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;border-radius:2px;transition:bottom .25s ease;}
 .product-card:hover .quick-add{bottom:12px;}
+/* Two-button version of the same slide-up slot — real "Add to Cart" +
+   "Quick View" instead of a single label that just navigated away. */
+.quick-actions{position:absolute;left:12px;right:12px;bottom:-46px;z-index:2;display:flex;gap:6px;transition:bottom .25s ease;}
+.product-card:hover .quick-actions{bottom:12px;}
+.quick-actions button{flex:1;background:var(--ivory);color:var(--maroon-deep);text-align:center;padding:12px 2px;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;font-weight:600;border-radius:2px;border:none;cursor:pointer;transition:background .2s ease, color .2s ease;}
+.quick-actions button:hover{background:var(--maroon);color:var(--ivory);}
+/* Replaces the "Add to Cart" slot once the card's default variant is already
+   in the bag, so the shopper adjusts quantity in place instead of stacking
+   up duplicate "Add to Cart" clicks. */
+.card-qty-stepper{flex:1;display:flex;align-items:center;justify-content:space-between;background:var(--ivory);border-radius:2px;padding:0 6px;}
+.card-qty-stepper button{background:none;border:none;color:var(--maroon-deep);font-size:15px;font-weight:700;cursor:pointer;padding:9px 6px;line-height:1;}
+.card-qty-stepper button:hover{color:var(--maroon);}
+.card-qty-stepper span{font-size:12px;font-weight:600;color:var(--maroon-deep);min-width:16px;text-align:center;}
 .wishlist-alert-badge{display:inline-block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:3px 9px;border-radius:10px;margin-bottom:6px;}
 .wishlist-alert-badge.drop{background:rgba(58,140,80,0.14);color:#2E7D45;}
 .wishlist-alert-badge.out{background:rgba(173,59,92,0.1);color:var(--maroon);}
@@ -787,12 +801,6 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 .confirm-danger-btn{background:var(--maroon) !important;}
 .confirm-danger-btn:hover{background:var(--maroon-deep) !important;}
 
-/* Weaver / authenticity block (product page) */
-.authenticity-card{display:flex;gap:16px;background:var(--white);border:1px solid rgba(201,162,39,0.35);border-radius:4px;padding:18px 20px;margin:22px 0;}
-.authenticity-card svg{width:30px;height:30px;stroke:var(--gold);flex-shrink:0;}
-.authenticity-card h4{font-size:13.5px;color:var(--maroon-deep);margin-bottom:4px;}
-.authenticity-card p{font-size:12.5px;color:var(--ink-soft);line-height:1.6;}
-.authenticity-card .loom-tag{display:inline-block;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:600;padding:3px 9px;border-radius:20px;background:var(--blush);color:var(--maroon-deep);margin-top:6px;}
 .stock-note{font-size:12.5px;font-weight:600;margin:10px 0;}
 .stock-note.low{color:var(--maroon);}
 .stock-note.ok{color:var(--teal);}
@@ -811,6 +819,11 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 .size-guide-dialog table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12.5px;}
 .size-guide-dialog th,.size-guide-dialog td{text-align:left;padding:6px 8px;border-bottom:1px solid rgba(173,59,92,0.1);}
 .prebook-dialog{width:min(420px,90vw);}
+.quick-view-dialog{width:min(680px,92vw);padding:28px;}
+.quick-view-grid{display:grid;grid-template-columns:1fr 1.1fr;gap:24px;}
+.quick-view-media{aspect-ratio:3/4;border-radius:6px;background-repeat:no-repeat;}
+.quick-view-info h3{font-size:21px;margin:4px 0 6px;}
+@media (max-width:560px){ .quick-view-grid{grid-template-columns:1fr;} .quick-view-media{aspect-ratio:4/3;} }
 .prebook-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;}
 .prebook-btn .ribbon-lotus{display:inline-flex;color:var(--gold-soft);}
 .prebook-btn .ribbon-lotus svg{width:14px;height:14px;display:block;}
@@ -947,6 +960,7 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 .mini-cart-line-info{flex:1;}
 .mini-cart-line-info strong{display:block;font-size:13px;font-weight:500;}
 .mini-cart-line-info span{font-size:12px;color:var(--ink-soft);}
+.mini-cart-stepper{margin-top:6px;transform:scale(.85);transform-origin:left center;}
 .mini-cart-foot{padding:18px 22px calc(24px + env(safe-area-inset-bottom));border-top:1px solid rgba(173,59,92,0.1);}
 
 /* ================= Mobile bottom navigation ================= */

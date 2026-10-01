@@ -1076,16 +1076,16 @@ router.put('/settings/shipping', asyncRoute(async (req, res) => {
 }));
 
 router.get('/settings/tax', asyncRoute(async (req, res) => {
-  res.json({ tax: await getSetting('tax_settings', {}) });
+  res.json({ tax: await getSetting('tax_settings', { inclusive: true }) });
 }));
 
 router.put('/settings/tax', asyncRoute(async (req, res) => {
-  const { enabled, gstRate, label } = req.body || {};
+  const { enabled, gstRate, label, inclusive } = req.body || {};
   if (isNaN(Number(gstRate)) || Number(gstRate) < 0 || Number(gstRate) > 100) {
     return res.status(400).json({ message: 'GST rate must be a number between 0 and 100.' });
   }
-  const before = await getSetting('tax_settings', {});
-  const next = { enabled: !!enabled, gstRate: Number(gstRate), label: label || 'GST' };
+  const before = await getSetting('tax_settings', { inclusive: true });
+  const next = { enabled: !!enabled, gstRate: Number(gstRate), label: label || 'GST', inclusive: inclusive !== false };
   await setSetting('tax_settings', next);
   await record(req, 'settings updated', 'tax_settings', null, before, next);
   res.json({ tax: next });

@@ -1266,7 +1266,8 @@
     try{
       const {tax} = await adminApiFetch('/admin/settings/tax');
       document.getElementById('taxSettingsForm').innerHTML = `
-        <label class="filter-option" style="margin-bottom:16px;"><input type="checkbox" id="txEnabled" ${tax.enabled?'checked':''}> Charge tax on orders</label>
+        <label class="filter-option" style="margin-bottom:10px;"><input type="checkbox" id="txEnabled" ${tax.enabled?'checked':''}> Charge tax on orders</label>
+        <label class="filter-option" style="margin-bottom:16px;"><input type="checkbox" id="txInclusive" ${tax.inclusive!==false?'checked':''}> Prices shown to customers already include tax (recommended — the checkout total then matches the price shown on the product page; uncheck to add tax on top at checkout instead)</label>
         <div class="form-row-2">
           <div class="form-field"><label>GST Rate (%)</label><input type="number" min="0" max="100" step="0.1" class="admin-input" style="width:100%;" id="txRate" value="${tax.gstRate}"></div>
           <div class="form-field"><label>Label shown to customers</label><input class="admin-input" style="width:100%;" id="txLabel" value="${tax.label||'GST'}"></div>
@@ -1276,6 +1277,7 @@
         try{
           await adminApiFetch('/admin/settings/tax', {method:'PUT', body: JSON.stringify({
             enabled: document.getElementById('txEnabled').checked,
+            inclusive: document.getElementById('txInclusive').checked,
             gstRate: Number(document.getElementById('txRate').value),
             label: document.getElementById('txLabel').value
           })});

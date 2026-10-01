@@ -25,9 +25,12 @@
   .hero-drape{position:relative;height:460px;border-radius:4px;overflow:hidden;background:linear-gradient(160deg,#7A2740 0%,#AD3B5C 45%,#D9A97C 100%);box-shadow:var(--shadow);}
   .hero-drape-label{position:absolute;bottom:22px;left:22px;color:var(--ivory);}
   .hero-drape-label strong{font-family:var(--font-display);font-size:20px;display:block;margin-top:4px;}
-  .trust-strip{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid rgba(173,59,92,0.12);border-bottom:1px solid rgba(173,59,92,0.12);background:var(--white);}
-  .trust-item{display:flex;align-items:center;gap:12px;padding:20px 28px;border-right:1px solid rgba(173,59,92,0.1);}
-  .trust-item:last-child{border-right:none;}
+  /* Even spacing at every width via gap alone, no border dividers — the old
+     border-right/:last-child approach only drew correctly for a single row
+     of 4 and left a dangling divider once the 980px breakpoint below wraps
+     this to 2x2. */
+  .trust-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;border-top:1px solid rgba(173,59,92,0.12);border-bottom:1px solid rgba(173,59,92,0.12);background:rgba(173,59,92,0.1);margin-top:40px;}
+  .trust-item{display:flex;align-items:center;justify-content:center;gap:12px;padding:20px 24px;background:var(--white);text-align:left;}
   .trust-item svg{width:22px;height:22px;stroke:var(--maroon);flex-shrink:0;}
   .trust-item strong{display:block;font-size:13px;}
   .trust-item span{font-size:11.5px;color:var(--ink-soft);}
@@ -90,13 +93,6 @@
     <div class="zari-border" style="margin-top:48px;"></div>
   </section>
 
-  <div class="trust-strip">
-    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg><div><strong>Free Shipping</strong><span id="trustShippingLine">Above ₹1,999</span></div></div>
-    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M4 4h16v16H4z"/><path d="M4 9h16"/></svg><div><strong>Easy Returns</strong><span>7-day exchange</span></div></div>
-    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><div><strong>Secure Payments</strong><span>Cards &amp; UPI</span></div></div>
-    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="9"/></svg><div><strong>Handloom Certified</strong><span>Direct from weavers</span></div></div>
-  </div>
-
   <section class="section" style="padding-bottom:0;">
     <div class="container">
       <div class="section-head"><p class="eyebrow">Watch Before You Buy</p><h2>Sarees in Motion</h2></div>
@@ -134,6 +130,13 @@
   </section>
 
   <section class="promo-band" id="promoBandSection" style="display:none;"></section>
+
+  <div class="trust-strip">
+    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg><div><strong>Free Shipping</strong><span id="trustShippingLine">Above ₹1,999</span></div></div>
+    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M4 4h16v16H4z"/><path d="M4 9h16"/></svg><div><strong>Easy Returns</strong><span>7-day exchange</span></div></div>
+    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><div><strong>Secure Payments</strong><span>Cards &amp; UPI</span></div></div>
+    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="9"/></svg><div><strong>Handloom Certified</strong><span>Direct from weavers</span></div></div>
+  </div>
 </main>
 
 <div id="site-footer"></div>
@@ -219,6 +222,10 @@
   }
 
   let wishlistedIds = new Set();
+  // Keyed by variantId -> {itemId, qty} for whatever's already in the bag, so
+  // a card whose default variant is already there shows a qty stepper
+  // instead of inviting a second, stacking "Add to Cart" click.
+  let cartQtyByVariant = {};
 
   function productCardHTML(p){
     const off = Math.round((1 - p.price/p.mrp)*100);
@@ -228,6 +235,8 @@
     const badgeLabel = p.badge==='sale'?'Sale':p.badge==='new'?'New':p.badge==='bestseller'?'Bestseller':'';
     const isWished = wishlistedIds.has(p.id);
     const soldOut = p.stock <= 0;
+    const defaultVariant = (p.variants && (p.variants.find(v=>v.isDefault) || p.variants[0])) || null;
+    const cartLine = defaultVariant ? cartQtyByVariant[defaultVariant.id] : null;
     return `
     <div class="product-card ${soldOut?'sold-out':''}">
       <a href="/product?id=${p.id}" class="product-media" style="background:${swatchBg(p.swatch)};display:block;">
@@ -239,7 +248,16 @@
             <path class="petal-a" d="M12 20 C7.5 15.2 7.5 8.2 12 4 C16.5 8.2 16.5 15.2 12 20 Z"/>
           </svg>
         </button>
-        ${soldOut ? `<span class="quick-add">Pre Book</span>` : ''}
+        ${soldOut
+          ? `<span class="quick-add">Pre Book</span>`
+          : `<div class="quick-actions">
+              ${cartLine && cartLine.qty > 0
+                ? `<div class="card-qty-stepper">
+                    <button type="button" onclick="event.preventDefault();cardChangeQty('${cartLine.itemId}', -1);">−</button><span>${cartLine.qty}</span><button type="button" onclick="event.preventDefault();cardChangeQty('${cartLine.itemId}', 1);">+</button>
+                  </div>`
+                : `<button type="button" onclick="event.preventDefault();quickAddToCart(${p.id}, ${defaultVariant ? defaultVariant.id : 'null'}, '${(defaultVariant ? defaultVariant.colorName : p.swatch || '').replace(/'/g, "\\'")}', this);">Add to Cart</button>`}
+              <button type="button" onclick="event.preventDefault();openQuickView(${p.id});">Quick View</button>
+            </div>`}
       </a>
       <div class="product-info">
         <div class="product-fabric">${p.fabric}</div>
@@ -264,10 +282,40 @@
     }catch(e){ toast(e.message, 'error'); }
   }
 
+  async function quickAddToCart(productId, variantId, color){
+    try{
+      await cartAdd(productId, 1, color, variantId);
+      refreshBadgeCounts();
+      toast('Added to bag');
+      loadBestsellers();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function cardChangeQty(itemId, delta){
+    try{
+      const cart = await cartGet();
+      const item = cart.items.find(i=>i.id===itemId);
+      if(!item){ loadBestsellers(); return; }
+      const newQty = item.qty + delta;
+      if(newQty <= 0){
+        await cartRemoveItem(itemId);
+      }else{
+        if(item.product && newQty > item.product.stock){ toast(`Only ${item.product.stock} left in stock.`); return; }
+        const updated = await cartUpdateQty(itemId, newQty);
+        if(updated.message) toast(updated.message);
+      }
+      refreshBadgeCounts();
+      loadBestsellers();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+  window.refreshProductGrid = loadBestsellers;
+
   async function loadBestsellers(){
     try{
-      const [{products}, wishData] = await Promise.all([apiFetch('/products?sort=popular'), wishlistGet()]);
+      const [{products}, wishData, cart] = await Promise.all([apiFetch('/products?sort=popular'), wishlistGet(), cartGet()]);
       wishlistedIds = new Set(wishData.products.map(p=>p.id));
+      cartQtyByVariant = {};
+      cart.items.forEach(i => { if(i.variantId) cartQtyByVariant[i.variantId] = { itemId: i.id, qty: i.qty }; });
       document.getElementById('bestsellerGrid').innerHTML = products.slice(0,6).map(productCardHTML).join('');
     }catch(e){
       document.getElementById('bestsellerGrid').innerHTML = `<p style="grid-column:1/-1;text-align:center;color:var(--ink-soft);">Could not load products — is the backend server running?</p>`;

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/images/favicon-192.png">
+<link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+<title>Sale — Padmora Sarees by Yashi</title>
+<meta name="description" content="Limited-time discounted sarees from Padmora — handloom Maheshwari, Ajrakh, Paithani and Narayanpet weaves at special prices.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Sale — Padmora Sarees by Yashi">
+<meta property="og:description" content="Limited-time discounted sarees — handloom weaves at special prices.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="sale.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="page-banner">
+    <div class="container">
+      <p class="breadcrumb"><a href="/">Home</a> / Sale</p>
+      <h1>Sale</h1>
+      <p>Discounted handloom sarees, for a limited time.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:36px;">
+    <div class="container">
+      <span class="result-count" id="resultCount">Loading…</span>
+      <div class="product-grid" id="productGrid" style="margin-top:18px;"></div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  let wishlistedIds = new Set();
+  // Keyed by variantId -> {itemId, qty} for whatever's already in the bag, so
+  // a card whose default variant is already there shows a qty stepper
+  // instead of inviting a second, stacking "Add to Cart" click.
+  let cartQtyByVariant = {};
+
+  function productCardHTML(p){
+    const off = Math.round((1 - p.price/p.mrp)*100);
+    const badgeLabel = p.badge==='sale'?'Sale':p.badge==='new'?'New':p.badge==='bestseller'?'Bestseller':'';
+    const isWished = wishlistedIds.has(p.id);
+    const soldOut = p.stock <= 0;
+    const defaultVariant = (p.variants && (p.variants.find(v=>v.isDefault) || p.variants[0])) || null;
+    const cartLine = defaultVariant ? cartQtyByVariant[defaultVariant.id] : null;
+    return `
+    <div class="product-card ${soldOut?'sold-out':''}">
+      <a href="/product?id=${p.id}" class="product-media" style="background:${swatchBg(p.swatch)};display:block;">
+        ${soldOut ? `<div class="sold-out-ribbon"><span class="ribbon-lotus">${LOTUS_GLYPH_SVG}</span>Sold Out</div>` : (badgeLabel ? `<span class="product-badge ${p.badge}">${badgeLabel}</span>` : '')}
+        <button class="wishlist-toggle ${isWished?'active':''}" aria-label="${isWished?'Remove from wishlist':'Add to wishlist'}" onclick="event.preventDefault();quickWish(${p.id}, this);">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path class="petal-b" d="M12 20 C6.3 18.7 1.6 13 1.4 7.3 C6.9 8.5 11.6 14.2 12 20 Z"/>
+            <path class="petal-b" d="M12 20 C17.7 18.7 22.4 13 22.6 7.3 C17.1 8.5 12.4 14.2 12 20 Z"/>
+            <path class="petal-a" d="M12 20 C7.5 15.2 7.5 8.2 12 4 C16.5 8.2 16.5 15.2 12 20 Z"/>
+          </svg>
+        </button>
+        ${soldOut
+          ? `<span class="quick-add">Pre Book</span>`
+          : `<div class="quick-actions">
+              ${cartLine && cartLine.qty > 0
+                ? `<div class="card-qty-stepper">
+                    <button type="button" onclick="event.preventDefault();cardChangeQty('${cartLine.itemId}', -1);">−</button><span>${cartLine.qty}</span><button type="button" onclick="event.preventDefault();cardChangeQty('${cartLine.itemId}', 1);">+</button>
+                  </div>`
+                : `<button type="button" onclick="event.preventDefault();quickAddToCart(${p.id}, ${defaultVariant ? defaultVariant.id : 'null'}, '${(defaultVariant ? defaultVariant.colorName : p.swatch || '').replace(/'/g, "\\'")}', this);">Add to Cart</button>`}
+              <button type="button" onclick="event.preventDefault();openQuickView(${p.id});">Quick View</button>
+            </div>`}
+      </a>
+      <div class="product-info">
+        <div class="product-fabric">${p.fabric}</div>
+        <a href="/product?id=${p.id}" class="product-name">${p.name}</a>
+        <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews})</div>
+        <div class="product-price">
+          <span class="price-now">${money(p.price)}</span>
+          <span class="price-mrp">${money(p.mrp)}</span>
+          <span class="price-off">${off}% off</span>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  async function quickWish(id, btn){
+    const nowActive = !wishlistedIds.has(id);
+    try{
+      if(nowActive){ await wishlistAdd(id); wishlistedIds.add(id); toast('Added to wishlist ♡'); }
+      else{ await wishlistRemove(id); wishlistedIds.delete(id); toast('Removed from wishlist'); }
+      if(btn){ btn.classList.toggle('active', nowActive); btn.setAttribute('aria-label', nowActive?'Remove from wishlist':'Add to wishlist'); }
+      refreshBadgeCounts();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function quickAddToCart(productId, variantId, color){
+    try{
+      await cartAdd(productId, 1, color, variantId);
+      refreshBadgeCounts();
+      toast('Added to bag');
+      loadProducts();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function cardChangeQty(itemId, delta){
+    try{
+      const cart = await cartGet();
+      const item = cart.items.find(i=>i.id===itemId);
+      if(!item){ loadProducts(); return; }
+      const newQty = item.qty + delta;
+      if(newQty <= 0){
+        await cartRemoveItem(itemId);
+      }else{
+        if(item.product && newQty > item.product.stock){ toast(`Only ${item.product.stock} left in stock.`); return; }
+        const updated = await cartUpdateQty(itemId, newQty);
+        if(updated.message) toast(updated.message);
+      }
+      refreshBadgeCounts();
+      loadProducts();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+  window.refreshProductGrid = loadProducts;
+
+  async function loadProducts(){
+    try{
+      const [{products}, wishData, cart] = await Promise.all([apiFetch('/products?badge=sale'), wishlistGet(), cartGet()]);
+      wishlistedIds = new Set(wishData.products.map(p=>p.id));
+      cartQtyByVariant = {};
+      cart.items.forEach(i => { if(i.variantId) cartQtyByVariant[i.variantId] = { itemId: i.id, qty: i.qty }; });
+      document.getElementById('resultCount').textContent = `${products.length} saree${products.length!==1?'s':''} on sale`;
+      document.getElementById('productGrid').innerHTML = products.length ? products.map(productCardHTML).join('') :
+        `<div class="empty-state" style="grid-column:1/-1;">No sarees on sale right now — check back soon.</div>`;
+    }catch(e){
+      document.getElementById('resultCount').textContent = '';
+      document.getElementById('productGrid').innerHTML = `<p style="grid-column:1/-1;text-align:center;color:var(--ink-soft);">Could not load products — is the backend server running?</p>`;
+    }
+  }
+
+  loadProducts();
+</script>
+</body>
+</html>

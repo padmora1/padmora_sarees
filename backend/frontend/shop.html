@@ -43,6 +43,10 @@
             <div id="occasionFilters"></div>
           </div>
           <div class="filter-group">
+            <h4>Color</h4>
+            <div id="colorFilters"></div>
+          </div>
+          <div class="filter-group">
             <h4>Price up to ₹<span id="priceLabel">25000</span></h4>
             <input type="range" min="1500" max="25000" step="500" value="25000" class="price-range" id="priceRange">
           </div>
@@ -88,21 +92,31 @@
   let state = {
     fabric: params.get('fabric') ? new Set([params.get('fabric')]) : new Set(),
     occasion: params.get('occasion') ? new Set([params.get('occasion')]) : new Set(),
+    color: params.get('color') ? new Set([params.get('color')]) : new Set(),
     maxPrice: 25000,
     sort: params.get('sort') || 'popular',
     search: params.get('search') || ''
   };
 
+  // Colour has no dedicated admin taxonomy table (unlike fabric/occasion) —
+  // it's a free-text swatch key on each product, so the filter list is
+  // derived from whatever's actually in the catalog right now (fetched
+  // unfiltered, once, so the list itself doesn't shrink as other filters
+  // are applied — same expectation as the Fabric/Occasion lists).
+  let allColors = [];
+
   async function loadTaxonomy(){
     try{
-      const [{fabrics}, {occasions}] = await Promise.all([apiFetch('/fabrics'), apiFetch('/occasions')]);
+      const [{fabrics}, {occasions}, {products}] = await Promise.all([apiFetch('/fabrics'), apiFetch('/occasions'), apiFetch('/products')]);
       allFabrics = fabrics.map(f=>f.name);
       allOccasions = occasions.map(o=>o.name);
+      allColors = [...new Set(products.map(p=>p.swatch).filter(Boolean))].sort();
     }catch(e){
       // Backend unreachable — fall back to the last-known catalog shape so the
       // filter panel isn't just blank.
       allFabrics = ['Maheshwari','Ajrakh','Paithani','Narayanpeth'];
       allOccasions = ['Wedding','Festive','Party','Casual','Office'];
+      allColors = ['maroon','emerald','ivory','teal','blush','sand','mustard','powder','wine','indigo','fuchsia','peacock'];
     }
   }
 
@@ -111,12 +125,17 @@
       <label class="filter-option"><input type="checkbox" value="${f}" class="fabricCheck" ${state.fabric.has(f)?'checked':''}> ${f}</label>`).join('');
     document.getElementById('occasionFilters').innerHTML = allOccasions.map(o=>`
       <label class="filter-option"><input type="checkbox" value="${o}" class="occasionCheck" ${state.occasion.has(o)?'checked':''}> ${o}</label>`).join('');
+    document.getElementById('colorFilters').innerHTML = allColors.map(c=>`
+      <label class="filter-option color-filter-option"><input type="checkbox" value="${c}" class="colorCheck" ${state.color.has(c)?'checked':''}> <span class="color-filter-dot" style="background:${swatchBg(c)};"></span>${c.charAt(0).toUpperCase()+c.slice(1)}</label>`).join('');
 
     document.querySelectorAll('.fabricCheck').forEach(cb=>cb.addEventListener('change',()=>{
       cb.checked ? state.fabric.add(cb.value) : state.fabric.delete(cb.value); loadProducts();
     }));
     document.querySelectorAll('.occasionCheck').forEach(cb=>cb.addEventListener('change',()=>{
       cb.checked ? state.occasion.add(cb.value) : state.occasion.delete(cb.value); loadProducts();
+    }));
+    document.querySelectorAll('.colorCheck').forEach(cb=>cb.addEventListener('change',()=>{
+      cb.checked ? state.color.add(cb.value) : state.color.delete(cb.value); loadProducts();
     }));
   }
 
@@ -127,7 +146,7 @@
   });
   document.getElementById('searchInput').addEventListener('input', e=>{ state.search = e.target.value; loadProducts(); });
   document.getElementById('clearFilters').addEventListener('click', ()=>{
-    state = { fabric:new Set(), occasion:new Set(), maxPrice:25000, sort:'popular', search:'' };
+    state = { fabric:new Set(), occasion:new Set(), color:new Set(), maxPrice:25000, sort:'popular', search:'' };
     document.getElementById('priceRange').value = 25000;
     document.getElementById('priceLabel').textContent = '25000';
     document.getElementById('searchInput').value = '';
@@ -158,6 +177,10 @@
   });
 
   let wishlistedIds = new Set();
+  // Keyed by variantId -> {itemId, qty} for whatever's already in the bag, so
+  // a card whose default variant is already there shows a qty stepper
+  // instead of inviting a second, stacking "Add to Cart" click.
+  let cartQtyByVariant = {};
 
   function productCardHTML(p){
     const off = Math.round((1 - p.price/p.mrp)*100);
@@ -167,6 +190,8 @@
     const badgeLabel = p.badge==='sale'?'Sale':p.badge==='new'?'New':p.badge==='bestseller'?'Bestseller':'';
     const isWished = wishlistedIds.has(p.id);
     const soldOut = p.stock <= 0;
+    const defaultVariant = (p.variants && (p.variants.find(v=>v.isDefault) || p.variants[0])) || null;
+    const cartLine = defaultVariant ? cartQtyByVariant[defaultVariant.id] : null;
     return `
     <div class="product-card ${soldOut?'sold-out':''}">
       <a href="/product?id=${p.id}" class="product-media" style="background:${swatchBg(p.swatch)};display:block;">
@@ -178,7 +203,16 @@
             <path class="petal-a" d="M12 20 C7.5 15.2 7.5 8.2 12 4 C16.5 8.2 16.5 15.2 12 20 Z"/>
           </svg>
         </button>
-        <span class="quick-add">${soldOut ? 'Pre Book' : 'Quick View'}</span>
+        ${soldOut
+          ? `<span class="quick-add">Pre Book</span>`
+          : `<div class="quick-actions">
+              ${cartLine && cartLine.qty > 0
+                ? `<div class="card-qty-stepper">
+                    <button type="button" onclick="event.preventDefault();cardChangeQty('${cartLine.itemId}', -1);">−</button><span>${cartLine.qty}</span><button type="button" onclick="event.preventDefault();cardChangeQty('${cartLine.itemId}', 1);">+</button>
+                  </div>`
+                : `<button type="button" onclick="event.preventDefault();quickAddToCart(${p.id}, ${defaultVariant ? defaultVariant.id : 'null'}, '${(defaultVariant ? defaultVariant.colorName : p.swatch || '').replace(/'/g, "\\'")}', this);">Add to Cart</button>`}
+              <button type="button" onclick="event.preventDefault();openQuickView(${p.id});">Quick View</button>
+            </div>`}
       </a>
       <div class="product-info">
         <div class="product-fabric">${p.fabric}</div>
@@ -203,17 +237,48 @@
     }catch(e){ toast(e.message, 'error'); }
   }
 
+  async function quickAddToCart(productId, variantId, color){
+    try{
+      await cartAdd(productId, 1, color, variantId);
+      refreshBadgeCounts();
+      toast('Added to bag');
+      loadProducts();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function cardChangeQty(itemId, delta){
+    try{
+      const cart = await cartGet();
+      const item = cart.items.find(i=>i.id===itemId);
+      if(!item){ loadProducts(); return; }
+      const newQty = item.qty + delta;
+      if(newQty <= 0){
+        await cartRemoveItem(itemId);
+      }else{
+        if(item.product && newQty > item.product.stock){ toast(`Only ${item.product.stock} left in stock.`); return; }
+        const updated = await cartUpdateQty(itemId, newQty);
+        if(updated.message) toast(updated.message);
+      }
+      refreshBadgeCounts();
+      loadProducts();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+  window.refreshProductGrid = loadProducts;
+
   async function loadProducts(){
     const q = new URLSearchParams();
     if(state.fabric.size) q.set('fabric', [...state.fabric].join(','));
     if(state.occasion.size) q.set('occasion', [...state.occasion].join(','));
+    if(state.color.size) q.set('color', [...state.color].join(','));
     if(state.maxPrice < 25000) q.set('maxPrice', state.maxPrice);
     if(state.search) q.set('search', state.search);
     if(state.sort) q.set('sort', state.sort);
 
     try{
-      const [{products}, wishData] = await Promise.all([apiFetch('/products?' + q.toString()), wishlistGet()]);
+      const [{products}, wishData, cart] = await Promise.all([apiFetch('/products?' + q.toString()), wishlistGet(), cartGet()]);
       wishlistedIds = new Set(wishData.products.map(p=>p.id));
+      cartQtyByVariant = {};
+      cart.items.forEach(i => { if(i.variantId) cartQtyByVariant[i.variantId] = { itemId: i.id, qty: i.qty }; });
       document.getElementById('resultCount').textContent = `${products.length} saree${products.length!==1?'s':''}`;
       document.getElementById('productGrid').innerHTML = products.length ? products.map(productCardHTML).join('') :
         `<div class="empty-state" style="grid-column:1/-1;">No sarees match these filters just yet. Try widening your search.</div>`;
