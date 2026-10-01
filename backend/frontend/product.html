@@ -57,37 +57,6 @@
   </section>
 </main>
 
-<!-- Size & Fit guide — same general content for every saree (drape length,
-     blouse piece, petticoat) since it's genuine category-wide sizing
-     knowledge, not a per-product spec we don't actually have. -->
-<div class="confirm-backdrop" id="sizeGuideBackdrop"></div>
-<div class="size-guide-dialog" id="sizeGuideDialog" role="dialog" aria-modal="true">
-  <button class="sg-close" id="sizeGuideClose" aria-label="Close">&times;</button>
-  <h3>Saree Sizing &amp; Fit Guide</h3>
-  <p style="margin-top:2px;">General guidance that applies across our sarees — check the individual product for its exact length.</p>
-
-  <h4>Saree length</h4>
-  <p>Most of our sarees are woven to the standard 5.5–6.5m length (this one: 6.3m of body + a separate blouse piece). That drapes comfortably for most heights up to about 5'8"; if you're petite, your tailor can pleat the pallu shorter without altering the fabric.</p>
-
-  <h4>Blouse piece</h4>
-  <p>The blouse piece ships as <strong>unstitched fabric</strong> (typically 0.8m) — it needs a local tailor to stitch it to your blouse size. 0.8m comfortably covers most sizes up to a 40" bust; if you're above that, ask your tailor whether a panel insert is needed before cutting.</p>
-
-  <h4>Petticoat</h4>
-  <p>Not included with any of our sarees. For the cleanest drape, choose a petticoat close to the saree's base colour, and have it fitted to sit just above your ankles.</p>
-
-  <h4>Care</h4>
-  <p>Dry clean only, unless the product page says otherwise — handloom and block-printed fabrics can bleed or lose their finish in a home wash.</p>
-
-  <table>
-    <thead><tr><th>Height</th><th>Suggested pleat depth</th></tr></thead>
-    <tbody>
-      <tr><td>Under 5'2"</td><td>Deeper pleats, shorter pallu drop</td></tr>
-      <tr><td>5'2"–5'6"</td><td>Standard pleating</td></tr>
-      <tr><td>Above 5'6"</td><td>Shallower pleats to use the full length</td></tr>
-    </tbody>
-  </table>
-</div>
-
 <!-- Pre Book — sold-out variants stay real, actionable products instead of a
      dead end. Guests type an email; logged-in customers just confirm. -->
 <div class="confirm-backdrop" id="preBookBackdrop"></div>
@@ -321,19 +290,10 @@
               <span><strong>Wash:</strong> Dry clean only</span>
               <span><strong>Delivery:</strong> 4-7 business days</span>
             </div>
-            <button type="button" class="size-guide-link" id="openSizeGuide">📏 Size &amp; Fit Guide</button>
             <div class="pd-actions">
               <div id="pdCartControl"></div>
               <button class="btn btn-primary" id="pdBuyNow">Buy Now</button>
               <button class="btn btn-outline" id="pdWish">♡ Wishlist</button>
-            </div>
-            <div class="authenticity-card">
-              <svg viewBox="0 0 24 24" fill="none" stroke-width="1.4"><path d="M12 2l8 4v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg>
-              <div>
-                <h4>Loom-to-You Authenticity</h4>
-                <p>Woven by <strong>${p.weaverName || 'an independent weaver partner'}</strong> in ${p.weaverRegion || 'India'}. Loom type disclosed honestly — no fabric here is sold as handloom unless it truly is.</p>
-                <span class="loom-tag">${p.loomType || 'Handloom'}</span>
-              </div>
             </div>
           </div>
         </div>
@@ -372,7 +332,6 @@
 
     document.getElementById('pdWish').addEventListener('click', wishCurrent);
     document.getElementById('pdBuyNow').addEventListener('click', buyNow);
-    document.getElementById('openSizeGuide').addEventListener('click', openSizeGuide);
 
     renderVariantDetails();
     refreshWishButtonLabel();
@@ -647,17 +606,7 @@
     }catch(e){ /* ignore */ }
   }
 
-  function openSizeGuide(){
-    document.getElementById('sizeGuideBackdrop').classList.add('open');
-    document.getElementById('sizeGuideDialog').classList.add('open');
-  }
-  function closeSizeGuide(){
-    document.getElementById('sizeGuideBackdrop').classList.remove('open');
-    document.getElementById('sizeGuideDialog').classList.remove('open');
-  }
-  document.getElementById('sizeGuideClose').addEventListener('click', closeSizeGuide);
-  document.getElementById('sizeGuideBackdrop').addEventListener('click', closeSizeGuide);
-  document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') { closeSizeGuide(); closePreBookForm(); } });
+  document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') { closePreBookForm(); } });
 
   // Pre Book — a logged-in customer's own email is used automatically (no
   // extra typing for something we already know); a guest types theirs.

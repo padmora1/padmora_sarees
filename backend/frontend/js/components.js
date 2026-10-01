@@ -438,6 +438,9 @@ async function openQuickView(productId) {
           await cartAdd(p.id, 1, selected.colorName, selected.id);
           refreshBadgeCounts();
           toast('Added to bag');
+          // Lets the product card behind the modal flip from "Add to Cart" to
+          // a qty stepper too, same as adding straight from the card does.
+          if (typeof window.refreshProductGrid === 'function') window.refreshProductGrid();
         } catch (e) { toast(e.message, 'error'); }
       });
     }

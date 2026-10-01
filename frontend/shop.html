@@ -177,6 +177,10 @@
   });
 
   let wishlistedIds = new Set();
+  // Keyed by variantId -> {itemId, qty} for whatever's already in the bag, so
+  // a card whose default variant is already there shows a qty stepper
+  // instead of inviting a second, stacking "Add to Cart" click.
+  let cartQtyByVariant = {};
 
   function productCardHTML(p){
     const off = Math.round((1 - p.price/p.mrp)*100);
@@ -187,6 +191,7 @@
     const isWished = wishlistedIds.has(p.id);
     const soldOut = p.stock <= 0;
     const defaultVariant = (p.variants && (p.variants.find(v=>v.isDefault) || p.variants[0])) || null;
+    const cartLine = defaultVariant ? cartQtyByVariant[defaultVariant.id] : null;
     return `
     <div class="product-card ${soldOut?'sold-out':''}">
       <a href="/product?id=${p.id}" class="product-media" style="background:${swatchBg(p.swatch)};display:block;">
@@ -201,7 +206,11 @@
         ${soldOut
           ? `<span class="quick-add">Pre Book</span>`
           : `<div class="quick-actions">
-              <button type="button" onclick="event.preventDefault();quickAddToCart(${p.id}, ${defaultVariant ? defaultVariant.id : 'null'}, '${(defaultVariant ? defaultVariant.colorName : p.swatch || '').replace(/'/g, "\\'")}', this);">Add to Cart</button>
+              ${cartLine && cartLine.qty > 0
+                ? `<div class="card-qty-stepper">
+                    <button type="button" onclick="event.preventDefault();cardChangeQty('${cartLine.itemId}', -1);">−</button><span>${cartLine.qty}</span><button type="button" onclick="event.preventDefault();cardChangeQty('${cartLine.itemId}', 1);">+</button>
+                  </div>`
+                : `<button type="button" onclick="event.preventDefault();quickAddToCart(${p.id}, ${defaultVariant ? defaultVariant.id : 'null'}, '${(defaultVariant ? defaultVariant.colorName : p.swatch || '').replace(/'/g, "\\'")}', this);">Add to Cart</button>`}
               <button type="button" onclick="event.preventDefault();openQuickView(${p.id});">Quick View</button>
             </div>`}
       </a>
@@ -233,8 +242,28 @@
       await cartAdd(productId, 1, color, variantId);
       refreshBadgeCounts();
       toast('Added to bag');
+      loadProducts();
     }catch(e){ toast(e.message, 'error'); }
   }
+
+  async function cardChangeQty(itemId, delta){
+    try{
+      const cart = await cartGet();
+      const item = cart.items.find(i=>i.id===itemId);
+      if(!item){ loadProducts(); return; }
+      const newQty = item.qty + delta;
+      if(newQty <= 0){
+        await cartRemoveItem(itemId);
+      }else{
+        if(item.product && newQty > item.product.stock){ toast(`Only ${item.product.stock} left in stock.`); return; }
+        const updated = await cartUpdateQty(itemId, newQty);
+        if(updated.message) toast(updated.message);
+      }
+      refreshBadgeCounts();
+      loadProducts();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+  window.refreshProductGrid = loadProducts;
 
   async function loadProducts(){
     const q = new URLSearchParams();
@@ -246,8 +275,10 @@
     if(state.sort) q.set('sort', state.sort);
 
     try{
-      const [{products}, wishData] = await Promise.all([apiFetch('/products?' + q.toString()), wishlistGet()]);
+      const [{products}, wishData, cart] = await Promise.all([apiFetch('/products?' + q.toString()), wishlistGet(), cartGet()]);
       wishlistedIds = new Set(wishData.products.map(p=>p.id));
+      cartQtyByVariant = {};
+      cart.items.forEach(i => { if(i.variantId) cartQtyByVariant[i.variantId] = { itemId: i.id, qty: i.qty }; });
       document.getElementById('resultCount').textContent = `${products.length} saree${products.length!==1?'s':''}`;
       document.getElementById('productGrid').innerHTML = products.length ? products.map(productCardHTML).join('') :
         `<div class="empty-state" style="grid-column:1/-1;">No sarees match these filters just yet. Try widening your search.</div>`;
