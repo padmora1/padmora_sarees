@@ -1620,7 +1620,7 @@
   async function renderCollectionsTab(){
     const body = document.getElementById('catalogTabBody');
     body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
-    const [{collections}, {products}] = await Promise.all([adminApiFetch('/admin/collections'), adminApiFetch('/admin/products')]);
+    const [{collections}, {products}, {fabrics}] = await Promise.all([adminApiFetch('/admin/collections'), adminApiFetch('/admin/products'), adminApiFetch('/admin/fabrics')]);
     body.innerHTML = `
       <div style="overflow-x:auto;">
         <table class="admin-table">
@@ -1640,7 +1640,7 @@
     function openCollForm(c){
       const editor = document.getElementById('collEditor');
       const isNew = !c;
-      c = c || { id:null, name:'', slug:'', description:'', active:1, productIds:[], banner_image:null };
+      c = c || { id:null, name:'', slug:'', description:'', tagline:'', weaves:[], active:1, productIds:[], banner_image:null };
       editor.innerHTML = `
         <div class="editor-card">
           <h4 style="font-family:var(--font-body);font-size:14px;margin-bottom:12px;">${isNew?'New Collection':'Edit '+c.name}</h4>
@@ -1648,9 +1648,16 @@
             <div class="form-field"><label>Name</label><input id="cName" value="${c.name}"></div>
             <div class="form-field"><label>Slug</label><input id="cSlug" value="${c.slug}"></div>
           </div>
-          <div class="form-field"><label>Description</label><input id="cDesc" value="${c.description||''}"></div>
+          <div class="form-field"><label>Tagline</label><input id="cTagline" value="${c.tagline||''}" placeholder="e.g. Many Weaves. One Heritage."></div>
+          <div class="form-field"><label>Description (meaning / story)</label><input id="cDesc" value="${c.description||''}"></div>
           ${!isNew ? `<div class="form-field"><label>Banner Image</label><input type="file" accept="image/*" id="cBannerUpload">${c.banner_image?`<img src="${c.banner_image}" style="height:60px;margin-top:8px;border-radius:4px;">`:''}</div>` : ''}
           <label style="font-size:12.5px;"><input type="checkbox" id="cActive" ${c.active?'checked':''}> Active</label>
+          <div style="margin-top:14px;">
+            <label style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:8px;">Weaves shown under this collection</label>
+            <div style="max-height:180px;overflow-y:auto;border:1px solid rgba(173,59,92,0.15);border-radius:4px;padding:10px;">
+              ${fabrics.map(f=>`<label style="display:block;font-size:12.5px;padding:4px 0;"><input type="checkbox" class="cWeaveCheck" value="${f.name}" ${(c.weaves||[]).includes(f.name)?'checked':''}> ${f.name}</label>`).join('')}
+            </div>
+          </div>
           ${!isNew ? `
           <div style="margin-top:14px;">
             <label style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:8px;">Products in this collection</label>
@@ -1663,7 +1670,8 @@
       if(!c.slug) document.getElementById('cName').addEventListener('input', e=>{ document.getElementById('cSlug').value = slugify(e.target.value); });
       document.getElementById('cCancel').addEventListener('click', ()=>{ editor.innerHTML=''; });
       document.getElementById('cSave').addEventListener('click', async ()=>{
-        const payload = { name: document.getElementById('cName').value, slug: document.getElementById('cSlug').value, description: document.getElementById('cDesc').value, active: document.getElementById('cActive').checked };
+        const weaves = [...document.querySelectorAll('.cWeaveCheck:checked')].map(i=>i.value);
+        const payload = { name: document.getElementById('cName').value, slug: document.getElementById('cSlug').value, description: document.getElementById('cDesc').value, tagline: document.getElementById('cTagline').value, weaves, active: document.getElementById('cActive').checked };
         try{
           const saved = isNew
             ? await adminApiFetch('/admin/collections', {method:'POST', body: JSON.stringify(payload)})

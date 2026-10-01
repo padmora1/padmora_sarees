@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/images/favicon-192.png">
+<link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+<title>Collections — Padmora Sarees by Yashi</title>
+<meta name="description" content="Explore Padmora's curated saree collections, each a different story told in weave.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Collections — Padmora Sarees by Yashi">
+<meta property="og:description" content="Explore Padmora's curated saree collections, each a different story told in weave.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="collections.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="page-banner">
+    <div class="container">
+      <p class="breadcrumb"><a href="/">Home</a> / Collections</p>
+      <h1>Collections</h1>
+      <p>Many weaves, each gathered into its own story.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:36px;">
+    <div class="container">
+      <div class="weave-grid" id="collectionsGrid"></div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  const COLLECTION_CARD_GRADIENTS = [
+    'linear-gradient(160deg,#7A2740,#B87F55)', 'linear-gradient(160deg,#4A1220,#9C2B6B)', 'linear-gradient(160deg,#1F4B4A,#8FBFB6)'
+  ];
+  async function loadCollections(){
+    try{
+      const {collections} = await apiFetch('/collections');
+      document.getElementById('collectionsGrid').innerHTML = collections.length ? collections.map((c,i)=>`
+        <a href="/collection?slug=${encodeURIComponent(c.slug)}" class="weave-card" style="display:block;">
+          <div class="weave-art" style="${c.bannerImage ? `background:url('${c.bannerImage}') center/cover;` : `background:${COLLECTION_CARD_GRADIENTS[i % COLLECTION_CARD_GRADIENTS.length]};`}"></div>
+          <div class="weave-card-body">${c.tagline ? `<span>${c.tagline}</span>` : ''}<h4>${c.name}</h4>${c.description ? `<p>${c.description}</p>` : ''}</div>
+        </a>`).join('') :
+        `<p style="text-align:center;color:var(--ink-soft);grid-column:1/-1;">No collections live yet — check back soon.</p>`;
+    }catch(e){
+      document.getElementById('collectionsGrid').innerHTML = `<p style="text-align:center;color:var(--ink-soft);grid-column:1/-1;">Could not load collections — is the backend server running?</p>`;
+    }
+  }
+  loadCollections();
+</script>
+</body>
+</html>

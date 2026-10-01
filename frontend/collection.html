@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/images/favicon-192.png">
+<link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+<title id="pageTitle">Collection — Padmora Sarees by Yashi</title>
+<meta name="description" id="metaDescription" content="A Padmora saree collection.">
+<meta property="og:type" content="website">
+<meta property="og:title" id="ogTitle" content="Padmora Sarees by Yashi">
+<meta property="og:description" id="ogDescription" content="A Padmora saree collection.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="collections.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="page-banner" id="collBanner" style="display:none;">
+    <div class="container">
+      <p class="breadcrumb"><a href="/">Home</a> / <a href="/collections">Collections</a> / <span id="collCrumbName">Collection</span></p>
+      <h1 id="collHeading">Collection</h1>
+      <p id="collTagline"></p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:36px;" id="collSection">
+    <div class="container">
+      <div class="loading-state"><span class="zari-spinner"></span>Loading collection…</div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  const slug = new URLSearchParams(window.location.search).get('slug');
+
+  async function loadCollection(){
+    const section = document.getElementById('collSection');
+    if(!slug){
+      section.innerHTML = `<div class="container"><p style="text-align:center;color:var(--ink-soft);">No collection specified. <a href="/collections">Browse all collections →</a></p></div>`;
+      return;
+    }
+    try{
+      const [{collection: c}, {fabrics}] = await Promise.all([apiFetch('/collections/' + encodeURIComponent(slug)), apiFetch('/fabrics')]);
+      const swatchByName = {};
+      fabrics.forEach(f => { swatchByName[f.name] = f.swatch; });
+
+      document.title = `${c.name} — Padmora Sarees by Yashi`;
+      document.getElementById('metaDescription').setAttribute('content', c.description || c.tagline || `The ${c.name} collection from Padmora.`);
+      document.getElementById('ogTitle').setAttribute('content', `${c.name} — Padmora Sarees by Yashi`);
+      document.getElementById('ogDescription').setAttribute('content', c.description || c.tagline || '');
+
+      document.getElementById('collBanner').style.display = '';
+      document.getElementById('collCrumbName').textContent = c.name;
+      document.getElementById('collHeading').textContent = `Padmora — ${c.name} Collection`;
+      document.getElementById('collTagline').textContent = c.tagline || '';
+
+      const weaves = c.weaves || [];
+      section.innerHTML = `
+        <div class="container">
+          ${c.description ? `<p style="color:var(--ink-soft);font-size:14px;line-height:1.8;max-width:680px;margin-bottom:28px;">${c.description}</p>` : ''}
+          ${weaves.length ? `
+          <div class="section-head"><p class="eyebrow">Shop By Weave</p><h2>Weaves In This Collection</h2></div>
+          <div class="cat-rail-wrap" id="collCatRailWrap">
+            <div class="container" style="padding:0;"><div class="cat-rail" id="collCatRail"></div></div>
+          </div>` : `<p style="text-align:center;color:var(--ink-soft);">No weaves assigned to this collection yet.</p>`}
+        </div>`;
+
+      if(weaves.length){
+        const rail = document.getElementById('collCatRail');
+        rail.innerHTML = weaves.map(w => `
+          <a class="cat-item" href="/shop?collection=${encodeURIComponent(c.slug)}&fabric=${encodeURIComponent(w)}">
+            <div class="cat-swatch"><div class="cat-swatch-inner" style="background:${swatchBg(swatchByName[w])};"></div></div>
+            <strong>${w}</strong>
+          </a>`).join('');
+        requestAnimationFrame(()=> document.getElementById('collCatRailWrap').classList.toggle('has-overflow', rail.scrollWidth > rail.clientWidth + 4));
+      }
+    }catch(e){
+      section.innerHTML = `<div class="container"><p style="text-align:center;color:var(--ink-soft);">Could not find that collection. <a href="/collections">Browse all collections →</a></p></div>`;
+    }
+  }
+  loadCollection();
+</script>
+</body>
+</html>

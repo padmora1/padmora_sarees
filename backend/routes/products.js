@@ -1,5 +1,5 @@
 const express = require('express');
-const { supabase, must, getProducts, getProductById, getVariantById, getReelProducts, logSearchQuery } = require('../utils/db');
+const { supabase, must, getProducts, getProductById, getVariantById, getReelProducts, logSearchQuery, getCollectionBySlug } = require('../utils/db');
 const { toProductApiShape } = require('../utils/shape');
 const { getUserIdIfPresent } = require('../middleware/auth');
 
@@ -59,7 +59,7 @@ router.get('/reels', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     let products = (await getProducts()).filter(p => p.status !== 'archived').map(toProductApiShape);
-    const { fabric, occasion, color, maxPrice, search, sort, badge } = req.query;
+    const { fabric, occasion, color, maxPrice, search, sort, badge, collection } = req.query;
 
     // Sale-badged sarees live on their own page (see routes GET /?badge=sale
     // and frontend/sale.html) — excluded from every general listing (shop
@@ -69,6 +69,17 @@ router.get('/', async (req, res) => {
       products = products.filter(p => p.badge === badge);
     } else {
       products = products.filter(p => p.badge !== 'sale');
+    }
+
+    // Collections page: a weave tile under a collection links here with
+    // ?collection=<slug>&fabric=<name> — narrows to that collection's own
+    // curated product list first. An unknown/inactive slug intersects to
+    // nothing rather than erroring, same as any other filter that matches
+    // zero products.
+    if (collection) {
+      const coll = await getCollectionBySlug(collection);
+      const ids = new Set(coll ? coll.productIds : []);
+      products = products.filter(p => ids.has(p.id));
     }
 
     if (fabric) {

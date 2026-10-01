@@ -8,18 +8,19 @@
 // alike; keep them separate so a page name is never mistaken for a route.
 const NAV_LINKS = [
   { href: '/', page: 'index.html', label: 'Home' },
-  { href: '/shop', page: 'shop.html', label: 'Menu' },
+  { href: '/collections', page: 'collections.html', label: 'Collections' },
+  { href: '/shop', page: 'shop.html', label: 'All Sarees' },
   { href: '/sale', page: 'sale.html', label: 'Sale' },
   { href: '/our-weaves', page: 'our-weaves.html', label: 'Our Weaves' },
   { href: '/upcoming-sarees', page: 'upcoming-sarees.html', label: 'Upcoming' }
 ];
 
-// "Menu" and "Sale" are two different links to the same shop.html page, only
-// distinguished by query string — matching on `page` alone (as the header
-// markup below used to) lit up both of them together on every shop visit.
-// A link is active when its page matches AND, among links that share a page,
-// its own query string is the one that actually matches the current URL —
-// "Menu" (no query) wins whenever no more specific sibling does.
+// General rule: a link is active when its page matches AND, among links that
+// share a page (e.g. two different links to shop.html distinguished only by
+// query string), its own query string is the one that actually matches the
+// current URL — a plain link with no query wins whenever no more specific
+// sibling does. collection.html shares its data-page with collections.html
+// on purpose so viewing a single collection still highlights "Collections".
 function isNavLinkActive(link, activeHref) {
   if (link.page !== activeHref) return false;
   const query = link.href.includes('?') ? link.href.slice(link.href.indexOf('?')) : '';

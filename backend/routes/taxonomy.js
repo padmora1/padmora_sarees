@@ -21,8 +21,8 @@ function occasionShape(o) {
 
 function collectionShape(c) {
   return {
-    id: c.id, name: c.name, slug: c.slug, description: c.description, bannerImage: c.banner_image,
-    thumbnail: c.thumbnail, displayOrder: c.display_order, startDate: c.start_date, endDate: c.end_date,
+    id: c.id, name: c.name, slug: c.slug, description: c.description, tagline: c.tagline, weaves: c.weaves || [],
+    bannerImage: c.banner_image, thumbnail: c.thumbnail, displayOrder: c.display_order, startDate: c.start_date, endDate: c.end_date,
     productCount: c.productIds.length
   };
 }

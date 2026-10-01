@@ -1306,12 +1306,13 @@ router.get('/collections', asyncRoute(async (req, res) => {
 }));
 
 router.post('/collections', asyncRoute(async (req, res) => {
-  const { name, slug, description, startDate, endDate } = req.body;
+  const { name, slug, description, tagline, weaves, startDate, endDate } = req.body;
   if (!name || !slug) return res.status(400).json({ message: 'Name and slug are required.' });
   try {
     const maxOrder = must(await supabase.from('collections').select('display_order').order('display_order', { ascending: false }).limit(1), 'addCollection:maxOrder');
     const inserted = must(await supabase.from('collections').insert({
-      name, slug, description: description || '', active: true, display_order: (maxOrder[0]?.display_order ?? -1) + 1,
+      name, slug, description: description || '', tagline: tagline || '', weaves: Array.isArray(weaves) ? weaves : [],
+      active: true, display_order: (maxOrder[0]?.display_order ?? -1) + 1,
       start_date: startDate || null, end_date: endDate || null
     }).select().single(), 'addCollection:insert');
     res.status(201).json({ collection: { ...inserted, productIds: [] } });
@@ -1323,9 +1324,10 @@ router.post('/collections', asyncRoute(async (req, res) => {
 router.put('/collections/:id', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('collections').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateCollection:lookup');
   if (!existing) return res.status(404).json({ message: 'Collection not found.' });
-  const { name, slug, description, active, displayOrder, startDate, endDate, bannerImage, thumbnail } = req.body;
+  const { name, slug, description, tagline, weaves, active, displayOrder, startDate, endDate, bannerImage, thumbnail } = req.body;
   const updated = must(await supabase.from('collections').update({
     name: name ?? existing.name, slug: slug ?? existing.slug, description: description ?? existing.description,
+    tagline: tagline ?? existing.tagline, weaves: Array.isArray(weaves) ? weaves : existing.weaves,
     active: active !== undefined ? !!active : existing.active,
     display_order: displayOrder !== undefined ? Number(displayOrder) : existing.display_order,
     start_date: startDate !== undefined ? startDate : existing.start_date, end_date: endDate !== undefined ? endDate : existing.end_date,
