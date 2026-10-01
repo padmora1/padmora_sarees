@@ -4,7 +4,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const {
   supabase, must, getProducts, getVariantById, getPrimaryImagesByVariantIds, syncProductMirrorFromDefaultVariant, getSetting, setSetting,
-  getFabrics, getOccasions, getBadges, getCollections, getCollectionProductIds, getReelItems, getFaqItems,
+  getFabrics, getOccasions, getBadges, getCollections, getReelItems, getFaqItems,
   ADMIN_ROLES, logActivity
 } = require('../utils/db');
 const { requireAdminAuth, requirePermission } = require('../middleware/adminAuth');
@@ -1301,8 +1301,17 @@ router.delete('/badges/:id', asyncRoute(async (req, res) => {
 }));
 
 // ---- Collections ----
+// A collection's product list is derived from its own `weaves` array (every
+// active, non-sale product whose fabric matches one of them — sale-badged
+// sarees are sale-page-only, same exclusion GET /products applies) — there's
+// no separate per-product tagging step, so the admin list below shows that
+// derived count rather than a stored id list, matching what's actually live.
 router.get('/collections', asyncRoute(async (req, res) => {
-  res.json({ collections: await getCollections({ activeOnly: false }) });
+  const [collections, products] = await Promise.all([getCollections({ activeOnly: false }), getProducts()]);
+  const visible = products.filter(p => p.status !== 'archived' && p.badge !== 'sale');
+  res.json({
+    collections: collections.map(c => ({ ...c, productCount: visible.filter(p => (c.weaves || []).includes(p.fabric)).length }))
+  });
 }));
 
 router.post('/collections', asyncRoute(async (req, res) => {
@@ -1315,7 +1324,7 @@ router.post('/collections', asyncRoute(async (req, res) => {
       active: true, display_order: (maxOrder[0]?.display_order ?? -1) + 1,
       start_date: startDate || null, end_date: endDate || null
     }).select().single(), 'addCollection:insert');
-    res.status(201).json({ collection: { ...inserted, productIds: [] } });
+    res.status(201).json({ collection: inserted });
   } catch (e) {
     res.status(400).json({ message: isUniqueViolation(e) ? 'That slug is already in use.' : e.message });
   }
@@ -1333,11 +1342,10 @@ router.put('/collections/:id', asyncRoute(async (req, res) => {
     start_date: startDate !== undefined ? startDate : existing.start_date, end_date: endDate !== undefined ? endDate : existing.end_date,
     banner_image: bannerImage !== undefined ? bannerImage : existing.banner_image, thumbnail: thumbnail !== undefined ? thumbnail : existing.thumbnail
   }).eq('id', existing.id).select().single(), 'updateCollection:update');
-  res.json({ collection: { ...updated, productIds: await getCollectionProductIds(existing.id) } });
+  res.json({ collection: updated });
 }));
 
 router.delete('/collections/:id', asyncRoute(async (req, res) => {
-  must(await supabase.from('collection_products').delete().eq('collection_id', Number(req.params.id)), 'deleteCollection:products');
   must(await supabase.from('collections').delete().eq('id', Number(req.params.id)), 'deleteCollection:collection');
   res.json({ message: 'Collection deleted.' });
 }));
@@ -1349,24 +1357,7 @@ router.post('/collections/:id/image', uploadSingle, asyncRoute(async (req, res) 
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
   const slot = req.body.slot === 'thumbnail' ? 'thumbnail' : 'banner_image';
   const updated = must(await supabase.from('collections').update({ [slot]: `/uploads/${req.file.filename}` }).eq('id', existing.id).select().single(), 'collectionImage:update');
-  res.json({ collection: { ...updated, productIds: await getCollectionProductIds(existing.id) } });
-}));
-
-// Replaces the full product list for a collection in one call — simpler for
-// an admin picker UI than diffing individual add/remove requests. Done via
-// the replace_collection_products() Postgres function so the collection is
-// never transiently empty to a concurrent reader.
-router.put('/collections/:id/products', asyncRoute(async (req, res) => {
-  const id = Number(req.params.id);
-  const existing = must(await supabase.from('collections').select('*').eq('id', id).maybeSingle(), 'setCollectionProducts:lookup');
-  if (!existing) return res.status(404).json({ message: 'Collection not found.' });
-  const { productIds } = req.body;
-  if (!Array.isArray(productIds)) return res.status(400).json({ message: 'productIds must be an array.' });
-
-  const rpc = await supabase.rpc('replace_collection_products', { p_collection_id: id, p_product_ids: productIds.map(Number) });
-  if (rpc.error) throw new Error(rpc.error.message);
-
-  res.json({ productIds: await getCollectionProductIds(id) });
+  res.json({ collection: updated });
 }));
 
 // ---- Coupons ----

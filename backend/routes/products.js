@@ -72,14 +72,17 @@ router.get('/', async (req, res) => {
     }
 
     // Collections page: a weave tile under a collection links here with
-    // ?collection=<slug>&fabric=<name> — narrows to that collection's own
-    // curated product list first. An unknown/inactive slug intersects to
-    // nothing rather than erroring, same as any other filter that matches
-    // zero products.
+    // ?collection=<slug>&fabric=<name>. A collection's product list isn't a
+    // hand-picked set — it's every active product whose fabric is one of
+    // the collection's own tagged weaves, so adding a new saree in that
+    // fabric means it shows up in every matching collection automatically,
+    // with no separate per-product tagging step. An unknown/inactive slug
+    // matches to nothing rather than erroring, same as any other filter
+    // that matches zero products.
     if (collection) {
       const coll = await getCollectionBySlug(collection);
-      const ids = new Set(coll ? coll.productIds : []);
-      products = products.filter(p => ids.has(p.id));
+      const weaves = coll ? (coll.weaves || []) : [];
+      products = products.filter(p => weaves.includes(p.fabric));
     }
 
     if (fabric) {

@@ -1620,7 +1620,7 @@
   async function renderCollectionsTab(){
     const body = document.getElementById('catalogTabBody');
     body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
-    const [{collections}, {products}, {fabrics}] = await Promise.all([adminApiFetch('/admin/collections'), adminApiFetch('/admin/products'), adminApiFetch('/admin/fabrics')]);
+    const [{collections}, {fabrics}] = await Promise.all([adminApiFetch('/admin/collections'), adminApiFetch('/admin/fabrics')]);
     body.innerHTML = `
       <div style="overflow-x:auto;">
         <table class="admin-table">
@@ -1628,7 +1628,7 @@
           <tbody>${collections.map(c=>`
             <tr>
               <td>${c.name}</td>
-              <td>${c.productIds.length}</td>
+              <td>${c.productCount}</td>
               <td>${c.active ? 'Yes' : 'No'}</td>
               <td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" data-coll-edit="${c.id}">Edit</button> <button class="btn btn-sm" style="color:var(--maroon);" data-coll-del="${c.id}">Delete</button></td>
             </tr>`).join('')}</tbody>
@@ -1640,7 +1640,7 @@
     function openCollForm(c){
       const editor = document.getElementById('collEditor');
       const isNew = !c;
-      c = c || { id:null, name:'', slug:'', description:'', tagline:'', weaves:[], active:1, productIds:[], banner_image:null };
+      c = c || { id:null, name:'', slug:'', description:'', tagline:'', weaves:[], active:1, banner_image:null };
       editor.innerHTML = `
         <div class="editor-card">
           <h4 style="font-family:var(--font-body);font-size:14px;margin-bottom:12px;">${isNew?'New Collection':'Edit '+c.name}</h4>
@@ -1653,18 +1653,11 @@
           ${!isNew ? `<div class="form-field"><label>Banner Image</label><input type="file" accept="image/*" id="cBannerUpload">${c.banner_image?`<img src="${c.banner_image}" style="height:60px;margin-top:8px;border-radius:4px;">`:''}</div>` : ''}
           <label style="font-size:12.5px;"><input type="checkbox" id="cActive" ${c.active?'checked':''}> Active</label>
           <div style="margin-top:14px;">
-            <label style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:8px;">Weaves shown under this collection</label>
+            <label style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:8px;">Weaves in this collection — every saree of these fabrics is included automatically, no per-product step needed</label>
             <div style="max-height:180px;overflow-y:auto;border:1px solid rgba(173,59,92,0.15);border-radius:4px;padding:10px;">
               ${fabrics.map(f=>`<label style="display:block;font-size:12.5px;padding:4px 0;"><input type="checkbox" class="cWeaveCheck" value="${f.name}" ${(c.weaves||[]).includes(f.name)?'checked':''}> ${f.name}</label>`).join('')}
             </div>
           </div>
-          ${!isNew ? `
-          <div style="margin-top:14px;">
-            <label style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:8px;">Products in this collection</label>
-            <div style="max-height:220px;overflow-y:auto;border:1px solid rgba(173,59,92,0.15);border-radius:4px;padding:10px;">
-              ${products.map(p=>`<label style="display:block;font-size:12.5px;padding:4px 0;"><input type="checkbox" class="cProdCheck" value="${p.id}" ${c.productIds.includes(p.id)?'checked':''}> ${p.name}</label>`).join('')}
-            </div>
-          </div>` : `<p style="font-size:12px;color:var(--ink-soft);margin-top:10px;">Save the collection first, then reopen it to choose products.</p>`}
           <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="cSave">${isNew?'Create Collection':'Save Changes'}</button> <button class="btn btn-sm" id="cCancel">Cancel</button></div>
         </div>`;
       if(!c.slug) document.getElementById('cName').addEventListener('input', e=>{ document.getElementById('cSlug').value = slugify(e.target.value); });
@@ -1677,13 +1670,9 @@
             ? await adminApiFetch('/admin/collections', {method:'POST', body: JSON.stringify(payload)})
             : await adminApiFetch('/admin/collections/'+c.id, {method:'PUT', body: JSON.stringify(payload)});
           const collId = saved.collection?.id || c.id;
-          if(!isNew){
-            const ids = [...document.querySelectorAll('.cProdCheck:checked')].map(i=>Number(i.value));
-            await adminApiFetch('/admin/collections/'+collId+'/products', {method:'PUT', body: JSON.stringify({productIds: ids})});
-          }
           const bannerInput = document.getElementById('cBannerUpload');
           if(bannerInput && bannerInput.files[0]) await uploadEntityImage('/api/admin/collections/'+collId+'/image', 'file', bannerInput.files[0], {slot:'banner'});
-          toast(isNew?'Collection created — reopen it to add products':'Collection saved');
+          toast(isNew?'Collection created':'Collection saved');
           editor.innerHTML='';
           renderCollectionsTab();
         }catch(e){ toast(e.message, 'error'); }
