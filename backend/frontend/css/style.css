@@ -232,6 +232,31 @@ body::after{right:0;transform:scaleX(-1);}
 .mobile-nav{display:none;flex-direction:column;padding:0 28px 20px;gap:14px;}
 .mobile-nav a{font-size:14px;}
 
+/* Desktop "Collections" hover reveal — a plain CSS hover panel (and
+   :focus-within for keyboard users tabbing to the link) rather than a JS
+   click-toggle, since this is a nav reveal, not a form control. */
+.nav-item{position:relative;}
+.nav-dropdown{position:absolute;top:100%;left:50%;transform:translate(-50%,-6px);min-width:240px;background:var(--white);border-radius:4px;box-shadow:var(--shadow);padding:8px;opacity:0;pointer-events:none;transition:opacity .2s ease, transform .2s ease;z-index:70;}
+.nav-item:hover .nav-dropdown,.nav-item:focus-within .nav-dropdown{opacity:1;pointer-events:auto;transform:translate(-50%,0);}
+.nav-dropdown a{display:block;padding:10px 12px;border-radius:3px;transition:background .15s ease;}
+.nav-dropdown a:hover{background:var(--ivory);}
+.nav-dropdown a strong{display:block;font-size:13.5px;color:var(--ink);font-weight:500;}
+.nav-dropdown a span{display:block;font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+
+/* Mobile "Collections" accordion — same max-height transition pattern as the
+   FAQ page's answer reveal, under its own class names since this is nav
+   chrome, not FAQ content. */
+.mobile-nav-item{display:flex;flex-wrap:wrap;align-items:center;gap:10px;}
+.mobile-nav-item a{font-size:14px;}
+.mobile-nav-caret{width:26px;height:26px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.mobile-nav-caret svg{width:14px;height:14px;stroke:var(--maroon);transition:transform .2s ease;}
+.mobile-nav-caret[aria-expanded="true"] svg{transform:rotate(180deg);}
+.mobile-nav-dropdown-panel{flex-basis:100%;max-height:0;overflow:hidden;transition:max-height .25s ease;}
+.mobile-nav-dropdown-panel.open{max-height:220px;}
+.mobile-nav-dropdown-panel a{display:block;padding:8px 0 8px 14px;border-left:2px solid rgba(173,59,92,0.15);}
+.mobile-nav-dropdown-panel a strong{display:block;font-size:13.5px;font-weight:500;}
+.mobile-nav-dropdown-panel a span{display:block;font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+
 /* Header, narrow phones (confirmed via layout audit: hamburger + logo +
    search/account/wishlist/cart icons genuinely don't fit side by side under
    ~400px at the CSS's original sizes — the icons were shrinking/deforming
@@ -281,6 +306,15 @@ body::after{right:0;transform:scaleX(-1);}
 .page-banner .container{position:relative;z-index:1;}
 .page-banner h1{font-size:34px;}
 .page-banner p{color:var(--ink-soft);margin-top:10px;font-size:14px;}
+
+/* In-collection weave switcher (shop.html) — lets a shopper change weave
+   without backing out to the collection page first. */
+.weave-switcher{margin-top:18px;display:flex;flex-direction:column;align-items:center;gap:10px;}
+.weave-switcher-back{font-size:12.5px;color:var(--maroon-deep);font-weight:600;}
+.weave-switcher-pills{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;}
+.weave-switcher-pills a{font-size:12.5px;padding:7px 16px;border-radius:20px;border:1px solid rgba(173,59,92,0.25);color:var(--ink);background:var(--white);transition:background .15s ease, color .15s ease, border-color .15s ease;}
+.weave-switcher-pills a:hover{border-color:var(--maroon);color:var(--maroon-deep);}
+.weave-switcher-pills a.active{background:var(--maroon);border-color:var(--maroon);color:var(--ivory);}
 
 /* A fuller scatter of outlined lotus blooms — one large one via ::before,
    five more (varied size/position) layered on ::after — applies to every

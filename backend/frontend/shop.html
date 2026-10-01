@@ -26,6 +26,7 @@
       <p class="breadcrumb" id="shopBreadcrumb"><a href="/">Home</a> / All Sarees</p>
       <h1 id="shopTitle">Shop All Sarees</h1>
       <p id="shopSubtitle">Every weave, every occasion — filter to find the one.</p>
+      <div class="weave-switcher" id="weaveSwitcher" style="display:none;"></div>
     </div>
   </div>
 
@@ -34,7 +35,7 @@
       <div class="shop-layout">
         <aside class="filters">
           <input type="text" class="search-page-input" id="searchInput" placeholder="Search sarees...">
-          <div class="filter-group">
+          <div class="filter-group" id="fabricFilterGroup">
             <h4>Fabric</h4>
             <div id="fabricFilters"></div>
           </div>
@@ -101,17 +102,47 @@
 
   // When arriving from a collection's weave tile, swap the generic "All
   // Sarees" banner for one that names the collection (and weave, once
-  // chosen) — the filtering itself just rides along on the `collection`
-  // query param already wired into loadProducts() below.
+  // chosen), and show a quick weave switcher + back link so changing weave
+  // doesn't mean backing all the way out to the collection page — the
+  // filtering itself just rides along on the `collection` query param
+  // already wired into loadProducts() below. The Fabric checkbox group in
+  // the sidebar is hidden while this switcher is showing — same job, one
+  // control, not two.
   async function loadCollectionBanner(){
-    if(!state.collection) return;
+    const fabricGroup = document.getElementById('fabricFilterGroup');
+    const switcher = document.getElementById('weaveSwitcher');
+    if(!state.collection){
+      fabricGroup.style.display = '';
+      switcher.style.display = 'none';
+      return;
+    }
     try{
-      const {collection: c} = await apiFetch('/collections/' + encodeURIComponent(state.collection));
+      const {collection: c, products} = await apiFetch('/collections/' + encodeURIComponent(state.collection));
       document.getElementById('shopBreadcrumb').innerHTML = `<a href="/">Home</a> / <a href="/collections">Collections</a> / <a href="/collection?slug=${encodeURIComponent(c.slug)}">${c.name}</a>`;
       const fabricName = [...state.fabric][0];
       document.getElementById('shopTitle').textContent = fabricName ? `${c.name} — ${fabricName}` : c.name;
       document.getElementById('shopSubtitle').textContent = c.tagline || '';
-    }catch(e){ /* unknown/inactive slug — leave the default "All Sarees" banner */ }
+
+      fabricGroup.style.display = 'none';
+
+      // Only weaves with a real saree in this collection get a pill — same
+      // zero-count hiding already used for collection.html's weave tiles.
+      const fabricCounts = {};
+      products.forEach(p => { fabricCounts[p.fabric] = (fabricCounts[p.fabric] || 0) + 1; });
+      const weaves = (c.weaves || []).filter(w => fabricCounts[w] > 0);
+
+      switcher.style.display = weaves.length ? '' : 'none';
+      switcher.innerHTML = `
+        <a href="/collection?slug=${encodeURIComponent(c.slug)}" class="weave-switcher-back">← Back to ${c.name}</a>
+        <div class="weave-switcher-pills">
+          ${weaves.map(w => `<a href="/shop?collection=${encodeURIComponent(c.slug)}&fabric=${encodeURIComponent(w)}" class="${w === fabricName ? 'active' : ''}">${w}</a>`).join('')}
+        </div>`;
+    }catch(e){
+      // Unknown/inactive slug — leave the default "All Sarees" banner and
+      // keep the normal Fabric filter rather than showing a broken switcher.
+      fabricGroup.style.display = '';
+      switcher.style.display = 'none';
+    }
   }
 
   // Colour has no dedicated admin taxonomy table (unlike fabric/occasion) —
