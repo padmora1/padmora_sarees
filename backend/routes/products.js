@@ -59,7 +59,7 @@ router.get('/reels', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     let products = (await getProducts()).filter(p => p.status !== 'archived').map(toProductApiShape);
-    const { fabric, occasion, color, maxPrice, search, sort, badge, collection } = req.query;
+    const { fabric, occasion, color, maxPrice, search, sort, badge, collection, limit } = req.query;
 
     // Sale-badged sarees live on their own page (see routes GET /?badge=sale
     // and frontend/sale.html) — excluded from every general listing (shop
@@ -132,7 +132,17 @@ router.get('/', async (req, res) => {
       });
     }
 
-    res.json({ products });
+    // `limit` is opt-in — every existing caller that never passed it (home
+    // bestsellers, the colour-taxonomy fetch, instant search, the Saree
+    // Finder quiz) keeps getting the full matching list exactly as before.
+    // `total` always reflects the pre-slice count so a paginated caller can
+    // tell whether there's more to load.
+    const total = products.length;
+    if (limit) {
+      products = products.slice(0, Math.max(1, Number(limit) || 20));
+    }
+
+    res.json({ products, total });
   } catch (err) {
     console.error('GET /products failed:', err);
     res.status(500).json({ message: 'Something went wrong on the server.' });

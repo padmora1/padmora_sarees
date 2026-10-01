@@ -33,6 +33,9 @@
     <div class="container">
       <span class="result-count" id="resultCount">Loading…</span>
       <div class="product-grid" id="productGrid" style="margin-top:18px;"></div>
+      <div class="load-more-wrap" id="loadMoreWrap" style="display:none;">
+        <button class="btn btn-outline" id="loadMoreBtn">Load More Sarees</button>
+      </div>
     </div>
   </section>
 </main>
@@ -129,20 +132,44 @@
   }
   window.refreshProductGrid = loadProducts;
 
+  let loadedCount = 20;
+  let totalCount = 0;
+  let loadingMore = false;
+
   async function loadProducts(){
     try{
-      const [{products}, wishData, cart] = await Promise.all([apiFetch('/products?badge=sale'), wishlistGet(), cartGet()]);
+      const [{products, total}, wishData, cart] = await Promise.all([apiFetch('/products?badge=sale&limit=' + loadedCount), wishlistGet(), cartGet()]);
       wishlistedIds = new Set(wishData.products.map(p=>p.id));
       cartQtyByVariant = {};
       cart.items.forEach(i => { if(i.variantId) cartQtyByVariant[i.variantId] = { itemId: i.id, qty: i.qty }; });
-      document.getElementById('resultCount').textContent = `${products.length} saree${products.length!==1?'s':''} on sale`;
+      totalCount = total;
+      document.getElementById('resultCount').textContent = products.length < total
+        ? `Showing ${products.length} of ${total} saree${total!==1?'s':''} on sale`
+        : `${total} saree${total!==1?'s':''} on sale`;
       document.getElementById('productGrid').innerHTML = products.length ? products.map(productCardHTML).join('') :
         `<div class="empty-state" style="grid-column:1/-1;">No sarees on sale right now — check back soon.</div>`;
+      document.getElementById('loadMoreWrap').style.display = products.length < total ? '' : 'none';
     }catch(e){
       document.getElementById('resultCount').textContent = '';
       document.getElementById('productGrid').innerHTML = `<p style="grid-column:1/-1;text-align:center;color:var(--ink-soft);">Could not load products — is the backend server running?</p>`;
+      document.getElementById('loadMoreWrap').style.display = 'none';
     }
   }
+
+  // 20 at a time — the "Load More" button is both a real click target and
+  // the sentinel an IntersectionObserver watches, so scrolling it into view
+  // loads the next batch on its own without anyone needing to click it.
+  async function loadMore(){
+    if(loadingMore || loadedCount >= totalCount) return;
+    loadingMore = true;
+    loadedCount += 20;
+    await loadProducts();
+    loadingMore = false;
+  }
+  document.getElementById('loadMoreBtn').addEventListener('click', loadMore);
+  new IntersectionObserver((entries)=>{
+    if(entries[0].isIntersecting) loadMore();
+  }, { rootMargin: '300px' }).observe(document.getElementById('loadMoreWrap'));
 
   loadProducts();
 </script>

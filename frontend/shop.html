@@ -71,6 +71,9 @@
             </div>
           </div>
           <div class="product-grid" id="productGrid"></div>
+          <div class="load-more-wrap" id="loadMoreWrap" style="display:none;">
+            <button class="btn btn-outline" id="loadMoreBtn">Load More Sarees</button>
+          </div>
         </div>
       </div>
     </div>
@@ -97,8 +100,13 @@
     color: params.get('color') ? new Set([params.get('color')]) : new Set(),
     maxPrice: 25000,
     sort: params.get('sort') || 'popular',
-    search: params.get('search') || ''
+    search: params.get('search') || '',
+    loadedCount: 20
   };
+  // Set by the last loadProducts() response — how many match in total, vs
+  // how many are actually rendered (state.loadedCount, capped to that).
+  let totalCount = 0;
+  let loadingMore = false;
 
   // When arriving from a collection's weave tile, swap the generic "All
   // Sarees" banner for one that names the collection (and weave, once
@@ -179,26 +187,27 @@
       <label class="filter-option color-filter-option"><input type="checkbox" value="${c}" class="colorCheck" ${state.color.has(c)?'checked':''}> <span class="color-filter-dot" style="background:${swatchBg(c)};"></span>${c.charAt(0).toUpperCase()+c.slice(1)}</label>`).join('');
 
     document.querySelectorAll('.fabricCheck').forEach(cb=>cb.addEventListener('change',()=>{
-      cb.checked ? state.fabric.add(cb.value) : state.fabric.delete(cb.value); loadProducts(); loadCollectionBanner();
+      cb.checked ? state.fabric.add(cb.value) : state.fabric.delete(cb.value); state.loadedCount = 20; loadProducts(); loadCollectionBanner();
     }));
     document.querySelectorAll('.occasionCheck').forEach(cb=>cb.addEventListener('change',()=>{
-      cb.checked ? state.occasion.add(cb.value) : state.occasion.delete(cb.value); loadProducts();
+      cb.checked ? state.occasion.add(cb.value) : state.occasion.delete(cb.value); state.loadedCount = 20; loadProducts();
     }));
     document.querySelectorAll('.colorCheck').forEach(cb=>cb.addEventListener('change',()=>{
-      cb.checked ? state.color.add(cb.value) : state.color.delete(cb.value); loadProducts();
+      cb.checked ? state.color.add(cb.value) : state.color.delete(cb.value); state.loadedCount = 20; loadProducts();
     }));
   }
 
   document.getElementById('priceRange').addEventListener('input', e=>{
     state.maxPrice = Number(e.target.value);
     document.getElementById('priceLabel').textContent = state.maxPrice.toLocaleString('en-IN');
+    state.loadedCount = 20;
     loadProducts();
   });
-  document.getElementById('searchInput').addEventListener('input', e=>{ state.search = e.target.value; loadProducts(); });
+  document.getElementById('searchInput').addEventListener('input', e=>{ state.search = e.target.value; state.loadedCount = 20; loadProducts(); });
   document.getElementById('clearFilters').addEventListener('click', ()=>{
     // Keeps `collection` — clearing filters inside a collection shows the
     // whole collection again, not an unscoped escape to the full catalog.
-    state = { collection: state.collection, fabric:new Set(), occasion:new Set(), color:new Set(), maxPrice:25000, sort:'popular', search:'' };
+    state = { collection: state.collection, fabric:new Set(), occasion:new Set(), color:new Set(), maxPrice:25000, sort:'popular', search:'', loadedCount:20 };
     document.getElementById('priceRange').value = 25000;
     document.getElementById('priceLabel').textContent = '25000';
     document.getElementById('searchInput').value = '';
@@ -222,6 +231,7 @@
   document.querySelectorAll('.custom-select-option').forEach(opt=>opt.addEventListener('click', ()=>{
     setSort(opt.dataset.value);
     document.getElementById('sortSelectWrap').classList.remove('open');
+    state.loadedCount = 20;
     loadProducts();
   }));
   document.addEventListener('click', (e)=>{
@@ -327,20 +337,41 @@
     if(state.maxPrice < 25000) q.set('maxPrice', state.maxPrice);
     if(state.search) q.set('search', state.search);
     if(state.sort) q.set('sort', state.sort);
+    q.set('limit', state.loadedCount);
 
     try{
-      const [{products}, wishData, cart] = await Promise.all([apiFetch('/products?' + q.toString()), wishlistGet(), cartGet()]);
+      const [{products, total}, wishData, cart] = await Promise.all([apiFetch('/products?' + q.toString()), wishlistGet(), cartGet()]);
       wishlistedIds = new Set(wishData.products.map(p=>p.id));
       cartQtyByVariant = {};
       cart.items.forEach(i => { if(i.variantId) cartQtyByVariant[i.variantId] = { itemId: i.id, qty: i.qty }; });
-      document.getElementById('resultCount').textContent = `${products.length} saree${products.length!==1?'s':''}`;
+      totalCount = total;
+      document.getElementById('resultCount').textContent = products.length < total
+        ? `Showing ${products.length} of ${total} saree${total!==1?'s':''}`
+        : `${total} saree${total!==1?'s':''}`;
       document.getElementById('productGrid').innerHTML = products.length ? products.map(productCardHTML).join('') :
         `<div class="empty-state" style="grid-column:1/-1;">No sarees match these filters just yet. Try widening your search.</div>`;
+      document.getElementById('loadMoreWrap').style.display = products.length < total ? '' : 'none';
     }catch(e){
       document.getElementById('resultCount').textContent = '';
       document.getElementById('productGrid').innerHTML = `<p style="grid-column:1/-1;text-align:center;color:var(--ink-soft);">Could not load products — is the backend server running?</p>`;
+      document.getElementById('loadMoreWrap').style.display = 'none';
     }
   }
+
+  // 20 at a time — the "Load More" button is both a real click target and
+  // the sentinel an IntersectionObserver watches, so scrolling it into view
+  // loads the next batch on its own without anyone needing to click it.
+  async function loadMore(){
+    if(loadingMore || state.loadedCount >= totalCount) return;
+    loadingMore = true;
+    state.loadedCount += 20;
+    await loadProducts();
+    loadingMore = false;
+  }
+  document.getElementById('loadMoreBtn').addEventListener('click', loadMore);
+  new IntersectionObserver((entries)=>{
+    if(entries[0].isIntersecting) loadMore();
+  }, { rootMargin: '300px' }).observe(document.getElementById('loadMoreWrap'));
 
   async function init(){
     setSort(state.sort);
