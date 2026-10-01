@@ -235,10 +235,16 @@ body::after{right:0;transform:scaleX(-1);}
 /* Desktop "Collections" hover reveal — a plain CSS hover panel (and
    :focus-within for keyboard users tabbing to the link) rather than a JS
    click-toggle, since this is a nav reveal, not a form control. */
-.nav-item{position:relative;}
+/* display:flex here (not just position:relative) matters: a plain <a> that's
+   a direct child of .main-nav (display:flex) gets blockified by the flex
+   spec, which is what lets its padding:6px 0 center it in the stretched row.
+   The Collections <a> is one level deeper (inside this wrapper), so it never
+   gets blockified and would otherwise sit noticeably higher than its
+   siblings — centering it explicitly here fixes that regardless. */
+.nav-item{position:relative;display:flex;align-items:center;}
 .nav-dropdown{position:absolute;top:100%;left:50%;transform:translate(-50%,-6px);min-width:240px;background:var(--white);border-radius:4px;box-shadow:var(--shadow);padding:8px;opacity:0;pointer-events:none;transition:opacity .2s ease, transform .2s ease;z-index:70;}
 .nav-item:hover .nav-dropdown,.nav-item:focus-within .nav-dropdown{opacity:1;pointer-events:auto;transform:translate(-50%,0);}
-.nav-dropdown a{display:block;padding:10px 12px;border-radius:3px;transition:background .15s ease;}
+.nav-dropdown a{display:block;padding:10px 12px;border-radius:3px;text-align:center;transition:background .15s ease;}
 .nav-dropdown a:hover{background:var(--ivory);}
 .nav-dropdown a strong{display:block;font-size:13.5px;color:var(--ink);font-weight:500;}
 .nav-dropdown a span{display:block;font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
@@ -253,7 +259,8 @@ body::after{right:0;transform:scaleX(-1);}
 .mobile-nav-caret[aria-expanded="true"] svg{transform:rotate(180deg);}
 .mobile-nav-dropdown-panel{flex-basis:100%;max-height:0;overflow:hidden;transition:max-height .25s ease;}
 .mobile-nav-dropdown-panel.open{max-height:220px;}
-.mobile-nav-dropdown-panel a{display:block;padding:8px 0 8px 14px;border-left:2px solid rgba(173,59,92,0.15);}
+.mobile-nav-dropdown-panel a{display:block;padding:8px 0;text-align:center;border-top:1px solid rgba(173,59,92,0.1);}
+.mobile-nav-dropdown-panel a:first-child{border-top:none;}
 .mobile-nav-dropdown-panel a strong{display:block;font-size:13.5px;font-weight:500;}
 .mobile-nav-dropdown-panel a span{display:block;font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
 
@@ -925,6 +932,16 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 .cat-rail-wrap.has-overflow .reel-scroll-btn{display:flex;}
 @media (max-width:760px){ .cat-rail-wrap .reel-scroll-btn{display:none !important;} }
 @media (max-width:980px){ .cat-item{flex:0 0 calc(50% - 11px);} }
+
+/* Weave tiles inside a single collection (collection.html) — a non-scrolling,
+   centered grid rather than the homepage's horizontal rail: a collection's
+   weave count is small and fixed per admin curation, so wrapping reads
+   better than forcing a scroll affordance for 3-8 items. Fixed column width
+   (not 1fr) keeps tiles a consistent, aesthetic size whether there are 2
+   weaves or 8; justify-content centers the whole grid when it doesn't fill
+   the row. */
+.weave-tile-grid{display:grid;grid-template-columns:repeat(auto-fit, 150px);justify-content:center;gap:32px 24px;}
+@media (max-width:480px){ .weave-tile-grid{grid-template-columns:repeat(auto-fit, 120px);gap:24px 16px;} }
 .faq-item{border-bottom:1px solid rgba(173,59,92,0.12);}
 .faq-q{width:100%;text-align:left;padding:18px 4px;display:flex;justify-content:space-between;align-items:center;font-size:14.5px;font-weight:500;color:var(--ink);}
 .faq-q svg{width:16px;height:16px;stroke:var(--maroon);transition:transform .2s ease;flex-shrink:0;}

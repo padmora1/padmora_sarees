@@ -77,19 +77,15 @@
           ${c.description ? `<p style="color:var(--ink-soft);font-size:14px;line-height:1.8;max-width:680px;margin-bottom:28px;">${c.description}</p>` : ''}
           ${weaves.length ? `
           <div class="section-head"><p class="eyebrow">Shop By Weave</p><h2>Weaves In This Collection</h2></div>
-          <div class="cat-rail-wrap" id="collCatRailWrap">
-            <div class="container" style="padding:0;"><div class="cat-rail" id="collCatRail"></div></div>
-          </div>` : `<p style="text-align:center;color:var(--ink-soft);">No sarees in this collection just yet — check back soon.</p>`}
+          <div class="weave-tile-grid" id="collWeaveGrid"></div>` : `<p style="text-align:center;color:var(--ink-soft);">No sarees in this collection just yet — check back soon.</p>`}
         </div>`;
 
       if(weaves.length){
-        const rail = document.getElementById('collCatRail');
-        rail.innerHTML = weaves.map(w => `
+        document.getElementById('collWeaveGrid').innerHTML = weaves.map(w => `
           <a class="cat-item" href="/shop?collection=${encodeURIComponent(c.slug)}&fabric=${encodeURIComponent(w)}">
             <div class="cat-swatch"><div class="cat-swatch-inner" style="background:${swatchBg(swatchByName[w])};"></div></div>
             <strong>${w}</strong>
           </a>`).join('');
-        requestAnimationFrame(()=> document.getElementById('collCatRailWrap').classList.toggle('has-overflow', rail.scrollWidth > rail.clientWidth + 4));
       }
     }catch(e){
       section.innerHTML = `<div class="container"><p style="text-align:center;color:var(--ink-soft);">Could not find that collection. <a href="/collections">Browse all collections →</a></p></div>`;
