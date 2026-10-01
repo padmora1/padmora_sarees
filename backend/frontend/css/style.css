@@ -942,6 +942,13 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
    the row. */
 .weave-tile-grid{display:grid;grid-template-columns:repeat(auto-fit, 150px);justify-content:center;gap:32px 24px;}
 @media (max-width:480px){ .weave-tile-grid{grid-template-columns:repeat(auto-fit, 120px);gap:24px 16px;} }
+
+/* A collection's "meaning" copy (collection.html) — set apart as a small
+   centered editorial quote rather than a plain left-aligned paragraph. */
+.collection-meaning{max-width:620px;margin:0 auto 36px;text-align:center;}
+.collection-meaning p{color:var(--ink-soft);font-size:15.5px;font-style:italic;line-height:1.8;}
+.collection-meaning p::before{content:'“';}
+.collection-meaning p::after{content:'”';}
 .faq-item{border-bottom:1px solid rgba(173,59,92,0.12);}
 .faq-q{width:100%;text-align:left;padding:18px 4px;display:flex;justify-content:space-between;align-items:center;font-size:14.5px;font-weight:500;color:var(--ink);}
 .faq-q svg{width:16px;height:16px;stroke:var(--maroon);transition:transform .2s ease;flex-shrink:0;}

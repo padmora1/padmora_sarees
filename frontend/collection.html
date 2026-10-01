@@ -74,7 +74,7 @@
       const weaves = (c.weaves || []).filter(w => fabricCounts[w] > 0);
       section.innerHTML = `
         <div class="container">
-          ${c.description ? `<p style="color:var(--ink-soft);font-size:14px;line-height:1.8;max-width:680px;margin-bottom:28px;">${c.description}</p>` : ''}
+          ${c.description ? `<div class="collection-meaning"><p>${c.description}</p></div>` : ''}
           ${weaves.length ? `
           <div class="section-head"><p class="eyebrow">Shop By Weave</p><h2>Weaves In This Collection</h2></div>
           <div class="weave-tile-grid" id="collWeaveGrid"></div>` : `<p style="text-align:center;color:var(--ink-soft);">No sarees in this collection just yet — check back soon.</p>`}
