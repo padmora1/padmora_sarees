@@ -1491,6 +1491,26 @@ router.post('/content/hero/image', uploadSingle, asyncRoute(async (req, res) => 
   res.json({ hero: next });
 }));
 
+// ---- Storefront content: "Shop all sarees" homepage band ----
+// Up to three hand-picked sarees shown in the fan on the homepage band. Stored
+// as plain ids; an empty list means "auto" (the public route falls back to the
+// most popular sarees), so clearing the picks can never leave the band blank.
+router.get('/content/shop-all', asyncRoute(async (req, res) => {
+  const cfg = await getSetting('shop_all_showcase', {});
+  res.json({ productIds: Array.isArray(cfg.productIds) ? cfg.productIds : [] });
+}));
+
+router.put('/content/shop-all', asyncRoute(async (req, res) => {
+  const raw = Array.isArray(req.body.productIds) ? req.body.productIds : [];
+  const productIds = [];
+  for (const v of raw) {
+    const id = Number(v);
+    if (Number.isInteger(id) && id > 0 && !productIds.includes(id)) productIds.push(id);
+  }
+  await setSetting('shop_all_showcase', { productIds: productIds.slice(0, 3) });
+  res.json({ productIds: productIds.slice(0, 3) });
+}));
+
 // ---- Storefront content: Promo band ----
 router.get('/content/promo-band', asyncRoute(async (req, res) => {
   res.json({ promoBand: await getSetting('promo_band', {}) });

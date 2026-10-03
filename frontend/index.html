@@ -61,15 +61,22 @@
   .home-hero-link::after{content:'';position:absolute;inset:0;background:rgba(20,10,10,0.04);transition:background .4s ease;pointer-events:none;}
   .home-hero-link:hover::after,.home-hero-link:focus-visible::after{background:rgba(20,10,10,0.2);}
   .home-hero-link:hover .home-hero-img{transform:scale(1.045);}
-  .home-hero-btn{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2;padding:16px 42px;background:rgba(250,245,236,0.94);color:var(--maroon-deep);font-size:13px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;border-radius:2px;box-shadow:0 6px 24px rgba(0,0,0,0.18);transition:background .3s ease,color .3s ease,transform .3s ease;white-space:nowrap;}
-  .home-hero-link:hover .home-hero-btn,.home-hero-link:focus-visible .home-hero-btn{background:var(--maroon);color:var(--ivory);transform:translate(-50%,-50%) scale(1.05);}
+  .home-hero-btn{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2;display:inline-flex;align-items:center;gap:18px;padding:9px 9px 9px 34px;background:rgba(255,240,230,0.96);color:var(--maroon-deep);font-size:13.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;border-radius:999px;box-shadow:0 0 0 7px rgba(255,240,230,0.26),0 14px 34px rgba(0,0,0,0.3);transition:background .35s ease,color .35s ease,transform .35s ease,box-shadow .35s ease;white-space:nowrap;overflow:hidden;}
+  .home-hero-btn::before{content:'';position:absolute;top:0;left:-70%;width:45%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,0.7),transparent);transform:skewX(-20deg);transition:left .8s ease;pointer-events:none;}
+  .home-hero-btn i{position:relative;display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:var(--maroon);transition:background .35s ease;}
+  .home-hero-btn i svg{width:19px;height:19px;stroke:var(--ivory);fill:none;stroke-width:2;transition:transform .35s ease;}
+  .home-hero-link:hover .home-hero-btn,.home-hero-link:focus-visible .home-hero-btn{background:var(--maroon-deep);color:var(--ivory);transform:translate(-50%,-50%) scale(1.06);box-shadow:0 0 0 12px rgba(255,240,230,0.2),0 18px 42px rgba(0,0,0,0.38);}
+  .home-hero-link:hover .home-hero-btn::before,.home-hero-link:focus-visible .home-hero-btn::before{left:130%;}
+  .home-hero-link:hover .home-hero-btn i,.home-hero-link:focus-visible .home-hero-btn i{background:var(--gold);}
+  .home-hero-link:hover .home-hero-btn i svg,.home-hero-link:focus-visible .home-hero-btn i svg{transform:translateX(3px);}
   @media (max-width:760px){
     .home-hero-img{max-height:78vh;}
     .home-hero-fallback{min-height:52vh;}
-    .home-hero-btn{padding:13px 30px;font-size:12px;}
+    .home-hero-btn{padding:7px 7px 7px 24px;gap:14px;font-size:12px;letter-spacing:.13em;}
+    .home-hero-btn i{width:40px;height:40px;}
   }
   @media (prefers-reduced-motion:reduce){
-    .home-hero-img,.home-hero-btn,.home-hero-link::after{transition:none;}
+    .home-hero-img,.home-hero-btn,.home-hero-btn::before,.home-hero-btn i svg,.home-hero-link::after{transition:none;}
     .home-hero-link:hover .home-hero-img{transform:none;}
   }
 
@@ -96,11 +103,7 @@
   .shop-all .eyebrow{color:var(--gold-soft);}
   .shop-all h2{color:var(--ivory);font-size:clamp(32px,4.2vw,50px);line-height:1.12;margin:12px 0 16px;}
   .shop-all h2 em{font-style:normal;color:var(--gold-soft);}
-  .shop-all-copy p.lede{font-size:15.5px;line-height:1.7;color:rgba(255,240,230,0.82);max-width:440px;}
-  .shop-all-stats{display:flex;gap:30px;margin:26px 0 32px;}
-  .shop-all-stats div{display:flex;flex-direction:column;}
-  .shop-all-stats strong{font-family:var(--font-display);font-weight:400;font-size:30px;color:var(--gold-soft);line-height:1;}
-  .shop-all-stats span{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,240,230,0.7);margin-top:6px;}
+  .shop-all-copy p.lede{font-size:15.5px;line-height:1.7;color:rgba(255,240,230,0.82);max-width:440px;margin-bottom:30px;}
   .shop-all-btn{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:16px;padding:8px 8px 8px 30px;border-radius:999px;background:var(--ivory);color:var(--maroon-deep);font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;box-shadow:0 10px 30px rgba(0,0,0,0.28);transition:transform .3s ease,box-shadow .3s ease,background .3s ease;}
   .shop-all-btn::before{content:'';position:absolute;top:0;left:-70%;width:45%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,0.65),transparent);transform:skewX(-20deg);transition:left .7s ease;}
   .shop-all-btn:hover,.shop-all-btn:focus-visible{transform:translateY(-3px);box-shadow:0 16px 38px rgba(0,0,0,0.34);background:#fff;}
@@ -121,8 +124,7 @@
   .sa-card-cap span{font-size:12px;color:var(--gold-soft);}
   @media (max-width:980px){
     .shop-all-inner{grid-template-columns:1fr;text-align:center;padding-top:56px;padding-bottom:48px;}
-    .shop-all-copy p.lede{margin:0 auto;}
-    .shop-all-stats{justify-content:center;}
+    .shop-all-copy p.lede{margin:0 auto 30px;}
     .shop-all-spin{right:50%;margin-right:-380px;opacity:.12;}
   }
   @media (max-width:760px){
@@ -183,10 +185,6 @@
         <p class="eyebrow">The Complete Collection</p>
         <h2 id="shopAllTitle">Every saree, <em>one place</em></h2>
         <p class="lede">Handloom pieces from Maheshwar, Kutch, Paithan and Narayanpet &mdash; each one sourced straight from the weaver. Browse the whole range, then narrow it by weave, colour or occasion.</p>
-        <div class="shop-all-stats">
-          <div><strong id="shopAllCount">&mdash;</strong><span>Sarees</span></div>
-          <div><strong id="shopAllWeaves">&mdash;</strong><span>Weaves</span></div>
-        </div>
         <a class="shop-all-btn" href="/shop"><span>View all sarees</span><i><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></i></a>
       </div>
       <div class="shop-all-stage" id="shopAllStage"></div>
@@ -234,7 +232,7 @@
       const media = desktop
         ? `<picture>${h.mobileImage ? `<source media="(max-width:760px)" srcset="${escAttr(h.mobileImage)}">` : ''}<img class="home-hero-img" src="${escAttr(desktop)}" alt="${escAttr(h.altText || 'Padmora sarees')}"></picture>`
         : `<div class="home-hero-fallback"></div>`;
-      section.innerHTML = `<a class="home-hero-link" href="${link}" aria-label="${label}">${media}<span class="home-hero-btn">${label}</span></a>`;
+      section.innerHTML = `<a class="home-hero-link" href="${link}" aria-label="${label}">${media}<span class="home-hero-btn"><span>${label}</span><i><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></i></span></a>`;
       section.style.display = '';
       document.getElementById('rangoliDivider').style.display = '';
     }catch(e){ section.style.display = 'none'; }
@@ -249,7 +247,6 @@
       // A fabric with no products yet (admin added the taxonomy entry ahead
       // of stocking it) would just lead to an empty shop grid — hide it from
       // this clickable rail until there's something to actually show.
-      document.getElementById('shopAllWeaves').textContent = fabrics.filter(f=>f.productCount > 0).length;
       rail.innerHTML = fabrics.filter(f=>f.productCount > 0).map(f=>`
         <a class="cat-item" href="/shop?fabric=${encodeURIComponent(f.name)}">
           <div class="cat-swatch"><div class="cat-swatch-inner" style="background:${swatchBg(f.swatch)};"></div></div>
@@ -324,15 +321,14 @@
   });
 
 
-  // "Shop all sarees" band: a fan of the three most-loved sarees (same
-  // popularity order as the shop page's default) that drift toward the pointer,
-  // plus live counts. Nothing here is required — if the fetch fails the copy and
+  // "Shop all sarees" band: a fan of up to three sarees that drift toward the
+  // pointer. Picked in admin (Storefront → Shop-all band); with no picks it
+  // falls back to the most popular sarees server-side. Nothing here is required — if the fetch fails the copy and
   // button still render and the stage just stays empty.
   async function renderShopAll(){
     const stage = document.getElementById('shopAllStage');
     try{
-      const {products, total} = await apiFetch('/products?limit=3');
-      document.getElementById('shopAllCount').textContent = total;
+      const {products} = await apiFetch('/content/shop-all');
       if(!products.length){ stage.style.display = 'none'; return; }
       const slots = [{sx:-1,y:'18px',rot:'-9deg',depth:-14,z:1,delay:'-2s'},{sx:0,y:'-10px',rot:'0deg',depth:10,z:3,delay:'0s'},{sx:1,y:'20px',rot:'9deg',depth:-14,z:2,delay:'-4s'}];
       // Fewer than three sarees: use the outer/centre slots that look balanced rather than leaving a hole.

@@ -1263,3 +1263,12 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 @media (max-width:640px){
   .search-overlay{top:78px;width:94vw;max-height:75vh;}
 }
+
+/* Admin table pager (25 rows per page) */
+.admin-pager{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin:12px 0 4px;font-size:12.5px;color:var(--ink-soft);}
+.admin-pager-btns{display:flex;align-items:center;gap:4px;flex-wrap:wrap;}
+.admin-pager button{min-width:34px;height:32px;padding:0 10px;border:1px solid rgba(173,59,92,0.18);background:#fff;color:var(--ink);border-radius:4px;font:inherit;cursor:pointer;}
+.admin-pager button:hover:not(:disabled){border-color:var(--maroon);color:var(--maroon);}
+.admin-pager button.on{background:var(--maroon);border-color:var(--maroon);color:#fff;}
+.admin-pager button:disabled{opacity:.4;cursor:default;}
+.admin-pager .gap{padding:0 4px;}

@@ -113,6 +113,7 @@
             <div class="editor-tabs" id="storefrontTabs">
               <button data-stab="hero" class="active">Hero</button>
               <button data-stab="promo">Promo Band</button>
+              <button data-stab="shopall">Shop-all Band</button>
               <button data-stab="reels">Sarees in Motion</button>
               <button data-stab="upcoming">Upcoming Sarees</button>
               <button data-stab="faq">FAQ</button>
@@ -344,6 +345,50 @@
         : 'No backup has run yet.';
     }catch(e){ toast(e.message, 'error'); }
   }
+
+  // ---- Table pagination ----
+  // Long admin tables (products, orders, customers...) show 25 rows at a time.
+  // Done on the DOM so the existing render code (and the click handlers it
+  // attaches to rows) stays untouched: whenever a table's markup is replaced, a
+  // MutationObserver re-pages it. The page number is remembered per table so an
+  // action that reloads the list (changing an order's status, say) doesn't throw
+  // you back to page 1.
+  const ADMIN_PAGE_SIZE = 25;
+  const adminPagerPage = {};
+  function pageAdminTable(table){
+    const id = table.id;
+    const wrap = table.parentNode;
+    let pager = document.getElementById('pager-' + id);
+    const rows = [...table.querySelectorAll('tbody > tr')].filter(r => !(r.children.length === 1 && r.children[0].hasAttribute('colspan')));
+    if(rows.length <= ADMIN_PAGE_SIZE){
+      if(pager) pager.remove();
+      rows.forEach(r => { r.style.display = ''; });
+      return;
+    }
+    if(!pager){
+      pager = document.createElement('div');
+      pager.id = 'pager-' + id;
+      pager.className = 'admin-pager';
+      wrap.insertAdjacentElement('afterend', pager);
+    }
+    const pages = Math.ceil(rows.length / ADMIN_PAGE_SIZE);
+    const go = n => { adminPagerPage[id] = Math.min(Math.max(1, n), pages); pageAdminTable(table); };
+    const cur = Math.min(adminPagerPage[id] || 1, pages);
+    adminPagerPage[id] = cur;
+    rows.forEach((r, i) => { r.style.display = (i >= (cur - 1) * ADMIN_PAGE_SIZE && i < cur * ADMIN_PAGE_SIZE) ? '' : 'none'; });
+    // First, last, current and its neighbours; "..." fills the gaps.
+    const nums = [...new Set([1, pages, cur - 1, cur, cur + 1].filter(n => n >= 1 && n <= pages))].sort((a, b) => a - b);
+    let btns = '', prev = 0;
+    nums.forEach(n => { if(n - prev > 1) btns += '<span class="gap">&hellip;</span>'; btns += `<button data-pg="${n}" class="${n === cur ? 'on' : ''}">${n}</button>`; prev = n; });
+    pager.innerHTML = `<span>Showing ${(cur - 1) * ADMIN_PAGE_SIZE + 1}&ndash;${Math.min(cur * ADMIN_PAGE_SIZE, rows.length)} of ${rows.length}</span>
+      <span class="admin-pager-btns"><button data-pg="${cur - 1}" ${cur === 1 ? 'disabled' : ''}>&lsaquo; Prev</button>${btns}<button data-pg="${cur + 1}" ${cur === pages ? 'disabled' : ''}>Next &rsaquo;</button></span>`;
+    pager.querySelectorAll('[data-pg]').forEach(b => b.addEventListener('click', () => go(Number(b.dataset.pg))));
+  }
+  ['productsTable','ordersTable','returnsTable','inventoryTable','customersTable','reviewsTable','notificationsLogTable'].forEach(id => {
+    const t = document.getElementById(id);
+    if(!t) return;
+    new MutationObserver(() => pageAdminTable(t)).observe(t, {childList: true});
+  });
 
   let allProducts = [];
   let openProductId = null;
@@ -1870,6 +1915,7 @@
   function renderStorefrontTab(){
     if(storefrontTab==='hero') renderHeroAdmin();
     else if(storefrontTab==='promo') renderPromoAdmin();
+    else if(storefrontTab==='shopall') renderShopAllAdmin();
     else if(storefrontTab==='reels') renderReelsAdmin();
     else if(storefrontTab==='upcoming') renderUpcomingAdmin();
     else if(storefrontTab==='faq') renderFaqAdmin();
@@ -1907,6 +1953,17 @@
         <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="hSave">Save Hero</button></div>
       </div>`;
 
+    // Picking a destination suggests a matching button label ("Shop All Sarees",
+    // "Explore Padmavali") — but only while the label is blank or still an
+    // earlier suggestion, so a label the admin wrote themselves is never overwritten.
+    const heroSuggest = v => v === '/shop' ? 'Shop All Sarees' : 'Explore ' + (((heroColls.find(c => '/collection?slug=' + encodeURIComponent(c.slug) === v)) || {}).name || 'the Collection');
+    let heroLastSuggest = heroSuggest(heroCurLink);
+    document.getElementById('hCtaLink').addEventListener('change', e=>{
+      const t = document.getElementById('hCtaText');
+      if(!t.value.trim() || t.value === heroLastSuggest){ heroLastSuggest = heroSuggest(e.target.value); t.value = heroLastSuggest; }
+      else heroLastSuggest = heroSuggest(e.target.value);
+    });
+
     document.getElementById('hSave').addEventListener('click', async ()=>{
       try{
         await adminApiFetch('/admin/content/hero', {method:'PUT', body: JSON.stringify({
@@ -1919,6 +1976,35 @@
         if(mobile) await uploadEntityImage('/api/admin/content/hero/image', 'file', mobile, {slot:'mobile'});
         toast('Hero banner saved');
         renderHeroAdmin();
+      }catch(e){ toast(e.message, 'error'); }
+    });
+  }
+
+  // ---- Shop-all band (homepage fan of sarees) ----
+  async function renderShopAllAdmin(){
+    const body = document.getElementById('storefrontTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const [{productIds}, {products}] = await Promise.all([adminApiFetch('/admin/content/shop-all'), adminApiFetch('/admin/products')]);
+    const live = products.filter(p => p.status !== 'archived').sort((a,b) => a.name.localeCompare(b.name));
+    const optAttr = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    const slot = i => `
+      <div class="form-field"><label>Saree ${i+1}</label>
+        <select class="saAdminPick"><option value="">— Automatic (most popular) —</option>${live.map(p=>`<option value="${p.id}" ${Number(productIds[i])===p.id?'selected':''}>${optAttr(p.name)}</option>`).join('')}</select>
+      </div>`;
+    body.innerHTML = `
+      <div class="editor-card">
+        <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">The three sarees fanned out in the “Every saree, one place” band on the homepage. Each card shows that saree’s main photo and links to it. Leave all three on Automatic to show the most popular sarees.</p>
+        <div class="form-row-2">${slot(0)}${slot(1)}</div>
+        <div class="form-row-2">${slot(2)}<div></div></div>
+        <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="saSave">Save</button></div>
+      </div>`;
+    document.getElementById('saSave').addEventListener('click', async ()=>{
+      try{
+        const picks = [...document.querySelectorAll('.saAdminPick')].map(s => s.value).filter(Boolean);
+        if(new Set(picks).size !== picks.length) return toast('Pick three different sarees.', 'error');
+        await adminApiFetch('/admin/content/shop-all', {method:'PUT', body: JSON.stringify({productIds: picks.map(Number)})});
+        toast('Shop-all band saved');
+        renderShopAllAdmin();
       }catch(e){ toast(e.message, 'error'); }
     });
   }
