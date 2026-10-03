@@ -98,7 +98,13 @@
           <div class="live-badge"><span class="live-dot"></span>${isDelivered || order.status==='Cancelled' ? 'Live tracking' : 'Live tracking · updates every 20s'}</div>
           <div class="tracker-order-id">Order #${order.id}</div>
         </div>
-        ${!isDelivered ? `<p class="eta-line">Expected by <strong>${fmtDateTime(stages[stages.length-1].at)}</strong></p>` : `<p class="eta-line delivered-line">Delivered on <strong>${fmtDateTime(stages[stages.length-1].at)}</strong> 🎉</p>`}
+        ${!isDelivered
+          ? (stages[stages.length-1].at
+              ? `<p class="eta-line">Expected by <strong>${fmtDateTime(stages[stages.length-1].at)}</strong></p>`
+              : `<p class="eta-line">We update this page — and email you — as your order moves.</p>`)
+          : (stages[stages.length-1].at || order.deliveredAt
+              ? `<p class="eta-line delivered-line">Delivered on <strong>${fmtDateTime(stages[stages.length-1].at || order.deliveredAt)}</strong> 🎉</p>`
+              : `<p class="eta-line delivered-line">Delivered 🎉</p>`)}
         ${order.cancelRequestStatus === 'Requested' ? `<p class="eta-line" style="color:var(--maroon);">⏳ Cancellation requested — pending review</p>`
           : order.cancelRequestStatus === 'Rejected' ? `<p class="eta-line" style="color:var(--ink-soft);">Cancellation request rejected${order.cancelAdminNote ? ': '+order.cancelAdminNote : ''}</p>` : ''}
 
@@ -108,7 +114,7 @@
               <span class="tracker-icon-circle">${stageIcon(s.status)}${i===currentIndex && !isDelivered ? '<span class="pulse-ring"></span>' : ''}</span>
               <div class="tracker-node-label">
                 <strong>${s.status}</strong>
-                <span>${s.done ? fmtDateTime(s.at) : 'Expected ' + fmtDateTime(s.at)}</span>
+                <span>${s.done ? (s.at ? fmtDateTime(s.at) : 'Done') : (s.at ? 'Expected ' + fmtDateTime(s.at) : 'Pending')}</span>
               </div>
               ${i < stages.length-1 ? `<span class="tracker-connector ${stages[i+1].done ? 'filled' : ''}"><span class="connector-shine"></span></span>` : ''}
             </div>`).join('')}
@@ -119,7 +125,7 @@
           ${[...stages].filter(s=>s.done).reverse().map((s,i)=>`
             <div class="update-item" style="animation-delay:${i*0.08}s;">
               <span class="update-dot"></span>
-              <div><strong>${s.status}</strong><span>${fmtDateTime(s.at)}</span></div>
+              <div><strong>${s.status}</strong>${s.at ? `<span>${fmtDateTime(s.at)}</span>` : ''}</div>
             </div>`).join('')}
         </div>
 

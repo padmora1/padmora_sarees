@@ -137,6 +137,25 @@
               <button class="btn btn-outline btn-sm" id="printSelectedSlips" style="display:none;">Print Packing Slips (<span id="selectedSlipCount">0</span>)</button>
               <input type="search" class="admin-input" id="orderSearchBox" placeholder="Search order #, customer name or email…" style="max-width:280px;margin-left:auto;">
             </div>
+            <details class="editor-card" id="bulkStatusCard" style="margin-bottom:16px;">
+              <summary style="cursor:pointer;font-weight:600;color:var(--maroon-deep);">Bulk update status — upload a sheet of order IDs</summary>
+              <div style="margin-top:14px;">
+                <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px;">List the day's order IDs in a spreadsheet — <strong>only the order IDs</strong>, one per row in column A — pick the status, upload, check the preview, then apply. Customers see the new status on Track Order straight away and get an email. Cancelled orders, orders already at (or past) that status, and orders with a pending cancellation request are skipped and listed for you.</p>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+                  <button class="btn btn-outline btn-sm" id="bulkTplXlsx">⬇ Download Excel template (.xlsx)</button>
+                  <button class="btn btn-outline btn-sm" id="bulkTplCsv">⬇ Download CSV template</button>
+                </div>
+                <div class="form-row-2">
+                  <div class="form-field"><label>Mark these orders as</label>
+                    <select id="bulkStatus" class="admin-input"><option>Packed</option><option>Shipped</option><option>Out for Delivery</option><option>Delivered</option></select>
+                  </div>
+                  <div class="form-field"><label>Filled-in sheet (.xlsx or .csv)</label><input type="file" id="bulkFile" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>
+                </div>
+                <label style="font-size:12.5px;display:block;margin-bottom:12px;"><input type="checkbox" id="bulkNotify" checked> Email each customer about the new status</label>
+                <button class="btn btn-primary btn-sm" id="bulkPreviewBtn">Preview changes</button>
+                <div id="bulkResult" style="margin-top:16px;"></div>
+              </div>
+            </details>
             <div class="order-filter-row" id="orderStatusFilters"></div>
             <div style="overflow-x:auto;">
               <table class="admin-table" id="ordersTable"></table>
@@ -240,7 +259,7 @@
             <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">How many days after delivery a customer can request a return. This is the one place that number lives — the Shipping &amp; Returns page and every eligibility check read it from here.</p>
             <div class="admin-form" id="returnPolicyForm"></div>
 
-            <h3 style="font-size:15px;margin:28px 0 6px;">Tracking Timing</h3>
+            <h3 style="font-size:15px;margin:28px 0 6px;">Order Tracking</h3>
             <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Hours after an order is placed before its automatic status advances to each stage. An admin's manual override on an individual order always takes priority over this.</p>
             <div class="admin-form" id="trackingSettingsForm"></div>
 
@@ -736,6 +755,77 @@
     btn.style.display = selectedOrderIds.size ? 'inline-flex' : 'none';
     document.getElementById('selectedSlipCount').textContent = selectedOrderIds.size;
   }
+
+  // ---- Bulk status update ----
+  (function(){
+    const bEsc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+    const resultEl = document.getElementById('bulkResult');
+    let pending = null; // {status, ids} from the last successful preview
+
+    document.getElementById('bulkTplXlsx').addEventListener('click', ()=>adminDownloadFile('/admin/orders/bulk-status/template.xlsx').catch(e=>toast(e.message,'error')));
+    document.getElementById('bulkTplCsv').addEventListener('click', ()=>adminDownloadFile('/admin/orders/bulk-status/template.csv').catch(e=>toast(e.message,'error')));
+    // A new file or a different status invalidates any preview already on screen.
+    ['bulkFile','bulkStatus'].forEach(id => document.getElementById(id).addEventListener('change', ()=>{ pending = null; resultEl.innerHTML = ''; }));
+
+    document.getElementById('bulkPreviewBtn').addEventListener('click', async ()=>{
+      const file = document.getElementById('bulkFile').files[0];
+      const status = document.getElementById('bulkStatus').value;
+      if(!file) return toast('Choose the filled-in sheet first.', 'error');
+      const btn = document.getElementById('bulkPreviewBtn');
+      btn.disabled = true; btn.textContent = 'Reading…';
+      try{
+        const token = getAdminToken();
+        const res = await fetch(API_BASE + '/admin/orders/bulk-status/preview?status=' + encodeURIComponent(status), {
+          method: 'POST', headers: Object.assign({'Content-Type':'application/octet-stream'}, token ? {Authorization:'Bearer ' + token} : {}), body: file
+        });
+        let data = {};
+        try{ data = await res.json(); }catch(e){ /* no body */ }
+        if(res.status === 401){ clearAdminToken(); window.location.href = '/admin-login'; return; }
+        if(!res.ok) throw new Error(data.message || 'Could not read that file.');
+        renderPreview(data);
+      }catch(e){ pending = null; resultEl.innerHTML = ''; toast(e.message, 'error'); }
+      finally{ btn.disabled = false; btn.textContent = 'Preview changes'; }
+    });
+
+    function renderPreview(d){
+      const c = d.counts;
+      const updatable = d.rows.filter(r => r.outcome === 'update').map(r => r.orderId);
+      pending = updatable.length ? {status: d.status, ids: updatable} : null;
+      const chip = (n, label, color) => `<span style="display:inline-block;padding:4px 12px;border-radius:20px;background:${color};font-size:12.5px;margin:0 8px 8px 0;"><strong>${n}</strong> ${label}</span>`;
+      resultEl.innerHTML = `
+        <div>${chip(c.update, 'will be marked ' + bEsc(d.status), 'rgba(126,160,67,0.18)')}${c.skip ? chip(c.skip, 'skipped', 'rgba(184,127,85,0.2)') : ''}${c.notFound ? chip(c.notFound, 'not found', 'rgba(173,59,92,0.15)') : ''}${c.duplicates ? chip(c.duplicates, 'duplicate row' + (c.duplicates === 1 ? '' : 's') + ' ignored', 'rgba(61,34,41,0.08)') : ''}</div>
+        <div style="max-height:340px;overflow:auto;border:1px solid rgba(173,59,92,0.12);border-radius:4px;">
+          <table class="admin-table" style="min-width:0;">
+            <thead><tr><th>Order</th><th>Customer</th><th>Result</th></tr></thead>
+            <tbody>${d.rows.map(r => `<tr>
+              <td>#${bEsc(r.orderId)}</td><td>${bEsc(r.customer || '—')}</td>
+              <td style="color:${r.outcome === 'update' ? 'var(--teal)' : r.outcome === 'notfound' ? 'var(--maroon)' : 'var(--ink-soft)'};font-weight:${r.outcome === 'update' ? 600 : 400};">${bEsc(r.message)}</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+        <div style="margin-top:14px;">${updatable.length
+          ? `<button class="btn btn-primary btn-sm" id="bulkApplyBtn">Mark ${updatable.length} order${updatable.length === 1 ? '' : 's'} as ${bEsc(d.status)}</button>`
+          : `<p style="font-size:13px;color:var(--ink-soft);">Nothing to update from this file.</p>`}</div>`;
+      const apply = document.getElementById('bulkApplyBtn');
+      if(apply) apply.addEventListener('click', applyBulk);
+    }
+
+    async function applyBulk(){
+      if(!pending) return;
+      const btn = document.getElementById('bulkApplyBtn');
+      btn.disabled = true; btn.textContent = 'Updating…';
+      try{
+        const notify = document.getElementById('bulkNotify').checked;
+        const r = await adminApiFetch('/admin/orders/bulk-status/apply', {method:'POST', body: JSON.stringify({status: pending.status, orderIds: pending.ids, notify})});
+        const status = pending.status;
+        pending = null;
+        resultEl.innerHTML = `<div class="editor-card" style="background:rgba(126,160,67,0.12);"><strong>${r.updated} order${r.updated === 1 ? '' : 's'} marked ${bEsc(status)}.</strong>${r.emailsQueued ? ` Emailing ${r.emailsQueued} customer${r.emailsQueued === 1 ? '' : 's'} now.` : ''}${r.skipped.length ? `<br><span style="font-size:12.5px;color:var(--ink-soft);">${r.skipped.length} skipped since the preview: ${r.skipped.slice(0, 8).map(x => '#' + bEsc(x.orderId) + ' (' + bEsc(x.message) + ')').join('; ')}${r.skipped.length > 8 ? '…' : ''}</span>` : ''}</div>`;
+        document.getElementById('bulkFile').value = '';
+        toast(r.updated + ' order' + (r.updated === 1 ? '' : 's') + ' updated');
+        loadOrders();
+      }catch(e){ toast(e.message, 'error'); btn.disabled = false; btn.textContent = 'Try again'; }
+    }
+  })();
 
   async function loadOrders(){
     document.getElementById('orderStatusFilters').innerHTML = ORDER_FILTERS.map(f=>
@@ -1372,19 +1462,26 @@
 
   async function loadSettings(){
     try{
-      const {timing} = await adminApiFetch('/admin/settings/tracking');
+      const {timing, mode} = await adminApiFetch('/admin/settings/tracking');
       document.getElementById('trackingSettingsForm').innerHTML = `
+        <div class="form-field" style="max-width:520px;margin-bottom:16px;"><label>How order tracking moves</label>
+          <select id="trackingMode" class="admin-input" style="width:100%;">
+            <option value="manual" ${mode==='manual'?'selected':''}>Manual — orders stay “Confirmed” until I mark them (bulk upload or the Orders list)</option>
+            <option value="simulated" ${mode!=='manual'?'selected':''}>Automatic demo — status advances on the timing below</option>
+          </select>
+          <span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:6px;">Switching to Manual only affects orders placed from now on; earlier orders keep behaving as they do today. The hour counts below apply to Automatic only.</span>
+        </div>
         <div class="form-row-2">
           ${STAGE_NAMES.map(s=>`<div class="form-field"><label>${s} (hours after order placed)</label><input type="number" min="0" class="admin-input" style="width:100%;" data-stage="${s}" value="${timing[s]}"></div>`).join('')}
         </div>
-        <button class="btn btn-primary btn-sm" id="saveTracking">Save Tracking Timing</button>`;
+        <button class="btn btn-primary btn-sm" id="saveTracking">Save Tracking Settings</button>`;
 
       document.getElementById('saveTracking').addEventListener('click', async ()=>{
         const newTiming = {};
         document.querySelectorAll('[data-stage]').forEach(inp => newTiming[inp.dataset.stage] = inp.value);
         try{
-          await adminApiFetch('/admin/settings/tracking', {method:'PUT', body: JSON.stringify({timing: newTiming})});
-          toast('Tracking timing saved');
+          await adminApiFetch('/admin/settings/tracking', {method:'PUT', body: JSON.stringify({timing: newTiming, mode: document.getElementById('trackingMode').value})});
+          toast('Tracking settings saved');
         }catch(e){ toast(e.message, 'error'); }
       });
     }catch(e){ toast(e.message, 'error'); }

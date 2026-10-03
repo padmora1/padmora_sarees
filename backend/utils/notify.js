@@ -175,4 +175,34 @@ function sendOrderConfirmation(order, customer) {
     .catch(() => {});
 }
 
-module.exports = { sendEmail, sendSms, sendOrderConfirmation, emailConfigured, smsConfigured };
+// "Your order is packed / shipped / out for delivery / delivered" — sent when an
+// admin moves an order forward (singly or via the bulk upload). Awaited by the
+// caller's background loop, never inline in a request; a failure is logged to
+// notifications_log by sendEmail and must not stop the rest of a batch.
+const STATUS_EMAIL = {
+  'Packed': { subject: 'is packed', headline: 'Your order is packed', body: "Good news — your saree has been carefully packed and is getting ready to ship." },
+  'Shipped': { subject: 'has shipped', headline: 'Your order has shipped', body: "Your order is on its way. We'll update the tracking page as it moves." },
+  'Out for Delivery': { subject: 'is out for delivery', headline: 'Out for delivery today', body: "Your order is out for delivery and should reach you soon. Please keep your phone handy." },
+  'Delivered': { subject: 'has been delivered', headline: 'Your order has been delivered', body: "Your order has been delivered. We hope you love it — thank you for shopping with Padmora." }
+};
+
+async function sendOrderStatusEmail(order, customer, status) {
+  const tpl = STATUS_EMAIL[status];
+  if (!tpl) return { status: 'skipped_no_template' };
+  const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  return sendEmail({
+    to: customer && customer.email,
+    subject: `Your Padmora order ${order.id} ${tpl.subject}`,
+    html: `<div style="font-family:Georgia,serif;max-width:480px;margin:0 auto;color:#2b1015;">
+      <h2 style="color:#7A1F2B;">${tpl.headline}</h2>
+      <p>Hi ${esc((customer && customer.name) || 'there')},</p>
+      <p>${tpl.body}</p>
+      <p style="font-size:13px;color:#666;">Order ID: <strong>${esc(order.id)}</strong></p>
+      <p style="margin-top:24px;color:#999;font-size:12px;">Track it anytime at ${SITE_URL.replace(/^https?:\/\//, '')}/track-order</p>
+    </div>`,
+    orderId: order.id,
+    userId: customer && customer.id
+  });
+}
+
+module.exports = { sendEmail, sendSms, sendOrderConfirmation, sendOrderStatusEmail, emailConfigured, smsConfigured };

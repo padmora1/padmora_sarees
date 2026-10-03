@@ -8,12 +8,13 @@ const {
   ADMIN_ROLES, logActivity
 } = require('../utils/db');
 const { requireAdminAuth, requirePermission } = require('../middleware/adminAuth');
-const { computeStatus, buildTimeline, isCancellable, STAGE_NAMES, CANCEL_REASONS } = require('../utils/orderStatus');
+const { computeStatus, buildTimeline, isCancellable, setOrderManualStatus, getTrackingMode, clearTrackingModeCache, STAGE_NAMES, CANCEL_REASONS } = require('../utils/orderStatus');
+const { readOrderIds, buildTemplateXlsx, buildTemplateCsv, normalizeOrderId, MAX_IDS } = require('../utils/spreadsheet');
 const { upload, UPLOAD_DIR } = require('../middleware/upload');
 const { toProductApiShape } = require('../utils/shape');
 const { runBackup, listBackups, BACKUP_DIR } = require('../utils/backup');
 const { RETURN_REASONS } = require('../utils/returns');
-const { sendEmail, emailConfigured, smsConfigured } = require('../utils/notify');
+const { sendEmail, sendOrderStatusEmail, emailConfigured, smsConfigured } = require('../utils/notify');
 const razorpayUtil = require('../utils/razorpay');
 const { checkWishlistAlerts } = require('../utils/wishlistAlerts');
 const { checkAbandonedCarts } = require('../utils/abandonedCart');
@@ -639,10 +640,122 @@ router.put('/orders/:id/status', asyncRoute(async (req, res) => {
     return res.status(400).json({ message: 'Invalid status.' });
   }
 
-  must(await supabase.from('orders').update({ manual_status: manualStatus }).eq('id', order.id), 'setOrderStatus:update');
+  const { advanced } = await setOrderManualStatus(order, manualStatus, 'manual');
   await record(req, 'status changed', 'order', order.id, { manualStatus: order.manual_status }, { manualStatus });
+  // Same customer email as the bulk upload, but only when moving forward — fixing a
+  // mistake (stepping back, or reverting to automatic) never emails anyone.
+  if (advanced) notifyStatusChange([order.id], manualStatus);
   const updated = must(await supabase.from('orders').select('*').eq('id', order.id).single(), 'setOrderStatus:reread');
   res.json({ status: await computeStatus(updated), timeline: await buildTimeline(updated) });
+}));
+
+// ---- Bulk status update from an uploaded sheet of order IDs ----
+// The store ships by hand (no courier integration), so the day's packed orders
+// are listed in a spreadsheet and uploaded here. Two steps — preview (read the
+// file, show exactly what would change) then apply (re-checks every order at
+// that moment before touching anything).
+const BULK_TARGETS = ['Packed', 'Shipped', 'Out for Delivery', 'Delivered'];
+
+async function classifyBulk(ids, target) {
+  const found = new Map();
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const orders = await attachOrderExtras(must(await supabase.from('orders').select('*').in('id', chunk), 'bulkStatus:orders'));
+    orders.forEach(o => found.set(o.id, o));
+  }
+  const targetIdx = STAGE_NAMES.indexOf(target);
+  const rows = [];
+  for (const id of ids) {
+    const o = found.get(id);
+    if (!o) { rows.push({ orderId: id, outcome: 'notfound', message: 'No order with this ID.' }); continue; }
+    const base = { orderId: id, customer: o.address_name || o.customer_name || '' };
+    const current = await computeStatus(o);
+    if (current === 'Cancelled') { rows.push({ ...base, outcome: 'skip', current, message: 'Order is cancelled.' }); continue; }
+    if (o.cancel_request_status === 'Requested') { rows.push({ ...base, outcome: 'skip', current, message: 'Customer has requested a cancellation — review it first.' }); continue; }
+    if (current === target) { rows.push({ ...base, outcome: 'skip', current, message: `Already ${target}.` }); continue; }
+    if (STAGE_NAMES.indexOf(current) > targetIdx) { rows.push({ ...base, outcome: 'skip', current, message: `Already ${current} — won't move it back to ${target}.` }); continue; }
+    rows.push({ ...base, outcome: 'update', current, message: `${current} → ${target}` });
+  }
+  return { rows, found };
+}
+
+// Emails go out after the response, one at a time, so a 200-order upload never waits
+// on (or fails because of) the mail server; every attempt lands in notifications_log.
+function notifyStatusChange(orderIds, status) {
+  setImmediate(async () => {
+    try {
+      for (let i = 0; i < orderIds.length; i += 100) {
+        const orders = await attachOrderExtras(must(await supabase.from('orders').select('*').in('id', orderIds.slice(i, i + 100)), 'notifyStatus:orders'));
+        for (const o of orders) {
+          try { await sendOrderStatusEmail(o, { id: o.user_id, name: o.address_name || o.customer_name, email: o.customer_email }, status); }
+          catch (err) { console.error('Status email failed for', o.id, err.message); }
+        }
+      }
+    } catch (err) { console.error('notifyStatusChange failed:', err); }
+  });
+}
+
+router.get('/orders/bulk-status/template.xlsx', (req, res) => {
+  res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.header('Content-Disposition', 'attachment; filename="padmora-order-ids-template.xlsx"');
+  res.send(buildTemplateXlsx());
+});
+
+router.get('/orders/bulk-status/template.csv', (req, res) => {
+  res.header('Content-Type', 'text/csv; charset=utf-8');
+  res.header('Content-Disposition', 'attachment; filename="padmora-order-ids-template.csv"');
+  res.send(buildTemplateCsv());
+});
+
+router.post('/orders/bulk-status/preview', express.raw({ type: () => true, limit: '3mb' }), asyncRoute(async (req, res) => {
+  const target = String(req.query.status || '');
+  if (!BULK_TARGETS.includes(target)) return res.status(400).json({ message: 'Choose which status to apply.' });
+  let parsed;
+  try { parsed = readOrderIds(req.body); }
+  catch (err) { return res.status(400).json({ message: err.message }); }
+  if (!parsed.ids.length) return res.status(400).json({ message: 'No order IDs found. Put one order ID per row in column A.' });
+  const { rows } = await classifyBulk(parsed.ids, target);
+  res.json({
+    status: target,
+    rows,
+    counts: {
+      total: parsed.ids.length,
+      update: rows.filter(r => r.outcome === 'update').length,
+      skip: rows.filter(r => r.outcome === 'skip').length,
+      notFound: rows.filter(r => r.outcome === 'notfound').length,
+      duplicates: parsed.duplicates
+    }
+  });
+}));
+
+router.post('/orders/bulk-status/apply', asyncRoute(async (req, res) => {
+  const { status, orderIds, notify } = req.body || {};
+  if (!BULK_TARGETS.includes(status)) return res.status(400).json({ message: 'Choose which status to apply.' });
+  if (!Array.isArray(orderIds) || !orderIds.length) return res.status(400).json({ message: 'No orders to update.' });
+  const ids = [...new Set(orderIds.map(normalizeOrderId).filter(Boolean))];
+  if (ids.length > MAX_IDS) return res.status(400).json({ message: `At most ${MAX_IDS} orders at a time.` });
+
+  // Re-check at apply time: an order may have been cancelled or moved on since the preview.
+  const { rows } = await classifyBulk(ids, status);
+  const toUpdate = rows.filter(r => r.outcome === 'update').map(r => r.orderId);
+  const now = new Date().toISOString();
+  for (let i = 0; i < toUpdate.length; i += 100) {
+    const chunk = toUpdate.slice(i, i + 100);
+    must(await supabase.from('order_status_events').insert(chunk.map(id => ({ order_id: id, status, source: 'bulk' }))), 'bulkStatus:events');
+    must(await supabase.from('orders').update({ manual_status: status }).in('id', chunk), 'bulkStatus:update');
+    if (status === 'Delivered') {
+      must(await supabase.from('orders').update({ delivered_at: now }).in('id', chunk).is('delivered_at', null), 'bulkStatus:delivered');
+    }
+  }
+  if (toUpdate.length) {
+    await record(req, 'bulk status changed', 'order', 'bulk', null, { status, count: toUpdate.length, orderIds: toUpdate.slice(0, 200), emailed: notify !== false });
+    if (notify !== false) notifyStatusChange(toUpdate, status);
+  }
+  res.json({
+    updated: toUpdate.length,
+    skipped: rows.filter(r => r.outcome !== 'update').map(r => ({ orderId: r.orderId, message: r.message })),
+    emailsQueued: notify !== false ? toUpdate.length : 0
+  });
 }));
 
 // Recent notification attempts across all orders — lets an admin confirm
@@ -1050,19 +1163,33 @@ router.put('/returns/:id/refund', asyncRoute(async (req, res) => {
 
 // ---- Tracking settings ----
 router.get('/settings/tracking', asyncRoute(async (req, res) => {
-  res.json({ timing: await getSetting('tracking_timing', {}) });
+  const { mode, since } = await getTrackingMode();
+  res.json({ timing: await getSetting('tracking_timing', {}), mode, since: since ? new Date(since).toISOString() : null });
 }));
 
 router.put('/settings/tracking', asyncRoute(async (req, res) => {
-  const { timing } = req.body;
-  if (!timing || typeof timing !== 'object') return res.status(400).json({ message: 'A timing object is required.' });
-  for (const stage of STAGE_NAMES) {
-    if (timing[stage] === undefined || isNaN(Number(timing[stage])) || Number(timing[stage]) < 0) {
-      return res.status(400).json({ message: `Enter a valid hour count for "${stage}".` });
+  const { timing, mode } = req.body;
+  if (mode !== undefined && !['manual', 'simulated'].includes(mode)) return res.status(400).json({ message: 'Invalid tracking mode.' });
+  if (timing !== undefined) {
+    if (!timing || typeof timing !== 'object') return res.status(400).json({ message: 'A timing object is required.' });
+    for (const stage of STAGE_NAMES) {
+      if (timing[stage] === undefined || isNaN(Number(timing[stage])) || Number(timing[stage]) < 0) {
+        return res.status(400).json({ message: `Enter a valid hour count for "${stage}".` });
+      }
     }
+    await setSetting('tracking_timing', STAGE_NAMES.reduce((acc, s) => ({ ...acc, [s]: Number(timing[s]) }), {}));
   }
-  await setSetting('tracking_timing', STAGE_NAMES.reduce((acc, s) => ({ ...acc, [s]: Number(timing[s]) }), {}));
-  res.json({ timing: await getSetting('tracking_timing', {}) });
+  if (mode) {
+    const current = await getTrackingMode();
+    // Staying on manual keeps the original cut-off; switching to it starts a new one,
+    // so orders placed before today keep behaving exactly as they did.
+    const since = mode === 'manual' ? (current.mode === 'manual' && current.since ? new Date(current.since).toISOString() : new Date().toISOString()) : null;
+    await setSetting('tracking_mode', { mode, since });
+    clearTrackingModeCache();
+    await record(req, 'tracking mode changed', 'settings', 'tracking_mode', { mode: current.mode }, { mode });
+  }
+  const now = await getTrackingMode();
+  res.json({ timing: await getSetting('tracking_timing', {}), mode: now.mode, since: now.since ? new Date(now.since).toISOString() : null });
 }));
 
 // ---- Store / Shipping / Tax settings (Phase 7) ----
