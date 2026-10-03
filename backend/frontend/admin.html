@@ -73,8 +73,8 @@
                 <div class="form-field"><label>Swatch key</label><input type="text" id="npSwatch" placeholder="maroon, teal, indigo..."></div>
               </div>
               <div class="form-row-2">
-                <div class="form-field"><label>Price (₹)</label><input type="number" id="npPrice"></div>
-                <div class="form-field"><label>MRP (₹)</label><input type="number" id="npMrp"></div>
+                <div class="form-field"><label id="npPriceLabel">Price (₹)</label><input type="number" id="npPrice" min="1"></div>
+                <div class="form-field" id="npSaleField" style="display:none;"><label>Sale % off</label><input type="number" id="npSalePct" min="1" max="90" placeholder="e.g. 20"><span id="npSalePreview" style="display:block;font-size:12px;color:var(--teal);margin-top:6px;"></span></div>
               </div>
               <div class="form-row-2">
                 <div class="form-field"><label>Stock</label><input type="number" id="npStock" value="20"></div>
@@ -497,6 +497,7 @@
             <option value="bestseller" ${p.badge==='bestseller'?'selected':''}>Bestseller</option>
             <option value="sale" ${p.badge==='sale'?'selected':''}>Sale</option>
           </select>
+          <span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:6px;">Sale shows the crossed-out original price, the sale price and “% off” (set the % per colour in the Variants tab). Taking Sale off puts each colour back to its actual price.</span>
         </div>
       </div>
       <div class="form-field"><label>Description</label><textarea id="egDesc" rows="2">${p.desc || ''}</textarea></div>
@@ -544,6 +545,9 @@
 
   function renderVariantsTab(p){
     const body = document.getElementById('editorTabBody');
+    const onSale = p.badge === 'sale';
+    // Sale colours: the field holds the ACTUAL price (stored as MRP) + a sale %, and the sale price follows.
+    const offOf = v => (v.mrp > v.price ? Math.round((1 - v.price / v.mrp) * 100) : '');
     body.innerHTML = `
       ${p.variants.map(v=>`
         <div class="variant-card" data-variant-id="${v.id}">
@@ -559,8 +563,11 @@
             <div class="form-field"><label>Swatch Key</label><input type="text" class="admin-input" style="width:100%;" data-vf="swatch" value="${v.swatch}" placeholder="maroon, emerald..."></div>
             <div class="form-field"><label>SKU</label><input type="text" class="admin-input" style="width:100%;" data-vf="sku" value="${v.sku || ''}"></div>
             <div class="form-field"><label>Low Stock At</label><input type="number" class="admin-input" style="width:100%;" data-vf="lowStockThreshold" value="${v.lowStockThreshold}"></div>
-            <div class="form-field"><label>Price (₹)</label><input type="number" class="admin-input" style="width:100%;" data-vf="price" value="${v.price}"></div>
-            <div class="form-field"><label>MRP (₹)</label><input type="number" class="admin-input" style="width:100%;" data-vf="mrp" value="${v.mrp}"></div>
+            ${onSale ? `
+            <div class="form-field"><label>Actual price (₹)</label><input type="number" class="admin-input" style="width:100%;" data-vf="price" data-sale-actual value="${v.mrp > v.price ? v.mrp : v.price}"></div>
+            <div class="form-field"><label>Sale % off</label><input type="number" class="admin-input" style="width:100%;" data-vf="salePercent" data-sale-pct min="1" max="90" placeholder="e.g. 20" value="${offOf(v)}"></div>
+            <div class="form-field"><label>Sale price (auto)</label><div class="sale-preview" style="padding:9px 0;font-weight:600;color:var(--teal);">${v.mrp > v.price ? '₹' + v.price.toLocaleString('en-IN') : '—'}</div></div>`
+            : `<div class="form-field"><label>Price (₹)</label><input type="number" class="admin-input" style="width:100%;" data-vf="price" value="${v.price}"></div>`}
             <div class="form-field"><label>Stock</label><input type="number" class="admin-input" style="width:100%;${v.stock<=v.lowStockThreshold?'border-color:var(--maroon);color:var(--maroon);':''}" data-vf="stock" value="${v.stock}"></div>
           </div>
           <div class="form-field"><label>Variant Description (optional override)</label><textarea class="admin-input" style="width:100%;" rows="2" data-vf="desc">${v.desc || ''}</textarea></div>
@@ -583,11 +590,19 @@
           <div class="form-field"><label>Swatch Key</label><input type="text" class="admin-input" style="width:100%;" id="nvSwatch" placeholder="emerald"></div>
           <div class="form-field"><label>SKU</label><input type="text" class="admin-input" style="width:100%;" id="nvSku"></div>
           <div class="form-field"><label>Stock</label><input type="number" class="admin-input" style="width:100%;" id="nvStock" value="10"></div>
-          <div class="form-field"><label>Price (₹)</label><input type="number" class="admin-input" style="width:100%;" id="nvPrice"></div>
-          <div class="form-field"><label>MRP (₹)</label><input type="number" class="admin-input" style="width:100%;" id="nvMrp"></div>
+          <div class="form-field"><label>${onSale ? 'Actual price (₹)' : 'Price (₹)'}</label><input type="number" class="admin-input" style="width:100%;" id="nvPrice"></div>
+          ${onSale ? `<div class="form-field"><label>Sale % off</label><input type="number" class="admin-input" style="width:100%;" id="nvSalePct" min="1" max="90" placeholder="e.g. 20"></div>` : ''}
         </div>
         <button class="btn btn-sm btn-outline" id="addVariantBtn">Add Variant</button>
       </div>`;
+
+    // Live "Sale price" as the admin types the actual price or the percentage.
+    body.querySelectorAll('.variant-card').forEach(card=>{
+      const actual = card.querySelector('[data-sale-actual]'), pct = card.querySelector('[data-sale-pct]'), out = card.querySelector('.sale-preview');
+      if(!actual || !pct || !out) return;
+      const refresh = () => { const t = salePreviewText(actual.value, pct.value); out.textContent = t ? t.replace(/ — .*/, '').replace('Sale price ', '') : '—'; };
+      actual.addEventListener('input', refresh); pct.addEventListener('input', refresh);
+    });
 
     body.querySelectorAll('[data-save-variant]').forEach(btn=>btn.addEventListener('click', async ()=>{
       const card = btn.closest('.variant-card');
@@ -670,13 +685,15 @@
     }));
 
     document.getElementById('addVariantBtn').addEventListener('click', async ()=>{
-      const price = document.getElementById('nvPrice').value, mrp = document.getElementById('nvMrp').value;
+      const price = document.getElementById('nvPrice').value;
+      const salePct = document.getElementById('nvSalePct');
       const colorName = document.getElementById('nvColorName').value;
-      if(!colorName || !price || !mrp){ toast('Colour name, price and MRP are required.', 'error'); return; }
+      if(!colorName || !price){ toast('Colour name and price are required.', 'error'); return; }
+      if(onSale && !(salePct && salePct.value)){ toast('Enter the sale percentage for this colour.', 'error'); return; }
       try{
         await adminApiFetch('/admin/products/' + p.id + '/variants', { method:'POST', body: JSON.stringify({
           colorName, swatch: document.getElementById('nvSwatch').value || 'maroon', sku: document.getElementById('nvSku').value,
-          stock: document.getElementById('nvStock').value, price, mrp
+          stock: document.getElementById('nvStock').value, price, salePercent: onSale ? salePct.value : undefined
         })});
         toast('Variant added');
         await loadProducts();
@@ -691,11 +708,29 @@
   // next time "+ Add Product" was opened, ready to be submitted again by
   // mistake. Reset every field back to its blank/default state.
   function resetAddProductForm(){
-    ['npName','npFabric','npOccasion','npSwatch','npPrice','npMrp','npDesc','npWeaverName','npWeaverRegion','npLoomType']
+    ['npName','npFabric','npOccasion','npSwatch','npPrice','npSalePct','npDesc','npWeaverName','npWeaverRegion','npLoomType']
       .forEach(id => { document.getElementById(id).value = ''; });
     document.getElementById('npStock').value = '20';
     document.getElementById('npBadge').value = '';
+    refreshAddProductSaleFields();
   }
+
+  // Only a Sale saree has an original price and a discount: pick Sale and the price becomes the
+  // "actual price", a percentage appears, and the sale price is worked out live.
+  function salePreviewText(actual, pct){
+    const a = Number(actual), q = Number(pct);
+    if(!(a > 0) || !(q > 0 && q <= 90)) return '';
+    const sp = Math.max(1, Math.round(a * (100 - q) / 100));
+    return `Sale price ₹${sp.toLocaleString('en-IN')} — customers save ₹${(a - sp).toLocaleString('en-IN')}`;
+  }
+  function refreshAddProductSaleFields(){
+    const sale = document.getElementById('npBadge').value === 'sale';
+    document.getElementById('npSaleField').style.display = sale ? '' : 'none';
+    document.getElementById('npPriceLabel').textContent = sale ? 'Actual price (₹)' : 'Price (₹)';
+    document.getElementById('npSalePreview').textContent = sale ? salePreviewText(document.getElementById('npPrice').value, document.getElementById('npSalePct').value) : '';
+  }
+  ['npBadge','npPrice','npSalePct'].forEach(id => document.getElementById(id).addEventListener('input', refreshAddProductSaleFields));
+  document.getElementById('npBadge').addEventListener('change', refreshAddProductSaleFields);
 
   document.getElementById('showAddProduct').addEventListener('click', ()=>{
     const form = document.getElementById('addProductForm');
@@ -713,7 +748,7 @@
           occasion: document.getElementById('npOccasion').value,
           swatch: document.getElementById('npSwatch').value || 'maroon',
           price: document.getElementById('npPrice').value,
-          mrp: document.getElementById('npMrp').value,
+          salePercent: document.getElementById('npBadge').value === 'sale' ? document.getElementById('npSalePct').value : undefined,
           stock: document.getElementById('npStock').value,
           badge: document.getElementById('npBadge').value,
           desc: document.getElementById('npDesc').value,
@@ -1595,6 +1630,27 @@
     return res.json();
   }
 
+  // Large files (reel videos) upload with a live percentage, so a slow connection never looks like a frozen page.
+  function uploadWithProgress(url, file, onProgress){
+    return new Promise((resolve, reject)=>{
+      const fd = new FormData();
+      fd.append('file', file);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url);
+      xhr.setRequestHeader('Authorization', 'Bearer ' + getAdminToken());
+      xhr.upload.onprogress = e => { if(e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100)); };
+      xhr.onload = () => {
+        let j = {};
+        try{ j = JSON.parse(xhr.responseText); }catch(_){ /* no JSON body */ }
+        if(xhr.status >= 200 && xhr.status < 300) resolve(j);
+        else reject(new Error(j.message || 'Upload failed — please try again.'));
+      };
+      xhr.onerror = () => reject(new Error('The connection dropped during the upload — please try again.'));
+      xhr.ontimeout = () => reject(new Error('The upload took too long — please try again on a faster connection.'));
+      xhr.send(fd);
+    });
+  }
+
   // ---- Fabrics ----
   async function renderFabricsTab(){
     const body = document.getElementById('catalogTabBody');
@@ -2164,7 +2220,7 @@
                 <button class="btn btn-sm" data-reel-down="${r.id}" ${i===reels.length-1?'disabled':''}>↓</button>
               </td>
               <td>${r.name}</td>
-              <td>${r.video_url ? `✅ uploaded <button class="btn btn-sm" style="color:var(--maroon);padding:2px 6px;" data-reel-video-clear="${r.id}" title="Remove this video">✕</button>` : '—'} <span class="reel-upload-status" data-reel-video-status="${r.id}"></span><input type="file" accept="video/*" data-reel-video="${r.id}" style="max-width:120px;font-size:11px;"></td>
+              <td>${r.video_url ? `✅ uploaded <button class="btn btn-sm" style="color:var(--maroon);padding:2px 6px;" data-reel-video-clear="${r.id}" title="Remove this video">✕</button>` : '—'} <span class="reel-upload-status" data-reel-video-status="${r.id}"></span><input type="file" accept="video/mp4,video/webm,video/quicktime" data-reel-video="${r.id}" title="MP4, under 25MB, vertical, about 8–15 seconds" style="max-width:120px;font-size:11px;"></td>
               <td>${r.thumbnail_url ? `<img src="${r.thumbnail_url}" style="height:36px;border-radius:3px;vertical-align:middle;"> <button class="btn btn-sm" style="color:var(--maroon);padding:2px 6px;" data-reel-thumb-clear="${r.id}" title="Remove this thumbnail">✕</button>` : '—'} <span class="reel-upload-status" data-reel-thumb-status="${r.id}"></span><input type="file" accept="image/*" data-reel-thumb="${r.id}" style="max-width:120px;font-size:11px;"></td>
               <td><input type="checkbox" data-reel-active="${r.id}" ${r.active?'checked':''}></td>
               <td><button class="btn btn-sm" style="color:var(--maroon);" data-reel-del="${r.id}">Remove</button></td>
@@ -2207,8 +2263,11 @@
       const id = input.dataset.reelVideo;
       const statusEl = body.querySelector(`[data-reel-video-status="${id}"]`);
       input.disabled = true;
-      if(statusEl) statusEl.textContent = 'Uploading…';
-      try{ await uploadEntityImage('/api/admin/reels/'+id+'/video', 'file', e.target.files[0]); toast('Video uploaded'); renderReelsAdmin(); }
+      if(statusEl) statusEl.textContent = 'Uploading… 0%';
+      try{
+        await uploadWithProgress('/api/admin/reels/'+id+'/video', e.target.files[0], pct => { if(statusEl) statusEl.textContent = pct >= 100 ? 'Saving…' : `Uploading… ${pct}%`; });
+        toast('Video uploaded'); renderReelsAdmin();
+      }
       catch(err){ toast(err.message, 'error'); input.disabled = false; if(statusEl) statusEl.textContent = ''; }
     }));
     body.querySelectorAll('[data-reel-thumb]').forEach(input=>input.addEventListener('change', async e=>{
@@ -2221,7 +2280,7 @@
       catch(err){ toast(err.message, 'error'); input.disabled = false; if(statusEl) statusEl.textContent = ''; }
     }));
     body.querySelectorAll('[data-reel-video-clear]').forEach(btn=>btn.addEventListener('click', async ()=>{
-      const ok = await showConfirmDialog('The video file stays reachable at its old link — only the reel item stops using it.', {title:'Remove this video?', confirmLabel:'Remove', danger:true});
+      const ok = await showConfirmDialog('The video is deleted. You can upload a different one afterwards.', {title:'Remove this video?', confirmLabel:'Remove', danger:true});
       if(!ok) return;
       try{ await adminApiFetch('/admin/reels/'+btn.dataset.reelVideoClear, {method:'PUT', body: JSON.stringify({clearVideo:true})}); toast('Video removed'); renderReelsAdmin(); }
       catch(e){ toast(e.message, 'error'); }

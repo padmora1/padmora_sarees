@@ -294,7 +294,6 @@
   let cartQtyByVariant = {};
 
   function productCardHTML(p){
-    const off = Math.round((1 - p.price/p.mrp)*100);
     // A product with no badge set (p.badge is null/'') must show no badge at
     // all — the old fallthrough ternary defaulted anything that wasn't
     // 'sale'/'new' to 'Bestseller', which mislabeled every plain product.
@@ -330,9 +329,7 @@
         <a href="/product?id=${p.id}" class="product-name">${p.name}</a>
         <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews})</div>
         <div class="product-price">
-          <span class="price-now">${money(p.price)}</span>
-          <span class="price-mrp">${money(p.mrp)}</span>
-          <span class="price-off">${off}% off</span>
+          <span class="price-now">${money(p.price)}</span>${priceExtrasHTML(p)}
         </div>
       </div>
     </div>`;

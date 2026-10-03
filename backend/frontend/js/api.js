@@ -136,6 +136,15 @@ function photoBg(url, swatchKey) {
 }
 function productBg(p) { return photoBg(productPhotoUrl(p), p && p.swatch); }
 
+// The crossed-out original price and "% off" belong to Sale sarees only. Every other saree shows one
+// price — what it actually sells for — so shoppers aren't nudged by a discount that isn't a real sale.
+// `v` is the colour variant being shown (falls back to the product's own price fields).
+function priceExtrasHTML(p, v) {
+  const x = v || p;
+  if (!p || p.badge !== 'sale' || !x || !(x.mrp > x.price)) return '';
+  return `<span class="price-mrp">${money(x.mrp)}</span><span class="price-off">${Math.round((1 - x.price / x.mrp) * 100)}% off</span>`;
+}
+
 function swatchBg(key) {
   const c = SWATCHES[String(key || '').trim().toLowerCase()] || SWATCHES.maroon;
   return `linear-gradient(160deg, ${c[0]} 0%, ${c[1]} 100%)`;

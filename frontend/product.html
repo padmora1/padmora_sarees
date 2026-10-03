@@ -194,7 +194,6 @@
   }
 
   function productCardHTML(p){
-    const off = Math.round((1 - p.price/p.mrp)*100);
     // A product with no badge set (p.badge is null/'') must show no badge at
     // all — the old fallthrough ternary defaulted anything that wasn't
     // 'sale'/'new' to 'Bestseller', which mislabeled every plain product.
@@ -211,9 +210,7 @@
         <a href="/product?id=${p.id}" class="product-name">${p.name}</a>
         <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews})</div>
         <div class="product-price">
-          <span class="price-now">${money(p.price)}</span>
-          <span class="price-mrp">${money(p.mrp)}</span>
-          <span class="price-off">${off}% off</span>
+          <span class="price-now">${money(p.price)}</span>${priceExtrasHTML(p)}
         </div>
       </div>
     </div>`;
@@ -347,11 +344,8 @@
   // product's), and the scarcity note — all driven by real per-variant data.
   function renderVariantDetails(){
     const v = selectedVariant;
-    const off = Math.round((1 - v.price/v.mrp)*100);
     document.getElementById('pdPrice').innerHTML = `
-      <span class="price-now">${money(v.price)}</span>
-      <span class="price-mrp">${money(v.mrp)}</span>
-      <span class="price-off">${off}% off</span>`;
+      <span class="price-now">${money(v.price)}</span>${priceExtrasHTML(currentProduct, v)}`;
     document.getElementById('pdDesc').textContent = v.desc || currentProduct.desc;
     document.getElementById('pdShadeLabel').textContent = ' — ' + v.colorName;
     const stockNote = document.getElementById('pdStockNote');
