@@ -1879,7 +1879,18 @@
   async function renderHeroAdmin(){
     const body = document.getElementById('storefrontTabBody');
     body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
-    const {hero: h} = await adminApiFetch('/admin/content/hero');
+    const [{hero: h}, {collections: heroColls}] = await Promise.all([adminApiFetch('/admin/content/hero'), adminApiFetch('/admin/collections')]);
+    // The button/image link is picked from the real collections (plus All
+    // Sarees) so it can never point at a typo'd URL. A link saved earlier that
+    // matches none of them (e.g. hand-typed) is kept as its own option rather
+    // than silently swapped.
+    const heroAttr = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    const heroLinkOpts = [{v:'/shop', l:'All Sarees'}].concat(heroColls.map(c => ({
+      v: '/collection?slug=' + encodeURIComponent(c.slug),
+      l: 'Collection: ' + c.name + (!c.active ? ' (inactive)' : (c.productCount ? '' : ' (no products yet)'))
+    })));
+    const heroCurLink = h.ctaLink || '/shop';
+    if(!heroLinkOpts.some(o => o.v === heroCurLink)) heroLinkOpts.push({v: heroCurLink, l: 'Custom link: ' + heroCurLink});
     body.innerHTML = `
       <div class="editor-card">
         <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">The big image at the top of the homepage. The whole image is clickable and zooms slightly on hover; the button sits in the centre.</p>
@@ -1889,7 +1900,7 @@
         </div>
         <div class="form-row-2">
           <div class="form-field"><label>Button Text</label><input id="hCtaText" value="${h.ctaText||''}" placeholder="Shop All Sarees"></div>
-          <div class="form-field"><label>Link (image and button)</label><input id="hCtaLink" value="${h.ctaLink||'/shop'}" placeholder="/shop"></div>
+          <div class="form-field"><label>Opens (image and button)</label><select id="hCtaLink">${heroLinkOpts.map(o=>`<option value="${heroAttr(o.v)}" ${o.v===heroCurLink?'selected':''}>${heroAttr(o.l)}</option>`).join('')}</select></div>
         </div>
         <div class="form-field"><label>Image description (for screen readers / SEO)</label><input id="hAlt" value="${h.altText||''}" placeholder="Handloom sarees from Padmora"></div>
         <label style="font-size:12.5px;"><input type="checkbox" id="hActive" ${h.active!==false?'checked':''}> Show hero banner</label>
