@@ -269,7 +269,7 @@
     <a class="reel-card" href="/product?id=${p.id}">
       ${mediaHTML}
       <span class="reel-play">▶</span>
-      <span class="reel-duration">0:${8 + (p.id % 4) * 3}</span>
+      ${p.reelVideo ? '<span class="reel-duration" hidden></span>' : ''}
       <div class="reel-info">
         <strong>${p.name}</strong>
         <span>${p.fabric} · ${money(p.price)}</span>
@@ -284,6 +284,14 @@
     document.querySelectorAll('#reelRail .reel-card').forEach(card=>{
       const video = card.querySelector('video.reel-media');
       if(!video) return;
+      const badge = card.querySelector('.reel-duration');
+      const showLength = () => {
+        if(!badge || !isFinite(video.duration) || video.duration <= 0) return;
+        const secs = Math.round(video.duration);
+        badge.textContent = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
+        badge.hidden = false;
+      };
+      if(video.readyState >= 1) showLength(); else video.addEventListener('loadedmetadata', showLength, { once: true });
       card.addEventListener('mouseenter', ()=>{ video.currentTime = 0; video.play().catch(()=>{}); });
       card.addEventListener('mouseleave', ()=>{ video.pause(); video.currentTime = 0; });
     });

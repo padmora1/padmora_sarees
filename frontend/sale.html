@@ -53,7 +53,6 @@
   let cartQtyByVariant = {};
 
   function productCardHTML(p){
-    const off = Math.round((1 - p.price/p.mrp)*100);
     const badgeLabel = p.badge==='sale'?'Sale':p.badge==='new'?'New':p.badge==='bestseller'?'Bestseller':'';
     const isWished = wishlistedIds.has(p.id);
     const soldOut = p.stock <= 0;
@@ -86,9 +85,7 @@
         <a href="/product?id=${p.id}" class="product-name">${p.name}</a>
         <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews})</div>
         <div class="product-price">
-          <span class="price-now">${money(p.price)}</span>
-          <span class="price-mrp">${money(p.mrp)}</span>
-          <span class="price-off">${off}% off</span>
+          <span class="price-now">${money(p.price)}</span>${priceExtrasHTML(p)}
         </div>
       </div>
     </div>`;

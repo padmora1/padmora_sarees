@@ -54,7 +54,10 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 function uploadSingle(req, res, next) {
   upload.single('file')(req, res, async (err) => {
-    if (err) return res.status(400).json({ message: err.message || 'Upload failed.' });
+    if (err) {
+      const tooBig = err.code === 'LIMIT_FILE_SIZE';
+      return res.status(400).json({ message: tooBig ? 'That file is over 25MB. For a reel, trim it to 8–15 seconds or export it at a lower quality, then upload it again.' : (err.message || 'Upload failed.') });
+    }
     if (req.file && req.file.mimetype.startsWith('image/') && req.file.size > MAX_IMAGE_BYTES) {
       const mb = (req.file.size / 1024 / 1024).toFixed(1);
       return res.status(400).json({ message: `That photo is ${mb}MB — please use one under 8MB (a normal phone photo is fine; refresh the admin page so it can shrink photos automatically).` });
@@ -76,6 +79,25 @@ function uploadSingle(req, res, next) {
 // "Maroon" and "maroon" are one colour, not two filter entries.
 function cleanSwatch(v) {
   return typeof v === 'string' ? v.trim().toLowerCase() : v;
+}
+
+// Pricing rule: only Sale sarees carry an original price and a discount.
+//  - Normal saree: one price. `mrp` is kept equal to it, so nothing downstream can show a fake discount.
+//  - Sale saree: the admin enters the ACTUAL price and a sale %; the selling price is worked out here
+//    (rounded to the rupee) and the actual price is stored as `mrp` so the storefront can cross it out.
+// A request from an older admin page (explicit selling price + original price, no percentage) is still
+// honoured for sale sarees.
+function resolvePrices({ onSale, price, mrp, salePercent }) {
+  const actual = Number(price);
+  if (!Number.isFinite(actual) || actual <= 0) return { error: 'Enter a valid price.' };
+  if (!onSale) return { price: actual, mrp: actual };
+  if (salePercent !== undefined && salePercent !== null && salePercent !== '') {
+    const pct = Number(salePercent);
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 90) return { error: 'Enter a sale percentage between 1 and 90.' };
+    return { price: Math.max(1, Math.round(actual * (100 - pct) / 100)), mrp: actual };
+  }
+  const original = Number(mrp);
+  return Number.isFinite(original) && original >= actual ? { price: actual, mrp: original } : { price: actual, mrp: actual };
 }
 
 function asyncRoute(handler) {
@@ -168,20 +190,22 @@ router.get('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
 }));
 
 router.post('/products', asyncRoute(async (req, res) => {
-  const { name, fabric, occasion, price, mrp, badge, swatch, desc, stock, weaverName, weaverRegion, loomType } = req.body;
-  if (!name || !fabric || !occasion || !price || !mrp) {
-    return res.status(400).json({ message: 'Name, fabric, occasion, price and MRP are required.' });
+  const { name, fabric, occasion, price, mrp, salePercent, badge, swatch, desc, stock, weaverName, weaverRegion, loomType } = req.body;
+  if (!name || !fabric || !occasion || !price) {
+    return res.status(400).json({ message: 'Name, fabric, occasion and price are required.' });
   }
+  const prices = resolvePrices({ onSale: badge === 'sale', price, mrp, salePercent });
+  if (prices.error) return res.status(400).json({ message: prices.error });
   const maxRow = must(await supabase.from('products').select('id').order('id', { ascending: false }).limit(1), 'createProduct:maxId');
   const id = (maxRow[0]?.id || 0) + 1;
   const rpc = await supabase.rpc('create_product_with_default_variant', {
-    p_id: id, p_name: name, p_fabric: fabric, p_occasion: occasion, p_price: Number(price), p_mrp: Number(mrp),
+    p_id: id, p_name: name, p_fabric: fabric, p_occasion: occasion, p_price: prices.price, p_mrp: prices.mrp,
     p_badge: badge || null, p_swatch: cleanSwatch(swatch) || 'maroon', p_description: desc || '', p_stock: Number(stock) || 20,
     p_weaver_name: weaverName || '', p_weaver_region: weaverRegion || '', p_loom_type: loomType || 'Handloom',
     p_color_name: (cleanSwatch(swatch) || 'maroon').replace(/^\w/, c => c.toUpperCase()), p_sku: `PDM-${id}-DEF`
   });
   if (rpc.error) throw new Error(rpc.error.message);
-  await record(req, 'created', 'product', id, null, { name, fabric, price, mrp, stock });
+  await record(req, 'created', 'product', id, null, { name, fabric, price: prices.price, mrp: prices.mrp, stock });
 
   res.status(201).json({ product: (await getProducts()).map(toProductApiShape).find(p => p.id === id) });
 }));
@@ -198,7 +222,15 @@ router.put('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
     weaver_name: weaverName ?? existing.weaver_name, weaver_region: weaverRegion ?? existing.weaver_region,
     loom_type: loomType ?? existing.loom_type, status: status ?? existing.status ?? 'active'
   }).eq('id', id), 'updateProduct:update');
-  await record(req, 'updated', 'product', id, { name: existing.name, status: existing.status }, { name, status });
+  // Taking the Sale tag off ends the sale: each colour goes back to its actual (original) price.
+  if (badge !== undefined && existing.badge === 'sale' && badge !== 'sale') {
+    const vs = must(await supabase.from('product_variants').select('id, price, mrp').eq('product_id', id), 'updateProduct:endSale');
+    for (const v of vs) {
+      must(await supabase.from('product_variants').update({ price: v.mrp > v.price ? v.mrp : v.price, mrp: v.mrp > v.price ? v.mrp : v.price }).eq('id', v.id), 'updateProduct:restorePrice');
+    }
+    await syncProductMirrorFromDefaultVariant(id);
+  }
+  await record(req, 'updated', 'product', id, { name: existing.name, status: existing.status, badge: existing.badge }, { name, status, badge });
 
   res.json({ product: (await getProducts()).map(toProductApiShape).find(p => p.id === id) });
 }));
@@ -239,18 +271,20 @@ router.delete('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
 // ---- Variants ----
 router.post('/products/:id(\\d{1,9})/variants', asyncRoute(async (req, res) => {
   const productId = Number(req.params.id);
-  const product = must(await supabase.from('products').select('id').eq('id', productId).maybeSingle(), 'addVariant:product');
+  const product = must(await supabase.from('products').select('id, badge').eq('id', productId).maybeSingle(), 'addVariant:product');
   if (!product) return res.status(404).json({ message: 'Product not found.' });
 
-  const { colorName, swatch, sku, price, mrp, stock, description, lowStockThreshold } = req.body;
-  if (!colorName || !price || !mrp) {
-    return res.status(400).json({ message: 'Color name, price and MRP are required.' });
+  const { colorName, swatch, sku, price, mrp, salePercent, stock, description, lowStockThreshold } = req.body;
+  if (!colorName || !price) {
+    return res.status(400).json({ message: 'Colour name and price are required.' });
   }
+  const prices = resolvePrices({ onSale: product.badge === 'sale', price, mrp, salePercent });
+  if (prices.error) return res.status(400).json({ message: prices.error });
   const maxSort = must(await supabase.from('product_variants').select('sort_order').eq('product_id', productId).order('sort_order', { ascending: false }).limit(1), 'addVariant:maxSort');
   const sortOrder = (maxSort[0]?.sort_order ?? -1) + 1;
   const inserted = must(await supabase.from('product_variants').insert({
     product_id: productId, color_name: colorName, swatch: cleanSwatch(swatch) || 'maroon', sku: sku || null,
-    price: Number(price), mrp: Number(mrp), stock: Number(stock) || 0, low_stock_threshold: Number(lowStockThreshold) || 10,
+    price: prices.price, mrp: prices.mrp, stock: Number(stock) || 0, low_stock_threshold: Number(lowStockThreshold) || 10,
     description: description || '', is_default: false, sort_order: sortOrder
   }).select().single(), 'addVariant:insert');
 
@@ -262,7 +296,18 @@ router.put('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('product_variants').select('*').eq('id', id).maybeSingle(), 'updateVariant:lookup');
   if (!existing) return res.status(404).json({ message: 'Variant not found.' });
 
-  const { colorName, swatch, sku, price, mrp, stock, description, lowStockThreshold, isDefault } = req.body;
+  const { colorName, swatch, sku, price, mrp, salePercent, stock, description, lowStockThreshold, isDefault } = req.body;
+
+  // Price fields follow the product's Sale tag (see resolvePrices).
+  const owner = must(await supabase.from('products').select('badge').eq('id', existing.product_id).maybeSingle(), 'updateVariant:product');
+  let newPrice = existing.price, newMrp = existing.mrp;
+  if (price !== undefined) {
+    const prices = resolvePrices({ onSale: !!owner && owner.badge === 'sale', price, mrp: mrp !== undefined ? mrp : existing.mrp, salePercent });
+    if (prices.error) return res.status(400).json({ message: prices.error });
+    newPrice = prices.price; newMrp = prices.mrp;
+  } else if (mrp !== undefined) {
+    newMrp = Number(mrp);
+  }
 
   if (isDefault) {
     must(await supabase.from('product_variants').update({ is_default: false }).eq('product_id', existing.product_id), 'updateVariant:clearDefault');
@@ -271,7 +316,7 @@ router.put('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   must(await supabase.from('product_variants').update({
     color_name: colorName ?? existing.color_name, swatch: cleanSwatch(swatch) ?? existing.swatch,
     sku: sku !== undefined ? sku : existing.sku,
-    price: price !== undefined ? Number(price) : existing.price, mrp: mrp !== undefined ? Number(mrp) : existing.mrp,
+    price: newPrice, mrp: newMrp,
     stock: stock !== undefined ? Number(stock) : existing.stock,
     low_stock_threshold: lowStockThreshold !== undefined ? Number(lowStockThreshold) : existing.low_stock_threshold,
     description: description ?? existing.description,
@@ -281,7 +326,7 @@ router.put('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   await syncProductMirrorFromDefaultVariant(existing.product_id);
   await record(req, 'updated', 'variant', id,
     { price: existing.price, mrp: existing.mrp, stock: existing.stock },
-    { price: price ?? existing.price, mrp: mrp ?? existing.mrp, stock: stock ?? existing.stock });
+    { price: newPrice, mrp: newMrp, stock: stock ?? existing.stock });
   res.json({ variant: await getVariantById(id) });
 }));
 
@@ -1695,11 +1740,16 @@ router.put('/reels/:id(\\d{1,9})', asyncRoute(async (req, res) => {
     video_url: clearVideo ? null : existing.video_url,
     thumbnail_url: clearThumbnail ? null : existing.thumbnail_url
   }).eq('id', existing.id).select().single(), 'updateReel:update');
+  // A removed video/thumbnail is deleted from storage too, so nothing is left behind.
+  if (clearVideo && existing.video_url) await removeUpload(existing.video_url);
+  if (clearThumbnail && existing.thumbnail_url) await removeUpload(existing.thumbnail_url);
   res.json({ reelItem: updated });
 }));
 
 router.delete('/reels/:id(\\d{1,9})', asyncRoute(async (req, res) => {
+  const gone = must(await supabase.from('reel_items').select('video_url, thumbnail_url').eq('id', Number(req.params.id)).maybeSingle(), 'deleteReel:lookup');
   must(await supabase.from('reel_items').delete().eq('id', Number(req.params.id)), 'deleteReel');
+  if (gone) { await removeUpload(gone.video_url); await removeUpload(gone.thumbnail_url); }
   res.json({ message: 'Removed from Sarees in Motion.' });
 }));
 
@@ -1710,6 +1760,8 @@ router.post('/reels/:id(\\d{1,9})/video', uploadSingle, asyncRoute(async (req, r
   const isVideo = req.file.mimetype.startsWith('video');
   const field = isVideo ? 'video_url' : 'thumbnail_url';
   const updated = must(await supabase.from('reel_items').update({ [field]: req.file.publicUrl }).eq('id', existing.id).select().single(), 'reelVideo:update');
+  // Replacing a video/thumbnail frees the old file.
+  if (existing[field] && existing[field] !== req.file.publicUrl) await removeUpload(existing[field]);
   res.json({ reelItem: updated });
 }));
 

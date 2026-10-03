@@ -40,7 +40,6 @@
 <script src="js/cursor.js"></script>
 <script>
   function cardHTML(p){
-    const off = Math.round((1 - p.price/p.mrp)*100);
     // priceDropped/priceAtAdd only exist for a logged-in customer's wishlist
     // (the server remembers what price they saw when they added it) — a
     // guest's localStorage wishlist has no baseline, so this badge simply
@@ -65,9 +64,7 @@
         <div class="product-fabric">${p.fabric}</div>
         <a href="/product?id=${p.id}" class="product-name">${p.name}</a>
         <div class="product-price">
-          <span class="price-now">${money(p.price)}</span>
-          <span class="price-mrp">${money(p.mrp)}</span>
-          <span class="price-off">${off}% off</span>
+          <span class="price-now">${money(p.price)}</span>${priceExtrasHTML(p)}
         </div>
       </div>
     </div>`;

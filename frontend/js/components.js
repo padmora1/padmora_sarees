@@ -453,7 +453,6 @@ async function openQuickView(productId) {
     let selected = variants.find(v => v.isDefault) || variants[0];
 
     function render() {
-      const off = Math.round((1 - selected.price / selected.mrp) * 100);
       const primaryImage = selected.media && selected.media.find(m => m.type === 'image' && m.isPrimary) || (selected.media || []).find(m => m.type === 'image');
       const soldOut = selected.stock <= 0;
       body.innerHTML = `
@@ -464,9 +463,7 @@ async function openQuickView(productId) {
             <h3>${p.name}</h3>
             <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews})</div>
             <div class="product-price" style="margin:8px 0;">
-              <span class="price-now">${money(selected.price)}</span>
-              <span class="price-mrp">${money(selected.mrp)}</span>
-              <span class="price-off">${off}% off</span>
+              <span class="price-now">${money(selected.price)}</span>${priceExtrasHTML(p, selected)}
             </div>
             ${variants.length > 1 ? `<div class="swatch-row" id="qvSwatches">${variants.map(v => `<span class="swatch-dot ${v.id === selected.id ? 'active' : ''}" data-qv-variant="${v.id}" title="${v.colorName}" style="background:${swatchBg(v.swatch)};"></span>`).join('')}</div>` : ''}
             <p class="stock-note ${soldOut ? '' : 'ok'}" style="margin:6px 0 14px;">${soldOut ? 'Out of stock in this colour.' : `In stock · ${selected.stock} available`}</p>
