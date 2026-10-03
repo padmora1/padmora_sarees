@@ -1397,6 +1397,8 @@ router.put('/fabrics/:id(\\d{1,9})', asyncRoute(async (req, res) => {
     display_order: displayOrder !== undefined ? Number(displayOrder) : existing.display_order,
     hero_image: heroImage !== undefined ? heroImage : existing.hero_image, thumbnail: thumbnail !== undefined ? thumbnail : existing.thumbnail
   }).eq('id', existing.id).select().single(), 'updateFabric:update');
+  if (thumbnail === '' && existing.thumbnail) await removeUpload(existing.thumbnail);
+  if (heroImage === '' && existing.hero_image) await removeUpload(existing.hero_image);
   res.json({ fabric: updated });
 }));
 
@@ -1419,6 +1421,8 @@ router.post('/fabrics/:id(\\d{1,9})/image', uploadSingle, asyncRoute(async (req,
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
   const slot = req.body.slot === 'thumbnail' ? 'thumbnail' : 'hero_image';
   const updated = must(await supabase.from('fabrics').update({ [slot]: req.file.publicUrl }).eq('id', existing.id).select().single(), 'fabricImage:update');
+  // The picture it replaces is deleted from storage so old photos don't pile up.
+  if (existing[slot] && existing[slot] !== req.file.publicUrl) await removeUpload(existing[slot]);
   res.json({ fabric: updated });
 }));
 
@@ -1473,6 +1477,8 @@ router.post('/occasions/:id(\\d{1,9})/image', uploadSingle, asyncRoute(async (re
   if (!existing) return res.status(404).json({ message: 'Occasion not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
   const updated = must(await supabase.from('occasions').update({ image: req.file.publicUrl }).eq('id', existing.id).select().single(), 'occasionImage:update');
+  // The picture it replaces is deleted from storage so old photos don't pile up.
+  if (existing.image && existing.image !== req.file.publicUrl) await removeUpload(existing.image);
   res.json({ occasion: updated });
 }));
 
@@ -1572,6 +1578,8 @@ router.post('/collections/:id(\\d{1,9})/image', uploadSingle, asyncRoute(async (
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
   const slot = req.body.slot === 'thumbnail' ? 'thumbnail' : 'banner_image';
   const updated = must(await supabase.from('collections').update({ [slot]: req.file.publicUrl }).eq('id', existing.id).select().single(), 'collectionImage:update');
+  // The picture it replaces is deleted from storage so old photos don't pile up.
+  if (existing[slot] && existing[slot] !== req.file.publicUrl) await removeUpload(existing[slot]);
   res.json({ collection: { ...updated, productIds: await getCollectionProductIds(existing.id) } });
 }));
 
@@ -1664,6 +1672,8 @@ router.post('/content/hero/image', uploadSingle, asyncRoute(async (req, res) => 
   const field = req.body.slot === 'mobile' ? 'mobileImage' : 'desktopImage';
   const next = { ...current, [field]: req.file.publicUrl };
   await setSetting('hero_banner', next);
+  // The picture it replaces is deleted from storage so old photos don't pile up.
+  if (current[field] && current[field] !== req.file.publicUrl) await removeUpload(current[field]);
   res.json({ hero: next });
 }));
 
@@ -1826,6 +1836,8 @@ router.post('/upcoming-sarees/:id(\\d{1,9})/image', uploadSingle, asyncRoute(asy
   if (!existing) return res.status(404).json({ message: 'Not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
   const updated = must(await supabase.from('upcoming_sarees').update({ image_url: req.file.publicUrl }).eq('id', existing.id).select().single(), 'upcomingImage:update');
+  // The picture it replaces is deleted from storage so old photos don't pile up.
+  if (existing.image_url && existing.image_url !== req.file.publicUrl) await removeUpload(existing.image_url);
   res.json({ upcomingSaree: await shapeAdminUpcoming(updated) });
 }));
 

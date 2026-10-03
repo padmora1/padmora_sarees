@@ -1697,12 +1697,26 @@
           </div>
           <div class="form-field"><label>Short Description</label><input id="fShort" value="${f.short_description||''}"></div>
           <div class="form-field"><label>Story</label><textarea id="fStory" rows="2">${f.story||''}</textarea></div>
-          ${!isNew ? `<div class="form-field"><label>Hero Image</label><input type="file" accept="image/*" id="fHeroUpload">${f.hero_image?`<img src="${f.hero_image}" style="height:60px;margin-top:8px;border-radius:4px;">`:''}</div>` : ''}
+          ${!isNew ? `<div class="form-row-2">
+            <div class="form-field"><label>Circle picture (shown in “Shop by Weave” on the homepage)</label><input type="file" accept="image/*" id="fThumbUpload">
+              <span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:4px;">A square photo works best (e.g. 800×800) — the middle of the picture is what shows in the circle.</span>
+              ${f.thumbnail?`<div style="display:flex;align-items:center;gap:12px;margin-top:8px;"><img src="${f.thumbnail}" style="height:64px;width:64px;border-radius:50%;object-fit:cover;border:2px solid var(--gold-soft);"><button type="button" class="btn btn-sm" style="color:var(--maroon);" id="fThumbRemove">Remove</button></div>`:'<span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:6px;">None yet — the circle shows the colour above.</span>'}
+            </div>
+            <div class="form-field"><label>Hero image (top of the Our Weaves page)</label><input type="file" accept="image/*" id="fHeroUpload">${f.hero_image?`<img src="${f.hero_image}" style="height:60px;margin-top:8px;border-radius:4px;">`:''}</div>
+          </div>` : ''}
           <label style="font-size:12.5px;"><input type="checkbox" id="fActive" ${f.active?'checked':''}> Active</label>
           <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="fSave">${isNew?'Create Fabric':'Save Changes'}</button> <button class="btn btn-sm" id="fCancel">Cancel</button></div>
         </div>`;
       if(!f.slug) document.getElementById('fName').addEventListener('input', e=>{ document.getElementById('fSlug').value = slugify(e.target.value); });
       document.getElementById('fCancel').addEventListener('click', ()=>{ editor.innerHTML=''; });
+      const thumbRemove = document.getElementById('fThumbRemove');
+      if(thumbRemove) thumbRemove.addEventListener('click', async ()=>{
+        try{
+          await adminApiFetch('/admin/fabrics/'+f.id, {method:'PUT', body: JSON.stringify({thumbnail: ''})});
+          toast('Circle picture removed');
+          editor.innerHTML=''; renderFabricsTab();
+        }catch(e){ toast(e.message, 'error'); }
+      });
       document.getElementById('fSave').addEventListener('click', async ()=>{
         const payload = {
           name: document.getElementById('fName').value, slug: document.getElementById('fSlug').value,
@@ -1717,6 +1731,8 @@
             : await adminApiFetch('/admin/fabrics/'+f.id, {method:'PUT', body: JSON.stringify(payload)});
           const heroInput = document.getElementById('fHeroUpload');
           if(heroInput && heroInput.files[0]) await uploadEntityImage('/api/admin/fabrics/'+(saved.fabric?.id||f.id)+'/image', 'file', heroInput.files[0], {slot:'hero'});
+          const thumbInput = document.getElementById('fThumbUpload');
+          if(thumbInput && thumbInput.files[0]) await uploadEntityImage('/api/admin/fabrics/'+(saved.fabric?.id||f.id)+'/image', 'file', thumbInput.files[0], {slot:'thumbnail'});
           toast(isNew?'Fabric created':'Fabric saved');
           editor.innerHTML='';
           renderFabricsTab();
