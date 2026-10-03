@@ -17,23 +17,31 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body data-page="shop.html">
+<script>
+  // /collection?slug=X is this same page; light up "Collections" (not "All
+  // Sarees") in the nav before components.js builds the header.
+  if (/[?&]collection=/.test(location.search) || (location.pathname === '/collection' && /[?&]slug=/.test(location.search))) document.body.setAttribute('data-page', 'collections.html');
+</script>
 
 <div id="site-header"></div>
 
 <main>
+  <section class="collection-hero" id="collectionHero" style="display:none;"></section>
+  <div class="collection-meaning-wrap" id="collectionMeaning" style="display:none;"></div>
+
   <div class="page-banner">
     <div class="container">
       <p class="breadcrumb" id="shopBreadcrumb"><a href="/">Home</a> / All Sarees</p>
       <h1 id="shopTitle">Shop All Sarees</h1>
       <p id="shopSubtitle">Every weave, every occasion — filter to find the one.</p>
-      <div class="weave-switcher" id="weaveSwitcher" style="display:none;"></div>
     </div>
   </div>
 
   <section class="section" style="padding-top:36px;">
     <div class="container">
       <div class="shop-layout">
-        <aside class="filters">
+        <aside class="filters" id="filtersPanel">
+          <div class="filters-drawer-head"><strong>Filters</strong><button type="button" id="filtersClose" aria-label="Close filters">&times;</button></div>
           <input type="text" class="search-page-input" id="searchInput" placeholder="Search sarees...">
           <div class="filter-group" id="fabricFilterGroup">
             <h4>Fabric</h4>
@@ -52,11 +60,17 @@
             <input type="range" min="1500" max="25000" step="500" value="25000" class="price-range" id="priceRange">
           </div>
           <button class="clear-filters" id="clearFilters">Clear all filters</button>
+          <div class="filters-drawer-foot"><button type="button" class="btn btn-primary btn-block" id="filtersApply" style="justify-content:center;">Show sarees</button></div>
         </aside>
+        <div class="filters-backdrop" id="filtersBackdrop"></div>
 
         <div>
           <div class="toolbar">
             <span class="result-count" id="resultCount">Loading…</span>
+            <div class="toolbar-actions">
+            <button type="button" class="filters-toggle" id="filtersToggle" aria-controls="filtersPanel" aria-expanded="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"/></svg>Filters<span class="filters-badge" id="filtersBadge" style="display:none;"></span>
+            </button>
             <div class="custom-select" id="sortSelectWrap">
               <button type="button" class="custom-select-trigger" id="sortTrigger">
                 <span id="sortTriggerLabel">Sort by: Popularity</span>
@@ -68,6 +82,7 @@
                 <button type="button" class="custom-select-option" data-value="high">Price: High to Low<span class="check-mark">✓</span></button>
                 <button type="button" class="custom-select-option" data-value="rating">Customer Rating<span class="check-mark">✓</span></button>
               </div>
+            </div>
             </div>
           </div>
           <div class="product-grid" id="productGrid"></div>
@@ -94,7 +109,7 @@
 
   const params = new URLSearchParams(window.location.search);
   let state = {
-    collection: params.get('collection') || '',
+    collection: params.get('collection') || params.get('slug') || '',
     fabric: params.get('fabric') ? new Set([params.get('fabric')]) : new Set(),
     occasion: params.get('occasion') ? new Set([params.get('occasion')]) : new Set(),
     color: params.get('color') ? new Set([params.get('color')]) : new Set(),
@@ -108,49 +123,44 @@
   let totalCount = 0;
   let loadingMore = false;
 
-  // When arriving from a collection's weave tile, swap the generic "All
-  // Sarees" banner for one that names the collection (and weave, once
-  // chosen), and show a quick weave switcher + back link so changing weave
-  // doesn't mean backing all the way out to the collection page — the
-  // filtering itself just rides along on the `collection` query param
-  // already wired into loadProducts() below. The Fabric checkbox group in
-  // the sidebar is hidden while this switcher is showing — same job, one
-  // control, not two.
-  async function loadCollectionBanner(){
-    const fabricGroup = document.getElementById('fabricFilterGroup');
-    const switcher = document.getElementById('weaveSwitcher');
-    if(!state.collection){
-      fabricGroup.style.display = '';
-      switcher.style.display = 'none';
-      return;
-    }
+  // A collection page is this same listing, scoped to the products tagged
+  // into that collection (the `collection` query param on /products), with a
+  // hero banner on top. Fetched once up front so the filter lists below can be
+  // limited to what's actually in the collection.
+  let collectionData = null;
+  async function fetchCollection(){
+    if(!state.collection) return;
     try{
-      const {collection: c, products} = await apiFetch('/collections/' + encodeURIComponent(state.collection));
-      document.getElementById('shopBreadcrumb').innerHTML = `<a href="/">Home</a> / <a href="/collections">Collections</a> / <a href="/collection?slug=${encodeURIComponent(c.slug)}">${c.name}</a>`;
-      const fabricName = [...state.fabric][0];
-      document.getElementById('shopTitle').textContent = fabricName ? `${c.name} — ${fabricName}` : c.name;
-      document.getElementById('shopSubtitle').textContent = c.tagline || '';
-
-      fabricGroup.style.display = 'none';
-
-      // Only weaves with a real saree in this collection get a pill — same
-      // zero-count hiding already used for collection.html's weave tiles.
-      const fabricCounts = {};
-      products.forEach(p => { fabricCounts[p.fabric] = (fabricCounts[p.fabric] || 0) + 1; });
-      const weaves = (c.weaves || []).filter(w => fabricCounts[w] > 0);
-
-      switcher.style.display = weaves.length ? '' : 'none';
-      switcher.innerHTML = `
-        <a href="/collection?slug=${encodeURIComponent(c.slug)}" class="weave-switcher-back">← Back to ${c.name}</a>
-        <div class="weave-switcher-pills">
-          ${weaves.map(w => `<a href="/shop?collection=${encodeURIComponent(c.slug)}&fabric=${encodeURIComponent(w)}" class="${w === fabricName ? 'active' : ''}">${w}</a>`).join('')}
-        </div>`;
+      collectionData = await apiFetch('/collections/' + encodeURIComponent(state.collection));
     }catch(e){
-      // Unknown/inactive slug — leave the default "All Sarees" banner and
-      // keep the normal Fabric filter rather than showing a broken switcher.
-      fabricGroup.style.display = '';
-      switcher.style.display = 'none';
+      // Unknown/inactive slug — fall back to the plain All Sarees listing.
+      collectionData = null;
+      state.collection = '';
     }
+  }
+
+  function esc(t){ return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+
+  function renderCollectionHeader(){
+    const hero = document.getElementById('collectionHero');
+    const meaning = document.getElementById('collectionMeaning');
+    const banner = document.querySelector('.page-banner');
+    if(!collectionData){ hero.style.display = 'none'; meaning.style.display = 'none'; banner.style.display = ''; return; }
+    const c = collectionData.collection;
+    document.title = c.name + ' — Padmora Sarees by Yashi';
+    const desc = document.querySelector('meta[name="description"]');
+    if(desc) desc.setAttribute('content', c.description || c.tagline || ('The ' + c.name + ' collection from Padmora.'));
+    banner.style.display = 'none';
+    hero.innerHTML = `
+      <div class="collection-hero-media" style="${c.bannerImage ? `background-image:url('${esc(c.bannerImage)}');` : ''}"></div>
+      <div class="container collection-hero-inner">
+        <p class="breadcrumb"><a href="/">Home</a> / <a href="/collections">Collections</a> / ${esc(c.name)}</p>
+        <h1>${esc(c.name)}</h1>
+        ${c.tagline ? `<p class="collection-hero-tagline">${esc(c.tagline)}</p>` : ''}
+      </div>`;
+    hero.style.display = '';
+    if(c.description){ meaning.innerHTML = `<div class="collection-meaning"><p>${esc(c.description)}</p></div>`; meaning.style.display = ''; }
+    else meaning.style.display = 'none';
   }
 
   // Colour has no dedicated admin taxonomy table (unlike fabric/occasion) —
@@ -168,7 +178,14 @@
       // the checklist until there's something to actually show.
       allFabrics = fabrics.filter(f=>f.productCount > 0).map(f=>f.name);
       allOccasions = occasions.map(o=>o.name);
-      allColors = [...new Set(products.map(p=>p.swatch).filter(Boolean))].sort();
+      allColors = [...new Set(products.map(p=>String(p.swatch||'').trim().toLowerCase()).filter(Boolean))].sort();
+      // Inside a collection, only offer fabrics/colours that exist in it.
+      if(collectionData){
+        const inColl = collectionData.products;
+        const fabricsHere = new Set(inColl.map(p=>p.fabric));
+        allFabrics = allFabrics.filter(f=>fabricsHere.has(f));
+        allColors = [...new Set(inColl.map(p=>String(p.swatch||'').trim().toLowerCase()).filter(Boolean))].sort();
+      }
     }catch(e){
       // Backend unreachable — fall back to the last-known catalog shape so the
       // filter panel isn't just blank.
@@ -179,6 +196,8 @@
   }
 
   function renderFilterOptions(){
+    // A one-option fabric filter is just noise (e.g. inside a small collection).
+    document.getElementById('fabricFilterGroup').style.display = allFabrics.length > 1 ? '' : 'none';
     document.getElementById('fabricFilters').innerHTML = allFabrics.map(f=>`
       <label class="filter-option"><input type="checkbox" value="${f}" class="fabricCheck" ${state.fabric.has(f)?'checked':''}> ${f}</label>`).join('');
     document.getElementById('occasionFilters').innerHTML = allOccasions.map(o=>`
@@ -187,7 +206,7 @@
       <label class="filter-option color-filter-option"><input type="checkbox" value="${c}" class="colorCheck" ${state.color.has(c)?'checked':''}> <span class="color-filter-dot" style="background:${swatchBg(c)};"></span>${c.charAt(0).toUpperCase()+c.slice(1)}</label>`).join('');
 
     document.querySelectorAll('.fabricCheck').forEach(cb=>cb.addEventListener('change',()=>{
-      cb.checked ? state.fabric.add(cb.value) : state.fabric.delete(cb.value); state.loadedCount = 20; loadProducts(); loadCollectionBanner();
+      cb.checked ? state.fabric.add(cb.value) : state.fabric.delete(cb.value); state.loadedCount = 20; loadProducts();
     }));
     document.querySelectorAll('.occasionCheck').forEach(cb=>cb.addEventListener('change',()=>{
       cb.checked ? state.occasion.add(cb.value) : state.occasion.delete(cb.value); state.loadedCount = 20; loadProducts();
@@ -214,7 +233,6 @@
     setSort('popular');
     renderFilterOptions();
     loadProducts();
-    loadCollectionBanner();
   });
 
   // ---- Custom sort dropdown ----
@@ -238,6 +256,36 @@
     const wrap = document.getElementById('sortSelectWrap');
     if(wrap.classList.contains('open') && !wrap.contains(e.target)) wrap.classList.remove('open');
   });
+
+  // ---- Mobile filters drawer ----
+  // On phones the filter column used to sit above the grid, so the first
+  // screen was all filters. Now it's a slide-in drawer behind a "Filters"
+  // button next to Sort; the sarees are the first thing you see.
+  const filtersPanel = document.getElementById('filtersPanel');
+  const filtersBackdrop = document.getElementById('filtersBackdrop');
+  const filtersToggle = document.getElementById('filtersToggle');
+  function setFiltersOpen(open){
+    filtersPanel.classList.toggle('open', open);
+    filtersBackdrop.classList.toggle('open', open);
+    filtersToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    document.body.classList.toggle('filters-open', open);
+  }
+  filtersToggle.addEventListener('click', ()=>setFiltersOpen(true));
+  document.getElementById('filtersClose').addEventListener('click', ()=>setFiltersOpen(false));
+  document.getElementById('filtersApply').addEventListener('click', ()=>setFiltersOpen(false));
+  filtersBackdrop.addEventListener('click', ()=>setFiltersOpen(false));
+  document.addEventListener('keydown', e=>{ if(e.key === 'Escape') setFiltersOpen(false); });
+  window.addEventListener('resize', ()=>{ if(window.innerWidth > 980) setFiltersOpen(false); });
+
+  // Badge on the Filters button = how many filters are on; the drawer's
+  // footer button shows the live result count.
+  function updateFilterSummary(total){
+    const n = state.fabric.size + state.occasion.size + state.color.size + (state.maxPrice < 25000 ? 1 : 0) + (state.search ? 1 : 0);
+    const badge = document.getElementById('filtersBadge');
+    badge.textContent = n;
+    badge.style.display = n ? '' : 'none';
+    document.getElementById('filtersApply').textContent = 'Show ' + total + ' saree' + (total !== 1 ? 's' : '');
+  }
 
   let wishlistedIds = new Set();
   // Keyed by variantId -> {itemId, qty} for whatever's already in the bag, so
@@ -351,6 +399,7 @@
       document.getElementById('productGrid').innerHTML = products.length ? products.map(productCardHTML).join('') :
         `<div class="empty-state" style="grid-column:1/-1;">No sarees match these filters just yet. Try widening your search.</div>`;
       document.getElementById('loadMoreWrap').style.display = products.length < total ? '' : 'none';
+      updateFilterSummary(total);
     }catch(e){
       document.getElementById('resultCount').textContent = '';
       document.getElementById('productGrid').innerHTML = `<p style="grid-column:1/-1;text-align:center;color:var(--ink-soft);">Could not load products — is the backend server running?</p>`;
@@ -376,10 +425,11 @@
   async function init(){
     setSort(state.sort);
     document.getElementById('searchInput').value = state.search;
+    await fetchCollection();
     await loadTaxonomy();
     renderFilterOptions();
+    renderCollectionHeader();
     loadProducts();
-    loadCollectionBanner();
   }
   init();
 </script>

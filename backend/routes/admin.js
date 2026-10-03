@@ -4,7 +4,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const {
   supabase, must, getProducts, getVariantById, getPrimaryImagesByVariantIds, syncProductMirrorFromDefaultVariant, getSetting, setSetting,
-  getFabrics, getOccasions, getBadges, getCollections, getReelItems, getFaqItems,
+  getFabrics, getOccasions, getBadges, getCollections, getCollectionProductIds, getReelItems, getFaqItems,
   ADMIN_ROLES, logActivity
 } = require('../utils/db');
 const { requireAdminAuth, requirePermission } = require('../middleware/adminAuth');
@@ -42,11 +42,31 @@ function isUniqueViolation(err) {
 
 // Turns a multer failure (bad file type, file too large) into a clean 400
 // with the real reason, instead of falling through to the generic 500 handler.
+// Raw phone photos are 5-25MB; stored as-is they get served as-is to every
+// shopper on the product page, which is what makes the site crawl. The admin
+// page shrinks images in the browser before upload, so anything this big
+// arriving means that step was skipped (old tab, another client) — refuse it
+// with a clear reason instead of silently storing a page-weight bomb. Videos
+// (reels) are exempt; they have their own larger cap in middleware/upload.js.
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
 function uploadSingle(req, res, next) {
   upload.single('file')(req, res, (err) => {
     if (err) return res.status(400).json({ message: err.message || 'Upload failed.' });
+    if (req.file && req.file.mimetype.startsWith('image/') && req.file.size > MAX_IMAGE_BYTES) {
+      try { fs.unlinkSync(req.file.path); } catch (_) { /* already gone */ }
+      const mb = (req.file.size / 1024 / 1024).toFixed(1);
+      return res.status(400).json({ message: `That photo is ${mb}MB — please use one under 8MB (a normal phone photo is fine; refresh the admin page so it can shrink photos automatically).` });
+    }
     next();
   });
+}
+
+// Swatch keys are typed by hand in the admin ("Maroon", " green "), but the
+// storefront looks colours up by lowercase key — normalise on the way in so
+// "Maroon" and "maroon" are one colour, not two filter entries.
+function cleanSwatch(v) {
+  return typeof v === 'string' ? v.trim().toLowerCase() : v;
 }
 
 function asyncRoute(handler) {
@@ -147,9 +167,9 @@ router.post('/products', asyncRoute(async (req, res) => {
   const id = (maxRow[0]?.id || 0) + 1;
   const rpc = await supabase.rpc('create_product_with_default_variant', {
     p_id: id, p_name: name, p_fabric: fabric, p_occasion: occasion, p_price: Number(price), p_mrp: Number(mrp),
-    p_badge: badge || null, p_swatch: swatch || 'maroon', p_description: desc || '', p_stock: Number(stock) || 20,
+    p_badge: badge || null, p_swatch: cleanSwatch(swatch) || 'maroon', p_description: desc || '', p_stock: Number(stock) || 20,
     p_weaver_name: weaverName || '', p_weaver_region: weaverRegion || '', p_loom_type: loomType || 'Handloom',
-    p_color_name: (swatch || 'maroon').replace(/^\w/, c => c.toUpperCase()), p_sku: `PDM-${id}-DEF`
+    p_color_name: (cleanSwatch(swatch) || 'maroon').replace(/^\w/, c => c.toUpperCase()), p_sku: `PDM-${id}-DEF`
   });
   if (rpc.error) throw new Error(rpc.error.message);
   await record(req, 'created', 'product', id, null, { name, fabric, price, mrp, stock });
@@ -184,8 +204,27 @@ router.delete('/products/:id', asyncRoute(async (req, res) => {
     await record(req, 'archived', 'product', id);
     return res.json({ message: 'Product archived (it has past orders, so it can’t be deleted outright).', archived: true });
   }
+  // A never-ordered product can be removed outright, but several tables point
+  // at it and the database refuses the delete while any row remains — photos
+  // (via its variants), collection tags, Sarees-in-Motion entries. Clear those
+  // first, plus the loose references with no constraint (carts, wishlists,
+  // reviews, pre-book requests) so nothing is left pointing at a product that
+  // no longer exists (a cart line with no product would break the bag page).
+  const variantIds = must(await supabase.from('product_variants').select('id').eq('product_id', id), 'deleteProduct:variantIds').map(v => v.id);
+  let photoUrls = [];
+  if (variantIds.length) {
+    photoUrls = must(await supabase.from('variant_media').select('url').in('variant_id', variantIds), 'deleteProduct:mediaUrls').map(m => m.url);
+    must(await supabase.from('variant_media').delete().in('variant_id', variantIds), 'deleteProduct:media');
+  }
+  for (const table of ['collection_products', 'reel_items', 'cart_items', 'wishlist_items', 'reviews', 'prebook_requests']) {
+    must(await supabase.from(table).delete().eq('product_id', id), `deleteProduct:${table}`);
+  }
   must(await supabase.from('product_variants').delete().eq('product_id', id), 'deleteProduct:variants');
   must(await supabase.from('products').delete().eq('id', id), 'deleteProduct:product');
+  // Best-effort file cleanup — never let a missing file turn a successful delete into an error.
+  for (const url of photoUrls) {
+    try { fs.unlinkSync(path.join(UPLOAD_DIR, path.basename(url))); } catch (_) { /* already gone */ }
+  }
   await record(req, 'deleted', 'product', id);
   res.json({ message: 'Product deleted.', archived: false });
 }));
@@ -203,7 +242,7 @@ router.post('/products/:id/variants', asyncRoute(async (req, res) => {
   const maxSort = must(await supabase.from('product_variants').select('sort_order').eq('product_id', productId).order('sort_order', { ascending: false }).limit(1), 'addVariant:maxSort');
   const sortOrder = (maxSort[0]?.sort_order ?? -1) + 1;
   const inserted = must(await supabase.from('product_variants').insert({
-    product_id: productId, color_name: colorName, swatch: swatch || 'maroon', sku: sku || null,
+    product_id: productId, color_name: colorName, swatch: cleanSwatch(swatch) || 'maroon', sku: sku || null,
     price: Number(price), mrp: Number(mrp), stock: Number(stock) || 0, low_stock_threshold: Number(lowStockThreshold) || 10,
     description: description || '', is_default: false, sort_order: sortOrder
   }).select().single(), 'addVariant:insert');
@@ -223,7 +262,7 @@ router.put('/variants/:id', asyncRoute(async (req, res) => {
   }
 
   must(await supabase.from('product_variants').update({
-    color_name: colorName ?? existing.color_name, swatch: swatch ?? existing.swatch,
+    color_name: colorName ?? existing.color_name, swatch: cleanSwatch(swatch) ?? existing.swatch,
     sku: sku !== undefined ? sku : existing.sku,
     price: price !== undefined ? Number(price) : existing.price, mrp: mrp !== undefined ? Number(mrp) : existing.mrp,
     stock: stock !== undefined ? Number(stock) : existing.stock,
@@ -1161,7 +1200,7 @@ router.post('/fabrics', asyncRoute(async (req, res) => {
     const maxOrder = must(await supabase.from('fabrics').select('display_order').order('display_order', { ascending: false }).limit(1), 'addFabric:maxOrder');
     const inserted = must(await supabase.from('fabrics').insert({
       name, slug, short_description: shortDesc || '', full_description: fullDesc || '', region: region || '', state: state || '',
-      craft_type: craftType || 'Handloom', swatch: swatch || 'maroon', story: story || '', active: true,
+      craft_type: craftType || 'Handloom', swatch: cleanSwatch(swatch) || 'maroon', story: story || '', active: true,
       display_order: (maxOrder[0]?.display_order ?? -1) + 1
     }).select().single(), 'addFabric:insert');
     res.status(201).json({ fabric: inserted });
@@ -1177,7 +1216,7 @@ router.put('/fabrics/:id', asyncRoute(async (req, res) => {
   const updated = must(await supabase.from('fabrics').update({
     name: name ?? existing.name, slug: slug ?? existing.slug, short_description: shortDesc ?? existing.short_description,
     full_description: fullDesc ?? existing.full_description, region: region ?? existing.region, state: state ?? existing.state,
-    craft_type: craftType ?? existing.craft_type, swatch: swatch ?? existing.swatch, story: story ?? existing.story,
+    craft_type: craftType ?? existing.craft_type, swatch: cleanSwatch(swatch) ?? existing.swatch, story: story ?? existing.story,
     active: active !== undefined ? !!active : existing.active,
     display_order: displayOrder !== undefined ? Number(displayOrder) : existing.display_order,
     hero_image: heroImage !== undefined ? heroImage : existing.hero_image, thumbnail: thumbnail !== undefined ? thumbnail : existing.thumbnail
@@ -1301,16 +1340,15 @@ router.delete('/badges/:id', asyncRoute(async (req, res) => {
 }));
 
 // ---- Collections ----
-// A collection's product list is derived from its own `weaves` array (every
-// active, non-sale product whose fabric matches one of them — sale-badged
-// sarees are sale-page-only, same exclusion GET /products applies) — there's
-// no separate per-product tagging step, so the admin list below shows that
-// derived count rather than a stored id list, matching what's actually live.
+// A collection is a hand-picked set of products (collection_products). The
+// count shown is what a shopper can actually see in it — tagged, active and
+// not sale-badged (sale sarees live only on /sale) — so admin and storefront
+// always agree.
 router.get('/collections', asyncRoute(async (req, res) => {
   const [collections, products] = await Promise.all([getCollections({ activeOnly: false }), getProducts()]);
-  const visible = products.filter(p => p.status !== 'archived' && p.badge !== 'sale');
+  const visibleIds = new Set(products.filter(p => p.status !== 'archived' && p.badge !== 'sale').map(p => p.id));
   res.json({
-    collections: collections.map(c => ({ ...c, productCount: visible.filter(p => (c.weaves || []).includes(p.fabric)).length }))
+    collections: collections.map(c => ({ ...c, productCount: c.productIds.filter(id => visibleIds.has(id)).length }))
   });
 }));
 
@@ -1324,7 +1362,7 @@ router.post('/collections', asyncRoute(async (req, res) => {
       active: true, display_order: (maxOrder[0]?.display_order ?? -1) + 1,
       start_date: startDate || null, end_date: endDate || null
     }).select().single(), 'addCollection:insert');
-    res.status(201).json({ collection: inserted });
+    res.status(201).json({ collection: { ...inserted, productIds: [] } });
   } catch (e) {
     res.status(400).json({ message: isUniqueViolation(e) ? 'That slug is already in use.' : e.message });
   }
@@ -1342,10 +1380,11 @@ router.put('/collections/:id', asyncRoute(async (req, res) => {
     start_date: startDate !== undefined ? startDate : existing.start_date, end_date: endDate !== undefined ? endDate : existing.end_date,
     banner_image: bannerImage !== undefined ? bannerImage : existing.banner_image, thumbnail: thumbnail !== undefined ? thumbnail : existing.thumbnail
   }).eq('id', existing.id).select().single(), 'updateCollection:update');
-  res.json({ collection: updated });
+  res.json({ collection: { ...updated, productIds: await getCollectionProductIds(existing.id) } });
 }));
 
 router.delete('/collections/:id', asyncRoute(async (req, res) => {
+  must(await supabase.from('collection_products').delete().eq('collection_id', Number(req.params.id)), 'deleteCollection:products');
   must(await supabase.from('collections').delete().eq('id', Number(req.params.id)), 'deleteCollection:collection');
   res.json({ message: 'Collection deleted.' });
 }));
@@ -1357,7 +1396,24 @@ router.post('/collections/:id/image', uploadSingle, asyncRoute(async (req, res) 
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
   const slot = req.body.slot === 'thumbnail' ? 'thumbnail' : 'banner_image';
   const updated = must(await supabase.from('collections').update({ [slot]: `/uploads/${req.file.filename}` }).eq('id', existing.id).select().single(), 'collectionImage:update');
-  res.json({ collection: updated });
+  res.json({ collection: { ...updated, productIds: await getCollectionProductIds(existing.id) } });
+}));
+
+// Replaces the full tagged-product list in one call — simpler for the admin
+// checklist than diffing adds/removes. Goes through the
+// replace_collection_products() Postgres function so the collection is never
+// briefly empty to a concurrent reader.
+router.put('/collections/:id/products', asyncRoute(async (req, res) => {
+  const id = Number(req.params.id);
+  const existing = must(await supabase.from('collections').select('*').eq('id', id).maybeSingle(), 'setCollectionProducts:lookup');
+  if (!existing) return res.status(404).json({ message: 'Collection not found.' });
+  const { productIds } = req.body;
+  if (!Array.isArray(productIds)) return res.status(400).json({ message: 'productIds must be an array.' });
+
+  const rpc = await supabase.rpc('replace_collection_products', { p_collection_id: id, p_product_ids: productIds.map(Number) });
+  if (rpc.error) throw new Error(rpc.error.message);
+
+  res.json({ productIds: await getCollectionProductIds(id) });
 }));
 
 // ---- Coupons ----
@@ -1424,10 +1480,13 @@ router.put('/content/hero', asyncRoute(async (req, res) => {
   res.json({ hero: next });
 }));
 
+// slot is 'desktop' (default) or 'mobile' — the mobile image is optional; when
+// absent the desktop one is used at every width.
 router.post('/content/hero/image', uploadSingle, asyncRoute(async (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
   const current = await getSetting('hero_banner', {});
-  const next = { ...current, desktopImage: `/uploads/${req.file.filename}` };
+  const field = req.body.slot === 'mobile' ? 'mobileImage' : 'desktopImage';
+  const next = { ...current, [field]: `/uploads/${req.file.filename}` };
   await setSetting('hero_banner', next);
   res.json({ hero: next });
 }));

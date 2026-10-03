@@ -19,13 +19,13 @@ function occasionShape(o) {
   };
 }
 
-// productCount is passed in explicitly rather than read off the row — a
-// collection's product list is derived from its own weaves (every active
-// product whose fabric matches one of them), not a stored id list, so each
-// caller computes it against whatever product set it already has in hand.
+// productCount is passed in rather than read off the row: it's the number of
+// tagged products a shopper can actually see (active, and not sale-badged —
+// sale sarees are sale-page-only, same rule as GET /products), so the number
+// on a collection card always matches what its page shows.
 function collectionShape(c, productCount) {
   return {
-    id: c.id, name: c.name, slug: c.slug, description: c.description, tagline: c.tagline, weaves: c.weaves || [],
+    id: c.id, name: c.name, slug: c.slug, description: c.description, tagline: c.tagline,
     bannerImage: c.banner_image, thumbnail: c.thumbnail, displayOrder: c.display_order, startDate: c.start_date, endDate: c.end_date,
     productCount
   };
@@ -49,19 +49,20 @@ router.get('/occasions', async (req, res) => {
   }
 });
 
-// Sale-badged sarees are sale-page-only (see GET /products in products.js) —
-// excluded here too so a collection's tile/count always matches what a
-// shopper actually sees after clicking through, rather than counting a
-// saree that's really only reachable from /sale.
+function visibleProducts(products) {
+  return products.filter(p => p.status !== 'archived' && p.badge !== 'sale');
+}
+
+// Collections with nothing a shopper can see yet are left out of the public
+// list (and so the nav menu) rather than linking to an empty page.
 router.get('/collections', async (req, res) => {
   try {
     const [collections, products] = await Promise.all([getCollections(), getProducts()]);
-    const visible = products.filter(p => p.status !== 'archived' && p.badge !== 'sale');
+    const visibleIds = new Set(visibleProducts(products).map(p => p.id));
     res.json({
-      collections: collections.map(c => {
-        const weaves = c.weaves || [];
-        return collectionShape(c, visible.filter(p => weaves.includes(p.fabric)).length);
-      })
+      collections: collections
+        .map(c => collectionShape(c, c.productIds.filter(id => visibleIds.has(id)).length))
+        .filter(c => c.productCount > 0)
     });
   } catch (err) {
     console.error('GET /collections failed:', err);
@@ -73,8 +74,8 @@ router.get('/collections/:slug', async (req, res) => {
   try {
     const c = await getCollectionBySlug(req.params.slug);
     if (!c) return res.status(404).json({ message: 'Collection not found.' });
-    const weaves = c.weaves || [];
-    const products = (await getProducts()).filter(p => p.status !== 'archived' && p.badge !== 'sale' && weaves.includes(p.fabric)).map(toProductApiShape);
+    const tagged = new Set(c.productIds);
+    const products = visibleProducts(await getProducts()).filter(p => tagged.has(p.id)).map(toProductApiShape);
     res.json({ collection: collectionShape(c, products.length), products });
   } catch (err) {
     console.error('GET /collections/:slug failed:', err);

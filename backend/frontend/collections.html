@@ -50,7 +50,7 @@
       const {collections} = await apiFetch('/collections');
       document.getElementById('collectionsGrid').innerHTML = collections.length ? collections.map((c,i)=>`
         <a href="/collection?slug=${encodeURIComponent(c.slug)}" class="weave-card" style="display:block;">
-          <div class="weave-art" style="${c.bannerImage ? `background:url('${c.bannerImage}') center/cover;` : `background:${COLLECTION_CARD_GRADIENTS[i % COLLECTION_CARD_GRADIENTS.length]};`}"></div>
+          <div class="weave-art" style="${(c.thumbnail || c.bannerImage) ? `background:url('${c.thumbnail || c.bannerImage}') center/cover;` : `background:${COLLECTION_CARD_GRADIENTS[i % COLLECTION_CARD_GRADIENTS.length]};`}"></div>
           <div class="weave-card-body">${c.tagline ? `<span>${c.tagline}</span>` : ''}<h4>${c.name}</h4>${c.description ? `<p>${c.description}</p>` : ''}</div>
         </a>`).join('') :
         `<p style="text-align:center;color:var(--ink-soft);grid-column:1/-1;">No collections live yet — check back soon.</p>`;

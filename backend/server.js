@@ -94,7 +94,7 @@ const FRONTEND_DIR = path.join(__dirname, 'frontend');
 // registered separately below, gated by adminHostOnly, so the main domain
 // never serves them (see the ADMIN_HOST block above).
 const CLEAN_PAGES = [
-  'shop', 'sale', 'collections', 'collection', 'product', 'cart', 'checkout', 'account', 'wishlist', 'login', 'register',
+  'shop', 'sale', 'collections', 'product', 'cart', 'checkout', 'account', 'wishlist', 'login', 'register',
   'forgot-password',
   'track-order', 'about', 'our-weaves', 'trousseau', 'faq', 'contact',
   'shipping-returns', 'terms', 'privacy-policy', 'packing-slip',
@@ -109,6 +109,11 @@ CLEAN_PAGES.forEach(name => {
   app.get(`/${name}.html`, (req, res) => res.redirect(301, withQuery(req, `/${name}`)));
 });
 app.get('/index.html', (req, res) => res.redirect(301, withQuery(req, '/')));
+// A collection page is the shop listing scoped to that collection's tagged
+// products (shop.html reads ?slug=), so it shares the same grid, filters,
+// sorting and pagination instead of duplicating them.
+app.get('/collection', (req, res) => res.sendFile(path.join(FRONTEND_DIR, 'shop.html')));
+app.get('/collection.html', (req, res) => res.redirect(301, withQuery(req, '/collection')));
 
 // Admin pages — same clean-URL pattern as above, but only reachable from
 // the admin subdomain once ADMIN_HOST is configured. adminHostOnly also

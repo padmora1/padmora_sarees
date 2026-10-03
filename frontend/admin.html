@@ -469,8 +469,8 @@
 
   function mediaThumbHTML(m){
     const inner = m.type === 'video'
-      ? `<video src="${m.url}" muted></video>`
-      : `<img src="${m.url}" alt="${m.alt||''}">`;
+      ? `<video src="${m.url}" muted preload="metadata"></video>`
+      : `<img src="${m.url}" alt="${m.alt||''}" loading="lazy" decoding="async">`;
     return `<div class="media-thumb ${m.isPrimary?'is-primary':''}">
       ${inner}
       <div class="media-del" data-del-media="${m.id}">×</div>
@@ -507,7 +507,7 @@
             <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px;">Add 2-3 photos for this colour — customers can flip through them on the product page. Click + again for each extra photo, and "Set primary" to choose which one shows first.</p>
             <div class="variant-media-strip">
               ${v.media.map(mediaThumbHTML).join('')}
-              <label class="upload-label">+<input type="file" accept="image/*,video/*" style="display:none;" data-upload-media="${v.id}"></label>
+              <label class="upload-label">+<input type="file" accept="image/*,video/*" multiple style="display:none;" data-upload-media="${v.id}"></label>
             </div>
           </div>
         </div>`).join('')}
@@ -571,19 +571,38 @@
         renderProductEditor();
       }catch(e){ toast(e.message, 'error'); }
     }));
+    // Several photos can be picked at once; they upload one after another
+    // (so the first becomes primary and order matches the pick order), each
+    // shrunk first. The label shows progress so a slow connection never looks
+    // like a frozen page.
     body.querySelectorAll('[data-upload-media]').forEach(input=>input.addEventListener('change', async (e)=>{
-      const file = e.target.files[0];
-      if(!file) return;
-      const fd = new FormData();
-      fd.append('file', file);
+      const files = [...e.target.files];
+      if(!files.length) return;
+      const label = input.closest('.upload-label');
+      const idleText = label.firstChild.textContent;
+      input.disabled = true;
+      let done = 0;
       try{
-        await fetch('/api/admin/variants/' + input.dataset.uploadMedia + '/media', {
-          method:'POST', headers: { Authorization: 'Bearer ' + getAdminToken() }, body: fd
-        }).then(async r => { if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.message || 'Upload failed'); } });
-        toast('Media uploaded');
-        await loadProducts();
-        renderProductEditor();
-      }catch(err){ toast(err.message, 'error'); }
+        for(const original of files){
+          label.firstChild.textContent = `${done + 1}/${files.length}…`;
+          const file = await prepareImageForUpload(original);
+          const fd = new FormData();
+          fd.append('file', file);
+          const r = await fetch('/api/admin/variants/' + input.dataset.uploadMedia + '/media', {
+            method:'POST', headers: { Authorization: 'Bearer ' + getAdminToken() }, body: fd
+          });
+          if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.message || 'Upload failed'); }
+          done++;
+        }
+        toast(done === 1 ? 'Photo uploaded' : `${done} photos uploaded`);
+      }catch(err){
+        toast(done ? `${done} uploaded, then: ${err.message}` : err.message, 'error');
+      }finally{
+        label.firstChild.textContent = idleText;
+        input.disabled = false;
+      }
+      await loadProducts();
+      renderProductEditor();
     }));
 
     document.getElementById('addVariantBtn').addEventListener('click', async ()=>{
@@ -1402,7 +1421,30 @@
 
   function slugify(s){ return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
 
+  // Phone photos are 5-25MB. Shrunk here (longest side ≤2000px, JPEG ~85%) a
+  // typical photo becomes a few hundred KB — uploads fast, and the storefront
+  // isn't left serving a 20MB image to every visitor. GIFs/videos and images
+  // that are already small pass through untouched. createImageBitmap applies
+  // the photo's EXIF rotation, so portraits don't come out sideways.
+  async function prepareImageForUpload(file, maxDim = 2000, quality = 0.85){
+    if(!/^image\/(jpeg|png|webp)$/.test(file.type)) return file;
+    let bitmap;
+    try{ bitmap = await createImageBitmap(file); }catch(_){ return file; }
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    if(scale === 1 && file.size <= 800 * 1024){ bitmap.close(); return file; }
+    const w = Math.round(bitmap.width * scale), h = Math.round(bitmap.height * scale);
+    const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+    const g = canvas.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
+    g.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', quality));
+    if(!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
+  }
+
   async function uploadEntityImage(url, fieldName, file, extra){
+    file = await prepareImageForUpload(file);
     const fd = new FormData();
     fd.append('file', file);
     if(extra) Object.entries(extra).forEach(([k,v])=>fd.append(k,v));
@@ -1617,10 +1659,16 @@
   }
 
   // ---- Collections ----
+  // A collection is a hand-picked set: tick the products that belong to it.
+  // Every product still shows in All Sarees no matter what — collections are
+  // an extra, editorial way to browse. The thumbnail is the picture on the
+  // /collections cards; the hero image is the big banner at the top of the
+  // collection's own page.
   async function renderCollectionsTab(){
     const body = document.getElementById('catalogTabBody');
     body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
-    const [{collections}, {fabrics}] = await Promise.all([adminApiFetch('/admin/collections'), adminApiFetch('/admin/fabrics')]);
+    const [{collections}, {products}] = await Promise.all([adminApiFetch('/admin/collections'), adminApiFetch('/admin/products')]);
+    const taggable = products.filter(p => p.status !== 'archived');
     body.innerHTML = `
       <div style="overflow-x:auto;">
         <table class="admin-table">
@@ -1640,42 +1688,68 @@
     function openCollForm(c){
       const editor = document.getElementById('collEditor');
       const isNew = !c;
-      c = c || { id:null, name:'', slug:'', description:'', tagline:'', weaves:[], active:1, banner_image:null };
+      c = c || { id:null, name:'', slug:'', description:'', tagline:'', active:true, productIds:[], banner_image:null, thumbnail:null };
+      const tagged = new Set(c.productIds);
       editor.innerHTML = `
         <div class="editor-card">
           <h4 style="font-family:var(--font-body);font-size:14px;margin-bottom:12px;">${isNew?'New Collection':'Edit '+c.name}</h4>
           <div class="form-row-2">
             <div class="form-field"><label>Name</label><input id="cName" value="${c.name}"></div>
-            <div class="form-field"><label>Slug</label><input id="cSlug" value="${c.slug}"></div>
+            <div class="form-field"><label>Slug (the page address)</label><input id="cSlug" value="${c.slug}"></div>
           </div>
-          <div class="form-field"><label>Tagline</label><input id="cTagline" value="${c.tagline||''}" placeholder="e.g. Many Weaves. One Heritage."></div>
-          <div class="form-field"><label>Description (meaning / story)</label><input id="cDesc" value="${c.description||''}"></div>
-          ${!isNew ? `<div class="form-field"><label>Banner Image</label><input type="file" accept="image/*" id="cBannerUpload">${c.banner_image?`<img src="${c.banner_image}" style="height:60px;margin-top:8px;border-radius:4px;">`:''}</div>` : ''}
-          <label style="font-size:12.5px;"><input type="checkbox" id="cActive" ${c.active?'checked':''}> Active</label>
+          <div class="form-field"><label>Tagline (short line under the name)</label><input id="cTagline" value="${c.tagline||''}" placeholder="e.g. Many Weaves. One Heritage."></div>
+          <div class="form-field"><label>Description (meaning / story, shown on the collection page)</label><textarea id="cDesc" rows="3">${c.description||''}</textarea></div>
+          <div class="form-row-2">
+            <div class="form-field"><label>Thumbnail (the picture on the Collections page card)</label><input type="file" accept="image/*" id="cThumbUpload">${c.thumbnail?`<img src="${c.thumbnail}" style="height:60px;margin-top:8px;border-radius:4px;">`:''}</div>
+            <div class="form-field"><label>Hero image (big banner at the top of the collection page)</label><input type="file" accept="image/*" id="cBannerUpload">${c.banner_image?`<img src="${c.banner_image}" style="height:60px;margin-top:8px;border-radius:4px;">`:''}</div>
+          </div>
+          <label style="font-size:12.5px;"><input type="checkbox" id="cActive" ${c.active?'checked':''}> Active (visible on the website)</label>
           <div style="margin-top:14px;">
-            <label style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:8px;">Weaves in this collection — every saree of these fabrics is included automatically, no per-product step needed</label>
-            <div style="max-height:180px;overflow-y:auto;border:1px solid rgba(173,59,92,0.15);border-radius:4px;padding:10px;">
-              ${fabrics.map(f=>`<label style="display:block;font-size:12.5px;padding:4px 0;"><input type="checkbox" class="cWeaveCheck" value="${f.name}" ${(c.weaves||[]).includes(f.name)?'checked':''}> ${f.name}</label>`).join('')}
+            <label style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:8px;">Products in this collection — <strong id="cProdCount">${tagged.size}</strong> selected</label>
+            <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+              <input id="cProdSearch" type="search" placeholder="Search products…" style="flex:1;min-width:160px;padding:8px 10px;border:1px solid rgba(173,59,92,0.2);border-radius:4px;font-size:13px;">
+              <button type="button" class="btn btn-sm btn-outline" id="cProdAll">Select shown</button>
+              <button type="button" class="btn btn-sm btn-outline" id="cProdNone">Clear shown</button>
+            </div>
+            <div id="cProdList" style="max-height:260px;overflow-y:auto;border:1px solid rgba(173,59,92,0.15);border-radius:4px;padding:10px;">
+              ${taggable.map(p=>`<label class="cProdRow" data-name="${(p.name+' '+p.fabric).toLowerCase()}" style="display:block;font-size:12.5px;padding:4px 0;"><input type="checkbox" class="cProdCheck" value="${p.id}" ${tagged.has(p.id)?'checked':''}> ${p.name} <span style="color:var(--ink-soft);">· ${p.fabric}${p.badge==='sale'?' · on sale — shows only on the Sale page':''}</span></label>`).join('')}
             </div>
           </div>
           <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="cSave">${isNew?'Create Collection':'Save Changes'}</button> <button class="btn btn-sm" id="cCancel">Cancel</button></div>
         </div>`;
+
+      const countEl = document.getElementById('cProdCount');
+      const refreshCount = () => { countEl.textContent = document.querySelectorAll('.cProdCheck:checked').length; };
+      editor.querySelectorAll('.cProdCheck').forEach(cb => cb.addEventListener('change', refreshCount));
+      const shownRows = () => [...editor.querySelectorAll('.cProdRow')].filter(r => r.style.display !== 'none');
+      document.getElementById('cProdSearch').addEventListener('input', e => {
+        const q = e.target.value.trim().toLowerCase();
+        editor.querySelectorAll('.cProdRow').forEach(r => { r.style.display = !q || r.dataset.name.includes(q) ? 'block' : 'none'; });
+      });
+      document.getElementById('cProdAll').addEventListener('click', () => { shownRows().forEach(r => r.querySelector('input').checked = true); refreshCount(); });
+      document.getElementById('cProdNone').addEventListener('click', () => { shownRows().forEach(r => r.querySelector('input').checked = false); refreshCount(); });
+
       if(!c.slug) document.getElementById('cName').addEventListener('input', e=>{ document.getElementById('cSlug').value = slugify(e.target.value); });
       document.getElementById('cCancel').addEventListener('click', ()=>{ editor.innerHTML=''; });
       document.getElementById('cSave').addEventListener('click', async ()=>{
-        const weaves = [...document.querySelectorAll('.cWeaveCheck:checked')].map(i=>i.value);
-        const payload = { name: document.getElementById('cName').value, slug: document.getElementById('cSlug').value, description: document.getElementById('cDesc').value, tagline: document.getElementById('cTagline').value, weaves, active: document.getElementById('cActive').checked };
+        const payload = { name: document.getElementById('cName').value, slug: document.getElementById('cSlug').value, description: document.getElementById('cDesc').value, tagline: document.getElementById('cTagline').value, active: document.getElementById('cActive').checked };
+        const saveBtn = document.getElementById('cSave');
+        saveBtn.disabled = true;
         try{
           const saved = isNew
             ? await adminApiFetch('/admin/collections', {method:'POST', body: JSON.stringify(payload)})
             : await adminApiFetch('/admin/collections/'+c.id, {method:'PUT', body: JSON.stringify(payload)});
           const collId = saved.collection?.id || c.id;
-          const bannerInput = document.getElementById('cBannerUpload');
-          if(bannerInput && bannerInput.files[0]) await uploadEntityImage('/api/admin/collections/'+collId+'/image', 'file', bannerInput.files[0], {slot:'banner'});
+          const ids = [...document.querySelectorAll('.cProdCheck:checked')].map(i=>Number(i.value));
+          await adminApiFetch('/admin/collections/'+collId+'/products', {method:'PUT', body: JSON.stringify({productIds: ids})});
+          const thumb = document.getElementById('cThumbUpload').files[0];
+          const banner = document.getElementById('cBannerUpload').files[0];
+          if(thumb) await uploadEntityImage('/api/admin/collections/'+collId+'/image', 'file', thumb, {slot:'thumbnail'});
+          if(banner) await uploadEntityImage('/api/admin/collections/'+collId+'/image', 'file', banner, {slot:'banner'});
           toast(isNew?'Collection created':'Collection saved');
           editor.innerHTML='';
           renderCollectionsTab();
-        }catch(e){ toast(e.message, 'error'); }
+        }catch(e){ toast(e.message, 'error'); saveBtn.disabled = false; }
       });
     }
 
@@ -1684,7 +1758,7 @@
       openCollForm(collections.find(x=>x.id===Number(btn.dataset.collEdit)));
     }));
     body.querySelectorAll('[data-coll-del]').forEach(btn=>btn.addEventListener('click', async ()=>{
-      const ok = await showConfirmDialog('This removes the collection and its product assignments.', {title:'Delete this collection?', confirmLabel:'Delete', danger:true});
+      const ok = await showConfirmDialog('This removes the collection and its product tags. The products themselves stay in the shop.', {title:'Delete this collection?', confirmLabel:'Delete', danger:true});
       if(!ok) return;
       try{ await adminApiFetch('/admin/collections/'+btn.dataset.collDel, {method:'DELETE'}); toast('Collection deleted'); renderCollectionsTab(); }
       catch(e){ toast(e.message, 'error'); }
@@ -1808,37 +1882,30 @@
     const {hero: h} = await adminApiFetch('/admin/content/hero');
     body.innerHTML = `
       <div class="editor-card">
+        <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">The big image at the top of the homepage. The whole image is clickable and zooms slightly on hover; the button sits in the centre.</p>
         <div class="form-row-2">
-          <div class="form-field"><label>Eyebrow</label><input id="hEyebrow" value="${h.eyebrow||''}"></div>
-          <div class="form-field"><label>CTA Text / Link</label><input id="hCtaText" value="${h.ctaText||''}" style="margin-bottom:6px;"><input id="hCtaLink" value="${h.ctaLink||''}"></div>
+          <div class="form-field"><label>Desktop Image (wide, e.g. 2400×1000)</label><input type="file" accept="image/*" id="hImgDesktop">${h.desktopImage?`<img src="${h.desktopImage}" style="height:70px;margin-top:8px;border-radius:4px;">`:''}</div>
+          <div class="form-field"><label>Mobile Image (optional, tall, e.g. 1080×1350)</label><input type="file" accept="image/*" id="hImgMobile">${h.mobileImage?`<img src="${h.mobileImage}" style="height:70px;margin-top:8px;border-radius:4px;">`:'<span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:6px;">Not set — the desktop image is used on phones too.</span>'}</div>
         </div>
-        <label style="font-size:12px;color:var(--ink-soft);">Heading (three parts — the middle one renders in gold)</label>
-        <div class="form-row-2" style="margin-top:6px;">
-          <div class="form-field"><input id="hPre" placeholder="Drape a story" value="${h.headingPre||''}"></div>
-          <div class="form-field"><input id="hEm" placeholder="woven" value="${h.headingEm||''}"></div>
-        </div>
-        <div class="form-field"><input id="hPost" placeholder="in silk and gold" value="${h.headingPost||''}"></div>
-        <div class="form-field"><label>Subheading</label><textarea id="hSub" rows="2">${h.subheading||''}</textarea></div>
         <div class="form-row-2">
-          <div class="form-field"><label>Badge Label</label><input id="hBadgeLabel" value="${h.badgeLabel||''}"></div>
-          <div class="form-field"><label>Badge Value</label><input id="hBadgeValue" value="${h.badgeValue||''}"></div>
+          <div class="form-field"><label>Button Text</label><input id="hCtaText" value="${h.ctaText||''}" placeholder="Shop All Sarees"></div>
+          <div class="form-field"><label>Link (image and button)</label><input id="hCtaLink" value="${h.ctaLink||'/shop'}" placeholder="/shop"></div>
         </div>
-        <div class="form-field"><label>Desktop Image</label><input type="file" accept="image/*" id="hImgUpload">${h.desktopImage?`<img src="${h.desktopImage}" style="height:70px;margin-top:8px;border-radius:4px;">`:''}</div>
-        <label style="font-size:12.5px;"><input type="checkbox" id="hActive" ${h.active?'checked':''}> Show hero banner</label>
+        <div class="form-field"><label>Image description (for screen readers / SEO)</label><input id="hAlt" value="${h.altText||''}" placeholder="Handloom sarees from Padmora"></div>
+        <label style="font-size:12.5px;"><input type="checkbox" id="hActive" ${h.active!==false?'checked':''}> Show hero banner</label>
         <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="hSave">Save Hero</button></div>
       </div>`;
 
     document.getElementById('hSave').addEventListener('click', async ()=>{
       try{
         await adminApiFetch('/admin/content/hero', {method:'PUT', body: JSON.stringify({
-          eyebrow: document.getElementById('hEyebrow').value, ctaText: document.getElementById('hCtaText').value,
-          ctaLink: document.getElementById('hCtaLink').value, headingPre: document.getElementById('hPre').value,
-          headingEm: document.getElementById('hEm').value, headingPost: document.getElementById('hPost').value,
-          subheading: document.getElementById('hSub').value, badgeLabel: document.getElementById('hBadgeLabel').value,
-          badgeValue: document.getElementById('hBadgeValue').value, active: document.getElementById('hActive').checked
+          ctaText: document.getElementById('hCtaText').value, ctaLink: document.getElementById('hCtaLink').value,
+          altText: document.getElementById('hAlt').value, active: document.getElementById('hActive').checked
         })});
-        const imgInput = document.getElementById('hImgUpload');
-        if(imgInput.files[0]) await uploadEntityImage('/api/admin/content/hero/image', 'file', imgInput.files[0]);
+        const desktop = document.getElementById('hImgDesktop').files[0];
+        const mobile = document.getElementById('hImgMobile').files[0];
+        if(desktop) await uploadEntityImage('/api/admin/content/hero/image', 'file', desktop, {slot:'desktop'});
+        if(mobile) await uploadEntityImage('/api/admin/content/hero/image', 'file', mobile, {slot:'mobile'});
         toast('Hero banner saved');
         renderHeroAdmin();
       }catch(e){ toast(e.message, 'error'); }
