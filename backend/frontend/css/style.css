@@ -314,14 +314,6 @@ body::after{right:0;transform:scaleX(-1);}
 .page-banner h1{font-size:34px;}
 .page-banner p{color:var(--ink-soft);margin-top:10px;font-size:14px;}
 
-/* In-collection weave switcher (shop.html) — lets a shopper change weave
-   without backing out to the collection page first. */
-.weave-switcher{margin-top:18px;display:flex;flex-direction:column;align-items:center;gap:10px;}
-.weave-switcher-back{font-size:12.5px;color:var(--maroon-deep);font-weight:600;}
-.weave-switcher-pills{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;}
-.weave-switcher-pills a{font-size:12.5px;padding:7px 16px;border-radius:20px;border:1px solid rgba(173,59,92,0.25);color:var(--ink);background:var(--white);transition:background .15s ease, color .15s ease, border-color .15s ease;}
-.weave-switcher-pills a:hover{border-color:var(--maroon);color:var(--maroon-deep);}
-.weave-switcher-pills a.active{background:var(--maroon);border-color:var(--maroon);color:var(--ivory);}
 
 /* A fuller scatter of outlined lotus blooms — one large one via ::before,
    five more (varied size/position) layered on ::after — applies to every
@@ -933,18 +925,44 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 @media (max-width:760px){ .cat-rail-wrap .reel-scroll-btn{display:none !important;} }
 @media (max-width:980px){ .cat-item{flex:0 0 calc(50% - 11px);} }
 
-/* Weave tiles inside a single collection (collection.html) — a non-scrolling,
-   centered grid rather than the homepage's horizontal rail: a collection's
-   weave count is small and fixed per admin curation, so wrapping reads
-   better than forcing a scroll affordance for 3-8 items. Fixed column width
-   (not 1fr) keeps tiles a consistent, aesthetic size whether there are 2
-   weaves or 8; justify-content centers the whole grid when it doesn't fill
-   the row. */
-.weave-tile-grid{display:grid;grid-template-columns:repeat(auto-fit, 150px);justify-content:center;gap:32px 24px;}
-@media (max-width:480px){ .weave-tile-grid{grid-template-columns:repeat(auto-fit, 120px);gap:24px 16px;} }
 
 /* A collection's "meaning" copy (collection.html) — set apart as a small
    centered editorial quote rather than a plain left-aligned paragraph. */
+/* Collection page hero (shop.html in collection mode): the admin's hero image
+   with the name/tagline centred over a dark wash; brand gradient if no image. */
+.collection-hero{position:relative;min-height:320px;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--ivory);overflow:hidden;background:linear-gradient(120deg,#7A2740,#B87F55);}
+.collection-hero-media{position:absolute;inset:0;background-size:cover;background-position:center;}
+.collection-hero::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,10,10,.28),rgba(20,10,10,.55));}
+.collection-hero-inner{position:relative;z-index:1;padding-top:64px;padding-bottom:64px;}
+.collection-hero h1{color:var(--ivory);font-size:clamp(30px,5vw,54px);margin:6px 0 10px;}
+.collection-hero .breadcrumb,.collection-hero .breadcrumb a{color:rgba(250,245,236,.85);}
+.collection-hero-tagline{color:var(--gold-soft);font-size:13px;letter-spacing:.14em;text-transform:uppercase;}
+.collection-meaning-wrap{padding:34px 20px 0;}
+@media (max-width:760px){ .collection-hero{min-height:230px;} .collection-hero-inner{padding-top:40px;padding-bottom:40px;} }
+
+/* Mobile/tablet: the filter column becomes a slide-in drawer behind a
+   "Filters" button beside Sort, so the first screen is sarees, not filters.
+   Desktop (>980px) is unchanged: sticky sidebar, none of this shows. */
+.toolbar-actions{display:flex;align-items:center;gap:10px;}
+.filters-toggle,.filters-drawer-head,.filters-drawer-foot,.filters-backdrop{display:none;}
+.filters-toggle svg{width:16px;height:16px;stroke:var(--maroon);}
+.filters-badge{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--maroon);color:var(--ivory);font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;}
+@media (max-width:980px){
+  .result-count{flex-basis:100%;}
+  .toolbar-actions{width:100%;}
+  .toolbar-actions .custom-select{flex:1;min-width:0;}
+  .filters-toggle{display:flex;align-items:center;justify-content:center;gap:8px;flex:1;border:1px solid rgba(173,59,92,0.25);padding:10px 14px;border-radius:2px;font-size:13px;background:var(--white);}
+  .filters-toggle:hover{border-color:var(--maroon);}
+  .shop-layout .filters{position:fixed;top:0;left:0;bottom:0;width:min(88vw,360px);z-index:301;border-radius:0;border:none;padding:0 20px;overflow-y:auto;transform:translateX(-104%);transition:transform .3s ease;box-shadow:0 0 40px rgba(20,10,10,.25);visibility:hidden;}
+  .shop-layout .filters.open{transform:none;visibility:visible;}
+  .filters-drawer-head{display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:1;background:var(--white);padding:16px 0;margin-bottom:6px;border-bottom:1px solid rgba(173,59,92,0.12);font-size:15px;}
+  .filters-drawer-head button{font-size:26px;line-height:1;color:var(--maroon-deep);padding:0 4px;}
+  .filters-drawer-foot{display:block;position:sticky;bottom:0;background:var(--white);padding:14px 0 16px;margin-top:18px;border-top:1px solid rgba(173,59,92,0.12);}
+  .filters-backdrop.open{display:block;position:fixed;inset:0;z-index:300;background:rgba(20,10,10,.5);}
+  body.filters-open{overflow:hidden;}
+}
+@media (prefers-reduced-motion:reduce){ .shop-layout .filters{transition:none;} }
+
 .collection-meaning{max-width:620px;margin:0 auto 36px;text-align:center;}
 .collection-meaning p{color:var(--ink-soft);font-size:15.5px;font-style:italic;line-height:1.8;}
 .collection-meaning p::before{content:'“';}
@@ -980,7 +998,6 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
   .main-nav{display:none;}
   .hamburger{display:flex;}
   .shop-layout{grid-template-columns:1fr;}
-  .filters{position:static;}
   .product-grid{grid-template-columns:repeat(2,1fr);}
   .pd-grid{grid-template-columns:1fr;}
   .cart-layout{grid-template-columns:1fr;}
@@ -1246,3 +1263,12 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 @media (max-width:640px){
   .search-overlay{top:78px;width:94vw;max-height:75vh;}
 }
+
+/* Admin table pager (25 rows per page) */
+.admin-pager{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin:12px 0 4px;font-size:12.5px;color:var(--ink-soft);}
+.admin-pager-btns{display:flex;align-items:center;gap:4px;flex-wrap:wrap;}
+.admin-pager button{min-width:34px;height:32px;padding:0 10px;border:1px solid rgba(173,59,92,0.18);background:#fff;color:var(--ink);border-radius:4px;font:inherit;cursor:pointer;}
+.admin-pager button:hover:not(:disabled){border-color:var(--maroon);color:var(--maroon);}
+.admin-pager button.on{background:var(--maroon);border-color:var(--maroon);color:#fff;}
+.admin-pager button:disabled{opacity:.4;cursor:default;}
+.admin-pager .gap{padding:0 4px;}

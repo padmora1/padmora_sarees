@@ -89,14 +89,35 @@ function escapeHtml(value) {
   }[ch]));
 }
 
+// Every state and union territory the store can ship to — the address forms used to
+// hard-code five, which locked out most of India (Madhya Pradesh, Gujarat, Rajasthan...).
+const INDIAN_STATES = ['Andaman and Nicobar Islands', 'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chandigarh', 'Chhattisgarh',
+  'Dadra and Nagar Haveli and Daman and Diu', 'Delhi', 'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jammu and Kashmir', 'Jharkhand',
+  'Karnataka', 'Kerala', 'Ladakh', 'Lakshadweep', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha',
+  'Puducherry', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal'];
+function fillStateSelects() {
+  document.querySelectorAll('select[data-states]').forEach(sel => {
+    if (sel.options.length) return; // already filled
+    sel.innerHTML = INDIAN_STATES.map(s => `<option>${s}</option>`).join('');
+    sel.value = 'Maharashtra';
+  });
+}
+fillStateSelects();
+document.addEventListener('DOMContentLoaded', fillStateSelects);
+
 const SWATCHES = {
   maroon:['#7A1F2B','#C9A227'], emerald:['#0F5132','#C9A227'], ivory:['#EDE3D0','#B08968'],
   teal:['#1F4B4A','#8FBFB6'], blush:['#E7C6C0','#B75D5D'], sand:['#C9B183','#7A6A4E'],
   mustard:['#C98A1F','#5C1620'], powder:['#A9C8D6','#5C1620'], wine:['#4A1220','#C9A227'],
-  indigo:['#2C3E63','#C9A227'], fuchsia:['#9C2B6B','#F4D35E'], peacock:['#0E5C5C','#C9A227']
+  indigo:['#2C3E63','#C9A227'], fuchsia:['#9C2B6B','#F4D35E'], peacock:['#0E5C5C','#C9A227'],
+  // Plain colour words an admin is likely to type for a new colour variant —
+  // without these they silently rendered as the maroon fallback.
+  green:['#2E7D4F','#C9A227'], blue:['#2C5AA0','#C9A227'], yellow:['#E3B505','#7A4B00'], red:['#B3202A','#C9A227'],
+  pink:['#E58BA6','#B03A5C'], orange:['#D9792B','#7A3A12'], purple:['#6B2D84','#C9A227'], black:['#1B1B1D','#6B5B2A'],
+  white:['#F6F1E8','#CDBFA6'], gold:['#C9A227','#7A5C10'], cream:['#F2E6C8','#C9A227'], grey:['#8C8C90','#4A4A4D'], brown:['#6B4226','#C9A227']
 };
 function swatchBg(key) {
-  const c = SWATCHES[key] || SWATCHES.maroon;
+  const c = SWATCHES[String(key || '').trim().toLowerCase()] || SWATCHES.maroon;
   return `linear-gradient(160deg, ${c[0]} 0%, ${c[1]} 100%)`;
 }
 

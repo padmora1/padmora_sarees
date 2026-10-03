@@ -35,6 +35,30 @@ function must(result, context) {
   return result.data;
 }
 
+// Supabase/PostgREST silently caps any single response at 1000 rows — no
+// error, the rest just isn't there. Fine at a dozen products; at a few
+// hundred products with several photos each, the variant_media query alone
+// blows past it and some products would quietly lose their images. These two
+// helpers page through in 1000-row slices (and keep `.in()` id lists short
+// enough not to overflow the request URL) so catalog reads stay complete as
+// the store grows. `makeQuery` must build a fresh query each call.
+async function fetchAllRows(makeQuery, context, pageSize = 1000) {
+  const out = [];
+  for (let from = 0; ; from += pageSize) {
+    const rows = must(await makeQuery().range(from, from + pageSize - 1), context);
+    out.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return out;
+}
+
+async function fetchAllByIds(ids, makeQuery, context, chunkSize = 150) {
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += chunkSize) chunks.push(ids.slice(i, i + chunkSize));
+  const parts = await Promise.all(chunks.map(c => fetchAllRows(() => makeQuery(c), context)));
+  return parts.flat();
+}
+
 function groupBy(rows, key) {
   const out = {};
   for (const row of rows) {
@@ -119,13 +143,14 @@ function shapeBlended(row) {
 async function attachVariants(products) {
   const ids = products.map(p => p.id);
   if (!ids.length) return products;
-  const variants = must(
-    await supabase.from('product_variants').select('*').in('product_id', ids).eq('archived', false).order('sort_order').order('id'),
+  const variants = await fetchAllByIds(
+    ids,
+    c => supabase.from('product_variants').select('*').in('product_id', c).eq('archived', false).order('sort_order').order('id'),
     'attachVariants:variants'
   );
   const variantIds = variants.map(v => v.id);
   const media = variantIds.length
-    ? must(await supabase.from('variant_media').select('*').in('variant_id', variantIds).order('sort_order').order('id'), 'attachVariants:media')
+    ? await fetchAllByIds(variantIds, c => supabase.from('variant_media').select('*').in('variant_id', c).order('sort_order').order('id'), 'attachVariants:media')
     : [];
   const mediaByVariant = groupBy(media, 'variant_id');
   const variantsByProduct = groupBy(variants.map(v => ({ ...v, media: mediaByVariant[v.id] || [] })), 'product_id');
@@ -133,7 +158,7 @@ async function attachVariants(products) {
 }
 
 async function getProducts() {
-  const rows = must(await supabase.from('products_blended').select('*').order('id'), 'getProducts');
+  const rows = await fetchAllRows(() => supabase.from('products_blended').select('*').order('id'), 'getProducts');
   return attachVariants(rows.map(shapeBlended));
 }
 
@@ -210,21 +235,27 @@ async function getBadges({ activeOnly = false } = {}) {
   return must(await query, 'getBadges');
 }
 
-// A collection's product list is derived entirely from its own `weaves`
-// array (every active product whose fabric is one of those weaves) — not a
-// hand-picked list. This is what lets an admin tag a weave once and have
-// every saree of that fabric show up automatically, now and as more are
-// added later, instead of re-checking a product list by hand for every new
-// saree. (The old collection_products table/RPC from before this model are
-// left in place in the database but nothing here reads from them anymore.)
+// A collection is a hand-curated set: the admin tags specific products into
+// it (collection_products). Every product always shows in All Sarees
+// regardless; a collection is just an extra, editorial way to browse a
+// chosen subset. (`weaves` on the collections row is a leftover column from
+// an abandoned weave-tile design and is not read anywhere.)
+async function getCollectionProductIds(collectionId) {
+  const rows = await fetchAllRows(() => supabase.from('collection_products').select('product_id').eq('collection_id', collectionId).order('product_id'), 'getCollectionProductIds');
+  return rows.map(r => r.product_id);
+}
+
 async function getCollections({ activeOnly = true } = {}) {
   let query = supabase.from('collections').select('*').order('display_order').order('name');
   if (activeOnly) query = query.eq('active', true);
-  return must(await query, 'getCollections');
+  const rows = must(await query, 'getCollections');
+  return Promise.all(rows.map(async c => ({ ...c, productIds: await getCollectionProductIds(c.id) })));
 }
 
 async function getCollectionBySlug(slug) {
-  return must(await supabase.from('collections').select('*').eq('slug', slug).eq('active', true).maybeSingle(), 'getCollectionBySlug');
+  const row = must(await supabase.from('collections').select('*').eq('slug', slug).eq('active', true).maybeSingle(), 'getCollectionBySlug');
+  if (!row) return null;
+  return { ...row, productIds: await getCollectionProductIds(row.id) };
 }
 
 // ---- Settings (generic key/value store) ----
@@ -522,11 +553,11 @@ const ready = (async () => {
 })();
 
 module.exports = {
-  supabase, ready,
+  supabase, ready, fetchAllRows, fetchAllByIds,
   getProducts, getProductById, getReelProducts,
   getVariants, getVariantById, getVariantMedia, getPrimaryImagesByVariantIds, getDefaultVariant, syncProductMirrorFromDefaultVariant,
   getSetting, setSetting,
-  getFabrics, getOccasions, getBadges, getCollections, getCollectionBySlug,
+  getFabrics, getOccasions, getBadges, getCollections, getCollectionBySlug, getCollectionProductIds,
   getReelItems, getFaqItems, logSearchQuery,
   ADMIN_ROLES, logActivity,
   logNotification,

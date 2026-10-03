@@ -77,7 +77,7 @@ router.post('/merge', async (req, res) => {
   }
 });
 
-router.delete('/:productId', async (req, res) => {
+router.delete('/:productId(\\d{1,9})', async (req, res) => {
   try {
     must(await supabase.from('wishlist_items').delete().eq('user_id', req.userId).eq('product_id', Number(req.params.productId)), 'wishlist:delete');
     res.json({ products: await shapedWishlist(req.userId) });

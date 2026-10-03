@@ -113,6 +113,7 @@
             <div class="editor-tabs" id="storefrontTabs">
               <button data-stab="hero" class="active">Hero</button>
               <button data-stab="promo">Promo Band</button>
+              <button data-stab="shopall">Shop-all Band</button>
               <button data-stab="reels">Sarees in Motion</button>
               <button data-stab="upcoming">Upcoming Sarees</button>
               <button data-stab="faq">FAQ</button>
@@ -136,6 +137,25 @@
               <button class="btn btn-outline btn-sm" id="printSelectedSlips" style="display:none;">Print Packing Slips (<span id="selectedSlipCount">0</span>)</button>
               <input type="search" class="admin-input" id="orderSearchBox" placeholder="Search order #, customer name or email…" style="max-width:280px;margin-left:auto;">
             </div>
+            <details class="editor-card" id="bulkStatusCard" style="margin-bottom:16px;">
+              <summary style="cursor:pointer;font-weight:600;color:var(--maroon-deep);">Bulk update status — upload a sheet of order IDs</summary>
+              <div style="margin-top:14px;">
+                <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px;">List the day's order IDs in a spreadsheet — <strong>only the order IDs</strong>, one per row in column A — pick the status, upload, check the preview, then apply. Customers see the new status on Track Order straight away and get an email. Cancelled orders, orders already at (or past) that status, and orders with a pending cancellation request are skipped and listed for you.</p>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+                  <button class="btn btn-outline btn-sm" id="bulkTplXlsx">⬇ Download Excel template (.xlsx)</button>
+                  <button class="btn btn-outline btn-sm" id="bulkTplCsv">⬇ Download CSV template</button>
+                </div>
+                <div class="form-row-2">
+                  <div class="form-field"><label>Mark these orders as</label>
+                    <select id="bulkStatus" class="admin-input"><option>Packed</option><option>Shipped</option><option>Out for Delivery</option><option>Delivered</option></select>
+                  </div>
+                  <div class="form-field"><label>Filled-in sheet (.xlsx or .csv)</label><input type="file" id="bulkFile" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>
+                </div>
+                <label style="font-size:12.5px;display:block;margin-bottom:12px;"><input type="checkbox" id="bulkNotify" checked> Email each customer about the new status</label>
+                <button class="btn btn-primary btn-sm" id="bulkPreviewBtn">Preview changes</button>
+                <div id="bulkResult" style="margin-top:16px;"></div>
+              </div>
+            </details>
             <div class="order-filter-row" id="orderStatusFilters"></div>
             <div style="overflow-x:auto;">
               <table class="admin-table" id="ordersTable"></table>
@@ -239,7 +259,7 @@
             <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">How many days after delivery a customer can request a return. This is the one place that number lives — the Shipping &amp; Returns page and every eligibility check read it from here.</p>
             <div class="admin-form" id="returnPolicyForm"></div>
 
-            <h3 style="font-size:15px;margin:28px 0 6px;">Tracking Timing</h3>
+            <h3 style="font-size:15px;margin:28px 0 6px;">Order Tracking</h3>
             <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Hours after an order is placed before its automatic status advances to each stage. An admin's manual override on an individual order always takes priority over this.</p>
             <div class="admin-form" id="trackingSettingsForm"></div>
 
@@ -344,6 +364,50 @@
         : 'No backup has run yet.';
     }catch(e){ toast(e.message, 'error'); }
   }
+
+  // ---- Table pagination ----
+  // Long admin tables (products, orders, customers...) show 25 rows at a time.
+  // Done on the DOM so the existing render code (and the click handlers it
+  // attaches to rows) stays untouched: whenever a table's markup is replaced, a
+  // MutationObserver re-pages it. The page number is remembered per table so an
+  // action that reloads the list (changing an order's status, say) doesn't throw
+  // you back to page 1.
+  const ADMIN_PAGE_SIZE = 25;
+  const adminPagerPage = {};
+  function pageAdminTable(table){
+    const id = table.id;
+    const wrap = table.parentNode;
+    let pager = document.getElementById('pager-' + id);
+    const rows = [...table.querySelectorAll('tbody > tr')].filter(r => !(r.children.length === 1 && r.children[0].hasAttribute('colspan')));
+    if(rows.length <= ADMIN_PAGE_SIZE){
+      if(pager) pager.remove();
+      rows.forEach(r => { r.style.display = ''; });
+      return;
+    }
+    if(!pager){
+      pager = document.createElement('div');
+      pager.id = 'pager-' + id;
+      pager.className = 'admin-pager';
+      wrap.insertAdjacentElement('afterend', pager);
+    }
+    const pages = Math.ceil(rows.length / ADMIN_PAGE_SIZE);
+    const go = n => { adminPagerPage[id] = Math.min(Math.max(1, n), pages); pageAdminTable(table); };
+    const cur = Math.min(adminPagerPage[id] || 1, pages);
+    adminPagerPage[id] = cur;
+    rows.forEach((r, i) => { r.style.display = (i >= (cur - 1) * ADMIN_PAGE_SIZE && i < cur * ADMIN_PAGE_SIZE) ? '' : 'none'; });
+    // First, last, current and its neighbours; "..." fills the gaps.
+    const nums = [...new Set([1, pages, cur - 1, cur, cur + 1].filter(n => n >= 1 && n <= pages))].sort((a, b) => a - b);
+    let btns = '', prev = 0;
+    nums.forEach(n => { if(n - prev > 1) btns += '<span class="gap">&hellip;</span>'; btns += `<button data-pg="${n}" class="${n === cur ? 'on' : ''}">${n}</button>`; prev = n; });
+    pager.innerHTML = `<span>Showing ${(cur - 1) * ADMIN_PAGE_SIZE + 1}&ndash;${Math.min(cur * ADMIN_PAGE_SIZE, rows.length)} of ${rows.length}</span>
+      <span class="admin-pager-btns"><button data-pg="${cur - 1}" ${cur === 1 ? 'disabled' : ''}>&lsaquo; Prev</button>${btns}<button data-pg="${cur + 1}" ${cur === pages ? 'disabled' : ''}>Next &rsaquo;</button></span>`;
+    pager.querySelectorAll('[data-pg]').forEach(b => b.addEventListener('click', () => go(Number(b.dataset.pg))));
+  }
+  ['productsTable','ordersTable','returnsTable','inventoryTable','customersTable','reviewsTable','notificationsLogTable'].forEach(id => {
+    const t = document.getElementById(id);
+    if(!t) return;
+    new MutationObserver(() => pageAdminTable(t)).observe(t, {childList: true});
+  });
 
   let allProducts = [];
   let openProductId = null;
@@ -469,8 +533,8 @@
 
   function mediaThumbHTML(m){
     const inner = m.type === 'video'
-      ? `<video src="${m.url}" muted></video>`
-      : `<img src="${m.url}" alt="${m.alt||''}">`;
+      ? `<video src="${m.url}" muted preload="metadata"></video>`
+      : `<img src="${m.url}" alt="${m.alt||''}" loading="lazy" decoding="async">`;
     return `<div class="media-thumb ${m.isPrimary?'is-primary':''}">
       ${inner}
       <div class="media-del" data-del-media="${m.id}">×</div>
@@ -507,7 +571,7 @@
             <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px;">Add 2-3 photos for this colour — customers can flip through them on the product page. Click + again for each extra photo, and "Set primary" to choose which one shows first.</p>
             <div class="variant-media-strip">
               ${v.media.map(mediaThumbHTML).join('')}
-              <label class="upload-label">+<input type="file" accept="image/*,video/*" style="display:none;" data-upload-media="${v.id}"></label>
+              <label class="upload-label">+<input type="file" accept="image/*,video/*" multiple style="display:none;" data-upload-media="${v.id}"></label>
             </div>
           </div>
         </div>`).join('')}
@@ -571,19 +635,38 @@
         renderProductEditor();
       }catch(e){ toast(e.message, 'error'); }
     }));
+    // Several photos can be picked at once; they upload one after another
+    // (so the first becomes primary and order matches the pick order), each
+    // shrunk first. The label shows progress so a slow connection never looks
+    // like a frozen page.
     body.querySelectorAll('[data-upload-media]').forEach(input=>input.addEventListener('change', async (e)=>{
-      const file = e.target.files[0];
-      if(!file) return;
-      const fd = new FormData();
-      fd.append('file', file);
+      const files = [...e.target.files];
+      if(!files.length) return;
+      const label = input.closest('.upload-label');
+      const idleText = label.firstChild.textContent;
+      input.disabled = true;
+      let done = 0;
       try{
-        await fetch('/api/admin/variants/' + input.dataset.uploadMedia + '/media', {
-          method:'POST', headers: { Authorization: 'Bearer ' + getAdminToken() }, body: fd
-        }).then(async r => { if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.message || 'Upload failed'); } });
-        toast('Media uploaded');
-        await loadProducts();
-        renderProductEditor();
-      }catch(err){ toast(err.message, 'error'); }
+        for(const original of files){
+          label.firstChild.textContent = `${done + 1}/${files.length}…`;
+          const file = await prepareImageForUpload(original);
+          const fd = new FormData();
+          fd.append('file', file);
+          const r = await fetch('/api/admin/variants/' + input.dataset.uploadMedia + '/media', {
+            method:'POST', headers: { Authorization: 'Bearer ' + getAdminToken() }, body: fd
+          });
+          if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.message || 'Upload failed'); }
+          done++;
+        }
+        toast(done === 1 ? 'Photo uploaded' : `${done} photos uploaded`);
+      }catch(err){
+        toast(done ? `${done} uploaded, then: ${err.message}` : err.message, 'error');
+      }finally{
+        label.firstChild.textContent = idleText;
+        input.disabled = false;
+      }
+      await loadProducts();
+      renderProductEditor();
     }));
 
     document.getElementById('addVariantBtn').addEventListener('click', async ()=>{
@@ -672,6 +755,77 @@
     btn.style.display = selectedOrderIds.size ? 'inline-flex' : 'none';
     document.getElementById('selectedSlipCount').textContent = selectedOrderIds.size;
   }
+
+  // ---- Bulk status update ----
+  (function(){
+    const bEsc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+    const resultEl = document.getElementById('bulkResult');
+    let pending = null; // {status, ids} from the last successful preview
+
+    document.getElementById('bulkTplXlsx').addEventListener('click', ()=>adminDownloadFile('/admin/orders/bulk-status/template.xlsx').catch(e=>toast(e.message,'error')));
+    document.getElementById('bulkTplCsv').addEventListener('click', ()=>adminDownloadFile('/admin/orders/bulk-status/template.csv').catch(e=>toast(e.message,'error')));
+    // A new file or a different status invalidates any preview already on screen.
+    ['bulkFile','bulkStatus'].forEach(id => document.getElementById(id).addEventListener('change', ()=>{ pending = null; resultEl.innerHTML = ''; }));
+
+    document.getElementById('bulkPreviewBtn').addEventListener('click', async ()=>{
+      const file = document.getElementById('bulkFile').files[0];
+      const status = document.getElementById('bulkStatus').value;
+      if(!file) return toast('Choose the filled-in sheet first.', 'error');
+      const btn = document.getElementById('bulkPreviewBtn');
+      btn.disabled = true; btn.textContent = 'Reading…';
+      try{
+        const token = getAdminToken();
+        const res = await fetch(API_BASE + '/admin/orders/bulk-status/preview?status=' + encodeURIComponent(status), {
+          method: 'POST', headers: Object.assign({'Content-Type':'application/octet-stream'}, token ? {Authorization:'Bearer ' + token} : {}), body: file
+        });
+        let data = {};
+        try{ data = await res.json(); }catch(e){ /* no body */ }
+        if(res.status === 401){ clearAdminToken(); window.location.href = '/admin-login'; return; }
+        if(!res.ok) throw new Error(data.message || 'Could not read that file.');
+        renderPreview(data);
+      }catch(e){ pending = null; resultEl.innerHTML = ''; toast(e.message, 'error'); }
+      finally{ btn.disabled = false; btn.textContent = 'Preview changes'; }
+    });
+
+    function renderPreview(d){
+      const c = d.counts;
+      const updatable = d.rows.filter(r => r.outcome === 'update').map(r => r.orderId);
+      pending = updatable.length ? {status: d.status, ids: updatable} : null;
+      const chip = (n, label, color) => `<span style="display:inline-block;padding:4px 12px;border-radius:20px;background:${color};font-size:12.5px;margin:0 8px 8px 0;"><strong>${n}</strong> ${label}</span>`;
+      resultEl.innerHTML = `
+        <div>${chip(c.update, 'will be marked ' + bEsc(d.status), 'rgba(126,160,67,0.18)')}${c.skip ? chip(c.skip, 'skipped', 'rgba(184,127,85,0.2)') : ''}${c.notFound ? chip(c.notFound, 'not found', 'rgba(173,59,92,0.15)') : ''}${c.duplicates ? chip(c.duplicates, 'duplicate row' + (c.duplicates === 1 ? '' : 's') + ' ignored', 'rgba(61,34,41,0.08)') : ''}</div>
+        <div style="max-height:340px;overflow:auto;border:1px solid rgba(173,59,92,0.12);border-radius:4px;">
+          <table class="admin-table" style="min-width:0;">
+            <thead><tr><th>Order</th><th>Customer</th><th>Result</th></tr></thead>
+            <tbody>${d.rows.map(r => `<tr>
+              <td>#${bEsc(r.orderId)}</td><td>${bEsc(r.customer || '—')}</td>
+              <td style="color:${r.outcome === 'update' ? 'var(--teal)' : r.outcome === 'notfound' ? 'var(--maroon)' : 'var(--ink-soft)'};font-weight:${r.outcome === 'update' ? 600 : 400};">${bEsc(r.message)}</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+        <div style="margin-top:14px;">${updatable.length
+          ? `<button class="btn btn-primary btn-sm" id="bulkApplyBtn">Mark ${updatable.length} order${updatable.length === 1 ? '' : 's'} as ${bEsc(d.status)}</button>`
+          : `<p style="font-size:13px;color:var(--ink-soft);">Nothing to update from this file.</p>`}</div>`;
+      const apply = document.getElementById('bulkApplyBtn');
+      if(apply) apply.addEventListener('click', applyBulk);
+    }
+
+    async function applyBulk(){
+      if(!pending) return;
+      const btn = document.getElementById('bulkApplyBtn');
+      btn.disabled = true; btn.textContent = 'Updating…';
+      try{
+        const notify = document.getElementById('bulkNotify').checked;
+        const r = await adminApiFetch('/admin/orders/bulk-status/apply', {method:'POST', body: JSON.stringify({status: pending.status, orderIds: pending.ids, notify})});
+        const status = pending.status;
+        pending = null;
+        resultEl.innerHTML = `<div class="editor-card" style="background:rgba(126,160,67,0.12);"><strong>${r.updated} order${r.updated === 1 ? '' : 's'} marked ${bEsc(status)}.</strong>${r.emailsQueued ? ` Emailing ${r.emailsQueued} customer${r.emailsQueued === 1 ? '' : 's'} now.` : ''}${r.skipped.length ? `<br><span style="font-size:12.5px;color:var(--ink-soft);">${r.skipped.length} skipped since the preview: ${r.skipped.slice(0, 8).map(x => '#' + bEsc(x.orderId) + ' (' + bEsc(x.message) + ')').join('; ')}${r.skipped.length > 8 ? '…' : ''}</span>` : ''}</div>`;
+        document.getElementById('bulkFile').value = '';
+        toast(r.updated + ' order' + (r.updated === 1 ? '' : 's') + ' updated');
+        loadOrders();
+      }catch(e){ toast(e.message, 'error'); btn.disabled = false; btn.textContent = 'Try again'; }
+    }
+  })();
 
   async function loadOrders(){
     document.getElementById('orderStatusFilters').innerHTML = ORDER_FILTERS.map(f=>
@@ -1308,19 +1462,26 @@
 
   async function loadSettings(){
     try{
-      const {timing} = await adminApiFetch('/admin/settings/tracking');
+      const {timing, mode} = await adminApiFetch('/admin/settings/tracking');
       document.getElementById('trackingSettingsForm').innerHTML = `
+        <div class="form-field" style="max-width:520px;margin-bottom:16px;"><label>How order tracking moves</label>
+          <select id="trackingMode" class="admin-input" style="width:100%;">
+            <option value="manual" ${mode==='manual'?'selected':''}>Manual — orders stay “Confirmed” until I mark them (bulk upload or the Orders list)</option>
+            <option value="simulated" ${mode!=='manual'?'selected':''}>Automatic demo — status advances on the timing below</option>
+          </select>
+          <span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:6px;">Switching to Manual only affects orders placed from now on; earlier orders keep behaving as they do today. The hour counts below apply to Automatic only.</span>
+        </div>
         <div class="form-row-2">
           ${STAGE_NAMES.map(s=>`<div class="form-field"><label>${s} (hours after order placed)</label><input type="number" min="0" class="admin-input" style="width:100%;" data-stage="${s}" value="${timing[s]}"></div>`).join('')}
         </div>
-        <button class="btn btn-primary btn-sm" id="saveTracking">Save Tracking Timing</button>`;
+        <button class="btn btn-primary btn-sm" id="saveTracking">Save Tracking Settings</button>`;
 
       document.getElementById('saveTracking').addEventListener('click', async ()=>{
         const newTiming = {};
         document.querySelectorAll('[data-stage]').forEach(inp => newTiming[inp.dataset.stage] = inp.value);
         try{
-          await adminApiFetch('/admin/settings/tracking', {method:'PUT', body: JSON.stringify({timing: newTiming})});
-          toast('Tracking timing saved');
+          await adminApiFetch('/admin/settings/tracking', {method:'PUT', body: JSON.stringify({timing: newTiming, mode: document.getElementById('trackingMode').value})});
+          toast('Tracking settings saved');
         }catch(e){ toast(e.message, 'error'); }
       });
     }catch(e){ toast(e.message, 'error'); }
@@ -1402,7 +1563,30 @@
 
   function slugify(s){ return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
 
+  // Phone photos are 5-25MB. Shrunk here (longest side ≤2000px, JPEG ~85%) a
+  // typical photo becomes a few hundred KB — uploads fast, and the storefront
+  // isn't left serving a 20MB image to every visitor. GIFs/videos and images
+  // that are already small pass through untouched. createImageBitmap applies
+  // the photo's EXIF rotation, so portraits don't come out sideways.
+  async function prepareImageForUpload(file, maxDim = 2000, quality = 0.85){
+    if(!/^image\/(jpeg|png|webp)$/.test(file.type)) return file;
+    let bitmap;
+    try{ bitmap = await createImageBitmap(file); }catch(_){ return file; }
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    if(scale === 1 && file.size <= 800 * 1024){ bitmap.close(); return file; }
+    const w = Math.round(bitmap.width * scale), h = Math.round(bitmap.height * scale);
+    const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+    const g = canvas.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
+    g.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', quality));
+    if(!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
+  }
+
   async function uploadEntityImage(url, fieldName, file, extra){
+    file = await prepareImageForUpload(file);
     const fd = new FormData();
     fd.append('file', file);
     if(extra) Object.entries(extra).forEach(([k,v])=>fd.append(k,v));
@@ -1617,10 +1801,16 @@
   }
 
   // ---- Collections ----
+  // A collection is a hand-picked set: tick the products that belong to it.
+  // Every product still shows in All Sarees no matter what — collections are
+  // an extra, editorial way to browse. The thumbnail is the picture on the
+  // /collections cards; the hero image is the big banner at the top of the
+  // collection's own page.
   async function renderCollectionsTab(){
     const body = document.getElementById('catalogTabBody');
     body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
-    const [{collections}, {fabrics}] = await Promise.all([adminApiFetch('/admin/collections'), adminApiFetch('/admin/fabrics')]);
+    const [{collections}, {products}] = await Promise.all([adminApiFetch('/admin/collections'), adminApiFetch('/admin/products')]);
+    const taggable = products.filter(p => p.status !== 'archived');
     body.innerHTML = `
       <div style="overflow-x:auto;">
         <table class="admin-table">
@@ -1640,42 +1830,68 @@
     function openCollForm(c){
       const editor = document.getElementById('collEditor');
       const isNew = !c;
-      c = c || { id:null, name:'', slug:'', description:'', tagline:'', weaves:[], active:1, banner_image:null };
+      c = c || { id:null, name:'', slug:'', description:'', tagline:'', active:true, productIds:[], banner_image:null, thumbnail:null };
+      const tagged = new Set(c.productIds);
       editor.innerHTML = `
         <div class="editor-card">
           <h4 style="font-family:var(--font-body);font-size:14px;margin-bottom:12px;">${isNew?'New Collection':'Edit '+c.name}</h4>
           <div class="form-row-2">
             <div class="form-field"><label>Name</label><input id="cName" value="${c.name}"></div>
-            <div class="form-field"><label>Slug</label><input id="cSlug" value="${c.slug}"></div>
+            <div class="form-field"><label>Slug (the page address)</label><input id="cSlug" value="${c.slug}"></div>
           </div>
-          <div class="form-field"><label>Tagline</label><input id="cTagline" value="${c.tagline||''}" placeholder="e.g. Many Weaves. One Heritage."></div>
-          <div class="form-field"><label>Description (meaning / story)</label><input id="cDesc" value="${c.description||''}"></div>
-          ${!isNew ? `<div class="form-field"><label>Banner Image</label><input type="file" accept="image/*" id="cBannerUpload">${c.banner_image?`<img src="${c.banner_image}" style="height:60px;margin-top:8px;border-radius:4px;">`:''}</div>` : ''}
-          <label style="font-size:12.5px;"><input type="checkbox" id="cActive" ${c.active?'checked':''}> Active</label>
+          <div class="form-field"><label>Tagline (short line under the name)</label><input id="cTagline" value="${c.tagline||''}" placeholder="e.g. Many Weaves. One Heritage."></div>
+          <div class="form-field"><label>Description (meaning / story, shown on the collection page)</label><textarea id="cDesc" rows="3">${c.description||''}</textarea></div>
+          <div class="form-row-2">
+            <div class="form-field"><label>Thumbnail (the picture on the Collections page card)</label><input type="file" accept="image/*" id="cThumbUpload">${c.thumbnail?`<img src="${c.thumbnail}" style="height:60px;margin-top:8px;border-radius:4px;">`:''}</div>
+            <div class="form-field"><label>Hero image (big banner at the top of the collection page)</label><input type="file" accept="image/*" id="cBannerUpload">${c.banner_image?`<img src="${c.banner_image}" style="height:60px;margin-top:8px;border-radius:4px;">`:''}</div>
+          </div>
+          <label style="font-size:12.5px;"><input type="checkbox" id="cActive" ${c.active?'checked':''}> Active (visible on the website)</label>
           <div style="margin-top:14px;">
-            <label style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:8px;">Weaves in this collection — every saree of these fabrics is included automatically, no per-product step needed</label>
-            <div style="max-height:180px;overflow-y:auto;border:1px solid rgba(173,59,92,0.15);border-radius:4px;padding:10px;">
-              ${fabrics.map(f=>`<label style="display:block;font-size:12.5px;padding:4px 0;"><input type="checkbox" class="cWeaveCheck" value="${f.name}" ${(c.weaves||[]).includes(f.name)?'checked':''}> ${f.name}</label>`).join('')}
+            <label style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:8px;">Products in this collection — <strong id="cProdCount">${tagged.size}</strong> selected</label>
+            <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+              <input id="cProdSearch" type="search" placeholder="Search products…" style="flex:1;min-width:160px;padding:8px 10px;border:1px solid rgba(173,59,92,0.2);border-radius:4px;font-size:13px;">
+              <button type="button" class="btn btn-sm btn-outline" id="cProdAll">Select shown</button>
+              <button type="button" class="btn btn-sm btn-outline" id="cProdNone">Clear shown</button>
+            </div>
+            <div id="cProdList" style="max-height:260px;overflow-y:auto;border:1px solid rgba(173,59,92,0.15);border-radius:4px;padding:10px;">
+              ${taggable.map(p=>`<label class="cProdRow" data-name="${(p.name+' '+p.fabric).toLowerCase()}" style="display:block;font-size:12.5px;padding:4px 0;"><input type="checkbox" class="cProdCheck" value="${p.id}" ${tagged.has(p.id)?'checked':''}> ${p.name} <span style="color:var(--ink-soft);">· ${p.fabric}${p.badge==='sale'?' · on sale — shows only on the Sale page':''}</span></label>`).join('')}
             </div>
           </div>
           <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="cSave">${isNew?'Create Collection':'Save Changes'}</button> <button class="btn btn-sm" id="cCancel">Cancel</button></div>
         </div>`;
+
+      const countEl = document.getElementById('cProdCount');
+      const refreshCount = () => { countEl.textContent = document.querySelectorAll('.cProdCheck:checked').length; };
+      editor.querySelectorAll('.cProdCheck').forEach(cb => cb.addEventListener('change', refreshCount));
+      const shownRows = () => [...editor.querySelectorAll('.cProdRow')].filter(r => r.style.display !== 'none');
+      document.getElementById('cProdSearch').addEventListener('input', e => {
+        const q = e.target.value.trim().toLowerCase();
+        editor.querySelectorAll('.cProdRow').forEach(r => { r.style.display = !q || r.dataset.name.includes(q) ? 'block' : 'none'; });
+      });
+      document.getElementById('cProdAll').addEventListener('click', () => { shownRows().forEach(r => r.querySelector('input').checked = true); refreshCount(); });
+      document.getElementById('cProdNone').addEventListener('click', () => { shownRows().forEach(r => r.querySelector('input').checked = false); refreshCount(); });
+
       if(!c.slug) document.getElementById('cName').addEventListener('input', e=>{ document.getElementById('cSlug').value = slugify(e.target.value); });
       document.getElementById('cCancel').addEventListener('click', ()=>{ editor.innerHTML=''; });
       document.getElementById('cSave').addEventListener('click', async ()=>{
-        const weaves = [...document.querySelectorAll('.cWeaveCheck:checked')].map(i=>i.value);
-        const payload = { name: document.getElementById('cName').value, slug: document.getElementById('cSlug').value, description: document.getElementById('cDesc').value, tagline: document.getElementById('cTagline').value, weaves, active: document.getElementById('cActive').checked };
+        const payload = { name: document.getElementById('cName').value, slug: document.getElementById('cSlug').value, description: document.getElementById('cDesc').value, tagline: document.getElementById('cTagline').value, active: document.getElementById('cActive').checked };
+        const saveBtn = document.getElementById('cSave');
+        saveBtn.disabled = true;
         try{
           const saved = isNew
             ? await adminApiFetch('/admin/collections', {method:'POST', body: JSON.stringify(payload)})
             : await adminApiFetch('/admin/collections/'+c.id, {method:'PUT', body: JSON.stringify(payload)});
           const collId = saved.collection?.id || c.id;
-          const bannerInput = document.getElementById('cBannerUpload');
-          if(bannerInput && bannerInput.files[0]) await uploadEntityImage('/api/admin/collections/'+collId+'/image', 'file', bannerInput.files[0], {slot:'banner'});
+          const ids = [...document.querySelectorAll('.cProdCheck:checked')].map(i=>Number(i.value));
+          await adminApiFetch('/admin/collections/'+collId+'/products', {method:'PUT', body: JSON.stringify({productIds: ids})});
+          const thumb = document.getElementById('cThumbUpload').files[0];
+          const banner = document.getElementById('cBannerUpload').files[0];
+          if(thumb) await uploadEntityImage('/api/admin/collections/'+collId+'/image', 'file', thumb, {slot:'thumbnail'});
+          if(banner) await uploadEntityImage('/api/admin/collections/'+collId+'/image', 'file', banner, {slot:'banner'});
           toast(isNew?'Collection created':'Collection saved');
           editor.innerHTML='';
           renderCollectionsTab();
-        }catch(e){ toast(e.message, 'error'); }
+        }catch(e){ toast(e.message, 'error'); saveBtn.disabled = false; }
       });
     }
 
@@ -1684,7 +1900,7 @@
       openCollForm(collections.find(x=>x.id===Number(btn.dataset.collEdit)));
     }));
     body.querySelectorAll('[data-coll-del]').forEach(btn=>btn.addEventListener('click', async ()=>{
-      const ok = await showConfirmDialog('This removes the collection and its product assignments.', {title:'Delete this collection?', confirmLabel:'Delete', danger:true});
+      const ok = await showConfirmDialog('This removes the collection and its product tags. The products themselves stay in the shop.', {title:'Delete this collection?', confirmLabel:'Delete', danger:true});
       if(!ok) return;
       try{ await adminApiFetch('/admin/collections/'+btn.dataset.collDel, {method:'DELETE'}); toast('Collection deleted'); renderCollectionsTab(); }
       catch(e){ toast(e.message, 'error'); }
@@ -1796,6 +2012,7 @@
   function renderStorefrontTab(){
     if(storefrontTab==='hero') renderHeroAdmin();
     else if(storefrontTab==='promo') renderPromoAdmin();
+    else if(storefrontTab==='shopall') renderShopAllAdmin();
     else if(storefrontTab==='reels') renderReelsAdmin();
     else if(storefrontTab==='upcoming') renderUpcomingAdmin();
     else if(storefrontTab==='faq') renderFaqAdmin();
@@ -1805,42 +2022,86 @@
   async function renderHeroAdmin(){
     const body = document.getElementById('storefrontTabBody');
     body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
-    const {hero: h} = await adminApiFetch('/admin/content/hero');
+    const [{hero: h}, {collections: heroColls}] = await Promise.all([adminApiFetch('/admin/content/hero'), adminApiFetch('/admin/collections')]);
+    // The button/image link is picked from the real collections (plus All
+    // Sarees) so it can never point at a typo'd URL. A link saved earlier that
+    // matches none of them (e.g. hand-typed) is kept as its own option rather
+    // than silently swapped.
+    const heroAttr = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    const heroLinkOpts = [{v:'/shop', l:'All Sarees'}].concat(heroColls.map(c => ({
+      v: '/collection?slug=' + encodeURIComponent(c.slug),
+      l: 'Collection: ' + c.name + (!c.active ? ' (inactive)' : (c.productCount ? '' : ' (no products yet)'))
+    })));
+    const heroCurLink = h.ctaLink || '/shop';
+    if(!heroLinkOpts.some(o => o.v === heroCurLink)) heroLinkOpts.push({v: heroCurLink, l: 'Custom link: ' + heroCurLink});
     body.innerHTML = `
       <div class="editor-card">
+        <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">The big image at the top of the homepage. The whole image is clickable and zooms slightly on hover; the button sits in the centre.</p>
         <div class="form-row-2">
-          <div class="form-field"><label>Eyebrow</label><input id="hEyebrow" value="${h.eyebrow||''}"></div>
-          <div class="form-field"><label>CTA Text / Link</label><input id="hCtaText" value="${h.ctaText||''}" style="margin-bottom:6px;"><input id="hCtaLink" value="${h.ctaLink||''}"></div>
+          <div class="form-field"><label>Desktop Image (wide, e.g. 2400×1000)</label><input type="file" accept="image/*" id="hImgDesktop">${h.desktopImage?`<img src="${h.desktopImage}" style="height:70px;margin-top:8px;border-radius:4px;">`:''}</div>
+          <div class="form-field"><label>Mobile Image (optional, tall, e.g. 1080×1350)</label><input type="file" accept="image/*" id="hImgMobile">${h.mobileImage?`<img src="${h.mobileImage}" style="height:70px;margin-top:8px;border-radius:4px;">`:'<span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:6px;">Not set — the desktop image is used on phones too.</span>'}</div>
         </div>
-        <label style="font-size:12px;color:var(--ink-soft);">Heading (three parts — the middle one renders in gold)</label>
-        <div class="form-row-2" style="margin-top:6px;">
-          <div class="form-field"><input id="hPre" placeholder="Drape a story" value="${h.headingPre||''}"></div>
-          <div class="form-field"><input id="hEm" placeholder="woven" value="${h.headingEm||''}"></div>
-        </div>
-        <div class="form-field"><input id="hPost" placeholder="in silk and gold" value="${h.headingPost||''}"></div>
-        <div class="form-field"><label>Subheading</label><textarea id="hSub" rows="2">${h.subheading||''}</textarea></div>
         <div class="form-row-2">
-          <div class="form-field"><label>Badge Label</label><input id="hBadgeLabel" value="${h.badgeLabel||''}"></div>
-          <div class="form-field"><label>Badge Value</label><input id="hBadgeValue" value="${h.badgeValue||''}"></div>
+          <div class="form-field"><label>Button Text</label><input id="hCtaText" value="${h.ctaText||''}" placeholder="Shop All Sarees"></div>
+          <div class="form-field"><label>Opens (image and button)</label><select id="hCtaLink">${heroLinkOpts.map(o=>`<option value="${heroAttr(o.v)}" ${o.v===heroCurLink?'selected':''}>${heroAttr(o.l)}</option>`).join('')}</select></div>
         </div>
-        <div class="form-field"><label>Desktop Image</label><input type="file" accept="image/*" id="hImgUpload">${h.desktopImage?`<img src="${h.desktopImage}" style="height:70px;margin-top:8px;border-radius:4px;">`:''}</div>
-        <label style="font-size:12.5px;"><input type="checkbox" id="hActive" ${h.active?'checked':''}> Show hero banner</label>
+        <div class="form-field"><label>Image description (for screen readers / SEO)</label><input id="hAlt" value="${h.altText||''}" placeholder="Handloom sarees from Padmora"></div>
+        <label style="font-size:12.5px;"><input type="checkbox" id="hActive" ${h.active!==false?'checked':''}> Show hero banner</label>
         <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="hSave">Save Hero</button></div>
       </div>`;
+
+    // Picking a destination suggests a matching button label ("Shop All Sarees",
+    // "Explore Padmavali") — but only while the label is blank or still an
+    // earlier suggestion, so a label the admin wrote themselves is never overwritten.
+    const heroSuggest = v => v === '/shop' ? 'Shop All Sarees' : 'Explore ' + (((heroColls.find(c => '/collection?slug=' + encodeURIComponent(c.slug) === v)) || {}).name || 'the Collection');
+    let heroLastSuggest = heroSuggest(heroCurLink);
+    document.getElementById('hCtaLink').addEventListener('change', e=>{
+      const t = document.getElementById('hCtaText');
+      if(!t.value.trim() || t.value === heroLastSuggest){ heroLastSuggest = heroSuggest(e.target.value); t.value = heroLastSuggest; }
+      else heroLastSuggest = heroSuggest(e.target.value);
+    });
 
     document.getElementById('hSave').addEventListener('click', async ()=>{
       try{
         await adminApiFetch('/admin/content/hero', {method:'PUT', body: JSON.stringify({
-          eyebrow: document.getElementById('hEyebrow').value, ctaText: document.getElementById('hCtaText').value,
-          ctaLink: document.getElementById('hCtaLink').value, headingPre: document.getElementById('hPre').value,
-          headingEm: document.getElementById('hEm').value, headingPost: document.getElementById('hPost').value,
-          subheading: document.getElementById('hSub').value, badgeLabel: document.getElementById('hBadgeLabel').value,
-          badgeValue: document.getElementById('hBadgeValue').value, active: document.getElementById('hActive').checked
+          ctaText: document.getElementById('hCtaText').value, ctaLink: document.getElementById('hCtaLink').value,
+          altText: document.getElementById('hAlt').value, active: document.getElementById('hActive').checked
         })});
-        const imgInput = document.getElementById('hImgUpload');
-        if(imgInput.files[0]) await uploadEntityImage('/api/admin/content/hero/image', 'file', imgInput.files[0]);
+        const desktop = document.getElementById('hImgDesktop').files[0];
+        const mobile = document.getElementById('hImgMobile').files[0];
+        if(desktop) await uploadEntityImage('/api/admin/content/hero/image', 'file', desktop, {slot:'desktop'});
+        if(mobile) await uploadEntityImage('/api/admin/content/hero/image', 'file', mobile, {slot:'mobile'});
         toast('Hero banner saved');
         renderHeroAdmin();
+      }catch(e){ toast(e.message, 'error'); }
+    });
+  }
+
+  // ---- Shop-all band (homepage fan of sarees) ----
+  async function renderShopAllAdmin(){
+    const body = document.getElementById('storefrontTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const [{productIds}, {products}] = await Promise.all([adminApiFetch('/admin/content/shop-all'), adminApiFetch('/admin/products')]);
+    const live = products.filter(p => p.status !== 'archived').sort((a,b) => a.name.localeCompare(b.name));
+    const optAttr = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    const slot = i => `
+      <div class="form-field"><label>Saree ${i+1}</label>
+        <select class="saAdminPick"><option value="">— Automatic (most popular) —</option>${live.map(p=>`<option value="${p.id}" ${Number(productIds[i])===p.id?'selected':''}>${optAttr(p.name)}</option>`).join('')}</select>
+      </div>`;
+    body.innerHTML = `
+      <div class="editor-card">
+        <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">The three sarees fanned out in the “Every saree, one place” band on the homepage. Each card shows that saree’s main photo and links to it. Leave all three on Automatic to show the most popular sarees.</p>
+        <div class="form-row-2">${slot(0)}${slot(1)}</div>
+        <div class="form-row-2">${slot(2)}<div></div></div>
+        <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="saSave">Save</button></div>
+      </div>`;
+    document.getElementById('saSave').addEventListener('click', async ()=>{
+      try{
+        const picks = [...document.querySelectorAll('.saAdminPick')].map(s => s.value).filter(Boolean);
+        if(new Set(picks).size !== picks.length) return toast('Pick three different sarees.', 'error');
+        await adminApiFetch('/admin/content/shop-all', {method:'PUT', body: JSON.stringify({productIds: picks.map(Number)})});
+        toast('Shop-all band saved');
+        renderShopAllAdmin();
       }catch(e){ toast(e.message, 'error'); }
     });
   }

@@ -59,7 +59,7 @@ router.get('/reels', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     let products = (await getProducts()).filter(p => p.status !== 'archived').map(toProductApiShape);
-    const { fabric, occasion, color, maxPrice, search, sort, badge, collection } = req.query;
+    const { fabric, occasion, color, maxPrice, search, sort, badge, collection, limit } = req.query;
 
     // Sale-badged sarees live on their own page (see routes GET /?badge=sale
     // and frontend/sale.html) — excluded from every general listing (shop
@@ -71,18 +71,14 @@ router.get('/', async (req, res) => {
       products = products.filter(p => p.badge !== 'sale');
     }
 
-    // Collections page: a weave tile under a collection links here with
-    // ?collection=<slug>&fabric=<name>. A collection's product list isn't a
-    // hand-picked set — it's every active product whose fabric is one of
-    // the collection's own tagged weaves, so adding a new saree in that
-    // fabric means it shows up in every matching collection automatically,
-    // with no separate per-product tagging step. An unknown/inactive slug
-    // matches to nothing rather than erroring, same as any other filter
-    // that matches zero products.
+    // A collection page (/collection?slug=X) lists only the products the
+    // admin tagged into that collection; every other filter/sort/limit below
+    // then applies on top, exactly as on All Sarees. An unknown/inactive slug
+    // matches nothing rather than erroring, like any filter with zero hits.
     if (collection) {
       const coll = await getCollectionBySlug(collection);
-      const weaves = coll ? (coll.weaves || []) : [];
-      products = products.filter(p => weaves.includes(p.fabric));
+      const ids = new Set(coll ? coll.productIds : []);
+      products = products.filter(p => ids.has(p.id));
     }
 
     if (fabric) {
@@ -94,8 +90,9 @@ router.get('/', async (req, res) => {
       products = products.filter(p => occasions.includes(p.occasion));
     }
     if (color) {
-      const colors = color.split(',');
-      products = products.filter(p => colors.includes(p.swatch));
+      // Case-insensitive: admins type swatch keys by hand ("Maroon" vs "maroon").
+      const colors = color.split(',').map(c => c.trim().toLowerCase());
+      products = products.filter(p => colors.includes(String(p.swatch || '').trim().toLowerCase()));
     }
     if (maxPrice) {
       products = products.filter(p => p.price <= Number(maxPrice));
@@ -132,14 +129,24 @@ router.get('/', async (req, res) => {
       });
     }
 
-    res.json({ products });
+    // `limit` is opt-in — every existing caller that never passed it (home
+    // bestsellers, the colour-taxonomy fetch, instant search, the Saree
+    // Finder quiz) keeps getting the full matching list exactly as before.
+    // `total` always reflects the pre-slice count so a paginated caller can
+    // tell whether there's more to load.
+    const total = products.length;
+    if (limit) {
+      products = products.slice(0, Math.max(1, Number(limit) || 20));
+    }
+
+    res.json({ products, total });
   } catch (err) {
     console.error('GET /products failed:', err);
     res.status(500).json({ message: 'Something went wrong on the server.' });
   }
 });
 
-router.get('/:id', async (req, res) => {
+router.get('/:id(\\d{1,9})', async (req, res) => {
   try {
     const id = Number(req.params.id);
     // A non-numeric id (a typo'd link, a stray query string, someone poking
@@ -177,7 +184,7 @@ router.get('/:id', async (req, res) => {
 // "Pre Book" a sold-out variant — no account required, just an email. Real
 // demand data for admin (Inventory → Pre-Book Requests) and a real email the
 // moment backend/utils/prebookAlerts.js sees that variant's stock go above 0.
-router.post('/:id/prebook', async (req, res) => {
+router.post('/:id(\\d{1,9})/prebook', async (req, res) => {
   try {
     const { variantId, email, name } = req.body || {};
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {

@@ -16,15 +16,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <style>
-  .hero{position:relative;overflow:hidden;background:linear-gradient(120deg,var(--ivory) 0%,var(--ivory-deep) 55%,var(--blush) 100%);padding:60px 0 0;}
-  .hero-inner{max-width:1240px;margin:0 auto;padding:0 28px;display:grid;grid-template-columns:1.05fr .95fr;gap:40px;align-items:center;}
-  .hero h1{font-size:clamp(36px,5vw,58px);line-height:1.08;margin:16px 0 18px;}
-  .hero h1 em{font-style:normal;color:var(--gold);}
-  .hero p{font-size:16px;color:var(--ink-soft);max-width:440px;margin-bottom:26px;}
-  .hero-ctas{display:flex;gap:16px;flex-wrap:wrap;}
-  .hero-drape{position:relative;height:460px;border-radius:4px;overflow:hidden;background:linear-gradient(160deg,#7A2740 0%,#AD3B5C 45%,#D9A97C 100%);box-shadow:var(--shadow);}
-  .hero-drape-label{position:absolute;bottom:22px;left:22px;color:var(--ivory);}
-  .hero-drape-label strong{font-family:var(--font-display);font-size:20px;display:block;margin-top:4px;}
   /* Even spacing at every width via gap alone, no border dividers — the old
      border-right/:last-child approach only drew correctly for a single row
      of 4 and left a dangling divider once the 980px breakpoint below wraps
@@ -34,14 +25,6 @@
   .trust-item svg{width:22px;height:22px;stroke:var(--maroon);flex-shrink:0;}
   .trust-item strong{display:block;font-size:13px;}
   .trust-item span{font-size:11.5px;color:var(--ink-soft);}
-  /* .cat-rail / .cat-item / .cat-swatch now live in css/style.css (shared
-     with collection.html's weave-tile rail). */
-  .occasion-grid{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:20px;}
-  .occasion-card{position:relative;min-height:260px;border-radius:4px;overflow:hidden;padding:24px;display:flex;flex-direction:column;justify-content:flex-end;color:var(--ivory);}
-  .occasion-card::before{content:'';position:absolute;inset:0;background:linear-gradient(180deg, transparent 30%, rgba(20,10,10,0.75));}
-  .occasion-card > *{position:relative;z-index:1;}
-  .occasion-card h3{color:var(--ivory);font-size:22px;margin-bottom:6px;}
-  .occasion-card span{font-size:12px;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--gold-soft);padding-bottom:3px;width:fit-content;}
   .reel-rail-wrap{position:relative;}
   .reel-rail{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;padding:6px 28px 28px;scrollbar-width:none;}
   .reel-rail::-webkit-scrollbar{display:none;}
@@ -64,10 +47,96 @@
   @media (max-width:760px){ .reel-scroll-btn{display:none;} }
 
   @media (max-width:980px){
-    .hero-inner{grid-template-columns:1fr;}
-    .hero-drape{height:300px;}
     .trust-strip{grid-template-columns:repeat(2,1fr);}
-    .occasion-grid{grid-template-columns:1fr;}
+  }
+
+  /* Full-width, admin-managed hero image — one picture for desktop, an
+     optional different one under 760px, the whole thing clickable with a
+     slow zoom + button invert on hover. No text of its own; the only copy is
+     the centred button label, also editable from admin. */
+  .home-hero{position:relative;overflow:hidden;background:linear-gradient(160deg,#7A2740 0%,#AD3B5C 45%,#D9A97C 100%);}
+  .home-hero-link{display:block;position:relative;color:inherit;}
+  .home-hero-img{display:block;width:100%;height:auto;max-height:82vh;object-fit:cover;transition:transform .9s ease;}
+  .home-hero-fallback{min-height:62vh;}
+  .home-hero-link::after{content:'';position:absolute;inset:0;background:rgba(20,10,10,0.04);transition:background .4s ease;pointer-events:none;}
+  .home-hero-link:hover::after,.home-hero-link:focus-visible::after{background:rgba(20,10,10,0.2);}
+  .home-hero-link:hover .home-hero-img{transform:scale(1.045);}
+  .home-hero-btn{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2;display:inline-flex;align-items:center;gap:18px;padding:9px 9px 9px 34px;background:rgba(255,240,230,0.96);color:var(--maroon-deep);font-size:13.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;border-radius:999px;box-shadow:0 0 0 7px rgba(255,240,230,0.26),0 14px 34px rgba(0,0,0,0.3);transition:background .35s ease,color .35s ease,transform .35s ease,box-shadow .35s ease;white-space:nowrap;overflow:hidden;}
+  .home-hero-btn::before{content:'';position:absolute;top:0;left:-70%;width:45%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,0.7),transparent);transform:skewX(-20deg);transition:left .8s ease;pointer-events:none;}
+  .home-hero-btn i{position:relative;display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:var(--maroon);transition:background .35s ease;}
+  .home-hero-btn i svg{width:19px;height:19px;stroke:var(--ivory);fill:none;stroke-width:2;transition:transform .35s ease;}
+  .home-hero-link:hover .home-hero-btn,.home-hero-link:focus-visible .home-hero-btn{background:var(--maroon-deep);color:var(--ivory);transform:translate(-50%,-50%) scale(1.06);box-shadow:0 0 0 12px rgba(255,240,230,0.2),0 18px 42px rgba(0,0,0,0.38);}
+  .home-hero-link:hover .home-hero-btn::before,.home-hero-link:focus-visible .home-hero-btn::before{left:130%;}
+  .home-hero-link:hover .home-hero-btn i,.home-hero-link:focus-visible .home-hero-btn i{background:var(--gold);}
+  .home-hero-link:hover .home-hero-btn i svg,.home-hero-link:focus-visible .home-hero-btn i svg{transform:translateX(3px);}
+  @media (max-width:760px){
+    .home-hero-img{max-height:78vh;}
+    .home-hero-fallback{min-height:52vh;}
+    .home-hero-btn{padding:7px 7px 7px 24px;gap:14px;font-size:12px;letter-spacing:.13em;}
+    .home-hero-btn i{width:40px;height:40px;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .home-hero-img,.home-hero-btn,.home-hero-btn::before,.home-hero-btn i svg,.home-hero-link::after{transition:none;}
+    .home-hero-link:hover .home-hero-img{transform:none;}
+  }
+
+  /* Lined rangoli — a line-art kolam motif flanked by a repeating diamond-and-dot
+     chain, drawn in the brand gold. Sits between the hero and Shop by Weave
+     (shown only while the hero is, so it never floats under the header alone). */
+  .rangoli{display:flex;align-items:center;justify-content:center;gap:10px;padding:30px 16px 4px;}
+  .rangoli-line{flex:1 1 0;max-width:420px;height:18px;opacity:.85;
+    background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18' fill='none' stroke='%23B87F55' stroke-width='1'%3E%3Cpath d='M1 9L7 3L13 9L7 15Z'/%3E%3Cpath d='M13 9H17M21 9H24M0 9H1'/%3E%3Ccircle cx='19' cy='9' r='1.6' fill='%23B87F55'/%3E%3C/svg%3E") repeat-x center;}
+  .rangoli-line.left{-webkit-mask-image:linear-gradient(to right,transparent,#000 70%);mask-image:linear-gradient(to right,transparent,#000 70%);}
+  .rangoli-line.right{-webkit-mask-image:linear-gradient(to left,transparent,#000 70%);mask-image:linear-gradient(to left,transparent,#000 70%);}
+  .rangoli-motif{flex:0 0 auto;width:150px;height:46px;color:var(--gold);}
+  .rangoli-motif svg{display:block;width:100%;height:100%;}
+  @media (max-width:760px){ .rangoli{padding-top:22px;} .rangoli-motif{width:118px;height:36px;} }
+
+  /* "Shop all sarees" band — deep-maroon stage with a slowly turning rangoli
+     behind a fan of three real sarees that drift toward the pointer. */
+  .shop-all{position:relative;overflow:hidden;margin-top:56px;color:var(--ivory);
+    background:radial-gradient(120% 140% at 85% 20%,#9C3358 0%,var(--maroon-deep) 48%,#4A1426 100%);}
+  .shop-all-spin{position:absolute;right:-12%;top:50%;width:760px;height:760px;margin-top:-380px;color:var(--gold-soft);opacity:.16;pointer-events:none;animation:shopAllSpin 90s linear infinite;}
+  .shop-all-spin svg{width:100%;height:100%;display:block;}
+  @keyframes shopAllSpin{to{transform:rotate(360deg);}}
+  .shop-all-inner{position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);align-items:center;gap:32px;padding-top:72px;padding-bottom:72px;}
+  .shop-all .eyebrow{color:var(--gold-soft);}
+  .shop-all h2{color:var(--ivory);font-size:clamp(32px,4.2vw,50px);line-height:1.12;margin:12px 0 16px;}
+  .shop-all h2 em{font-style:normal;color:var(--gold-soft);}
+  .shop-all-copy p.lede{font-size:15.5px;line-height:1.7;color:rgba(255,240,230,0.82);max-width:440px;margin-bottom:30px;}
+  .shop-all-btn{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:16px;padding:8px 8px 8px 30px;border-radius:999px;background:var(--ivory);color:var(--maroon-deep);font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;box-shadow:0 10px 30px rgba(0,0,0,0.28);transition:transform .3s ease,box-shadow .3s ease,background .3s ease;}
+  .shop-all-btn::before{content:'';position:absolute;top:0;left:-70%;width:45%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,0.65),transparent);transform:skewX(-20deg);transition:left .7s ease;}
+  .shop-all-btn:hover,.shop-all-btn:focus-visible{transform:translateY(-3px);box-shadow:0 16px 38px rgba(0,0,0,0.34);background:#fff;}
+  .shop-all-btn:hover::before,.shop-all-btn:focus-visible::before{left:130%;}
+  .shop-all-btn i{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:50%;background:var(--maroon);transition:transform .3s ease,background .3s ease;}
+  .shop-all-btn i svg{width:18px;height:18px;stroke:var(--ivory);fill:none;stroke-width:2;transition:transform .3s ease;}
+  .shop-all-btn:hover i{background:var(--maroon-deep);}
+  .shop-all-btn:hover i svg{transform:translateX(3px);}
+  .shop-all-stage{position:relative;height:420px;--mx:0;--my:0;--spread:158px;perspective:1100px;}
+  .sa-card{position:absolute;top:50%;left:50%;width:210px;height:300px;margin:-150px 0 0 -105px;display:block;border-radius:6px;--x:calc(var(--sx) * var(--spread));
+    transform:translate(calc(var(--x) + var(--mx) * var(--depth) * 1px),calc(var(--y) + var(--my) * var(--depth) * 1px)) rotate(var(--rot));
+    transition:transform .5s cubic-bezier(.2,.8,.2,1);z-index:var(--z);}
+  .sa-card:hover,.sa-card:focus-visible{transform:translate(var(--x),calc(var(--y) - 18px)) rotate(0deg) scale(1.08);z-index:9;}
+  .sa-card-inner{position:relative;width:100%;height:100%;border-radius:6px;overflow:hidden;box-shadow:0 22px 44px rgba(0,0,0,0.42);border:4px solid var(--ivory);animation:saFloat 6s ease-in-out infinite;animation-delay:var(--delay);background-size:cover;background-position:center;}
+  @keyframes saFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-9px);}}
+  .sa-card-cap{position:absolute;left:0;right:0;bottom:0;padding:34px 12px 12px;background:linear-gradient(to top,rgba(30,10,16,0.85),transparent);color:var(--ivory);}
+  .sa-card-cap strong{display:block;font-family:var(--font-display);font-weight:400;font-size:15px;line-height:1.25;}
+  .sa-card-cap span{font-size:12px;color:var(--gold-soft);}
+  @media (max-width:980px){
+    .shop-all-inner{grid-template-columns:1fr;text-align:center;padding-top:56px;padding-bottom:48px;}
+    .shop-all-copy p.lede{margin:0 auto 30px;}
+    .shop-all-spin{right:50%;margin-right:-380px;opacity:.12;}
+  }
+  @media (max-width:760px){
+    .shop-all{margin-top:40px;}
+    .shop-all-stage{height:330px;--spread:108px;}
+    .sa-card{width:150px;height:216px;margin:-108px 0 0 -75px;}
+    .sa-card-cap{padding:24px 9px 9px;} .sa-card-cap strong{font-size:13px;} .sa-card-cap span{font-size:11px;}
+    .shop-all-btn{padding-left:24px;font-size:12px;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .shop-all-spin,.sa-card-inner{animation:none;}
+    .sa-card,.shop-all-btn,.shop-all-btn::before,.shop-all-btn i svg{transition:none;}
   }
 </style>
 </head>
@@ -76,9 +145,50 @@
 <div id="site-header"></div>
 
 <main>
-  <section class="hero" id="heroSection" style="display:none;">
-    <div class="hero-inner"></div>
-    <div class="zari-border" style="margin-top:48px;"></div>
+  <section class="home-hero" id="heroSection" style="display:none;"></section>
+
+  <div class="rangoli" id="rangoliDivider" aria-hidden="true" style="display:none;">
+    <span class="rangoli-line left"></span>
+    <span class="rangoli-motif"><svg viewBox="0 0 160 48" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+      <g transform="translate(80 24)">
+        <g><ellipse cx="0" cy="-12" rx="5" ry="10"/><ellipse cx="0" cy="-12" rx="5" ry="10" transform="rotate(45)"/><ellipse cx="0" cy="-12" rx="5" ry="10" transform="rotate(90)"/><ellipse cx="0" cy="-12" rx="5" ry="10" transform="rotate(135)"/><ellipse cx="0" cy="-12" rx="5" ry="10" transform="rotate(180)"/><ellipse cx="0" cy="-12" rx="5" ry="10" transform="rotate(225)"/><ellipse cx="0" cy="-12" rx="5" ry="10" transform="rotate(270)"/><ellipse cx="0" cy="-12" rx="5" ry="10" transform="rotate(315)"/></g>
+        <circle r="5"/><circle r="1.6" fill="currentColor"/>
+      </g>
+      <path d="M2 24H46M114 24H158"/>
+      <path d="M46 24l7-6 7 6-7 6z"/><path d="M100 24l7-6 7 6-7 6z"/>
+      <circle cx="68" cy="24" r="1.5" fill="currentColor"/><circle cx="92" cy="24" r="1.5" fill="currentColor"/>
+    </svg></span>
+    <span class="rangoli-line right"></span>
+  </div>
+
+  <section class="section">
+    <div class="container">
+      <div class="section-head"><p class="eyebrow">Curated Weaves</p><h2>Shop by Weave</h2></div>
+    </div>
+    <div class="cat-rail-wrap" id="catRailWrap">
+      <button class="reel-scroll-btn left" id="catScrollLeft" aria-label="Scroll left">‹</button>
+      <div class="container"><div class="cat-rail" id="catRail"></div></div>
+      <button class="reel-scroll-btn right" id="catScrollRight" aria-label="Scroll right">›</button>
+    </div>
+  </section>
+
+  <section class="shop-all" id="shopAll" aria-labelledby="shopAllTitle">
+    <div class="shop-all-spin" aria-hidden="true"><svg viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="0.8">
+      <g transform="translate(100 100)">
+        <circle r="92"/><circle r="80" stroke-dasharray="1 4"/><circle r="40"/>
+        <g><ellipse cx="0" cy="-62" rx="14" ry="26"/><ellipse cx="0" cy="-62" rx="14" ry="26" transform="rotate(30)"/><ellipse cx="0" cy="-62" rx="14" ry="26" transform="rotate(60)"/><ellipse cx="0" cy="-62" rx="14" ry="26" transform="rotate(90)"/><ellipse cx="0" cy="-62" rx="14" ry="26" transform="rotate(120)"/><ellipse cx="0" cy="-62" rx="14" ry="26" transform="rotate(150)"/><ellipse cx="0" cy="-62" rx="14" ry="26" transform="rotate(180)"/><ellipse cx="0" cy="-62" rx="14" ry="26" transform="rotate(210)"/><ellipse cx="0" cy="-62" rx="14" ry="26" transform="rotate(240)"/><ellipse cx="0" cy="-62" rx="14" ry="26" transform="rotate(270)"/><ellipse cx="0" cy="-62" rx="14" ry="26" transform="rotate(300)"/><ellipse cx="0" cy="-62" rx="14" ry="26" transform="rotate(330)"/></g>
+        <circle r="22"/><circle r="6"/>
+      </g>
+    </svg></div>
+    <div class="container shop-all-inner">
+      <div class="shop-all-copy">
+        <p class="eyebrow">The Complete Collection</p>
+        <h2 id="shopAllTitle">Every saree, <em>one place</em></h2>
+        <p class="lede">Handloom pieces from Maheshwar, Kutch, Paithan and Narayanpet &mdash; each one sourced straight from the weaver. Browse the whole range, then narrow it by weave, colour or occasion.</p>
+        <a class="shop-all-btn" href="/shop"><span>View all sarees</span><i><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></i></a>
+      </div>
+      <div class="shop-all-stage" id="shopAllStage"></div>
+    </div>
   </section>
 
   <section class="section" style="padding-bottom:0;">
@@ -91,33 +201,6 @@
       <button class="reel-scroll-btn right" id="reelScrollRight" aria-label="Scroll right">›</button>
     </div>
   </section>
-
-  <section class="section">
-    <div class="container">
-      <div class="section-head"><p class="eyebrow">Curated Weaves</p><h2>Shop by Fabric</h2></div>
-    </div>
-    <div class="cat-rail-wrap" id="catRailWrap">
-      <button class="reel-scroll-btn left" id="catScrollLeft" aria-label="Scroll left">‹</button>
-      <div class="container"><div class="cat-rail" id="catRail"></div></div>
-      <button class="reel-scroll-btn right" id="catScrollRight" aria-label="Scroll right">›</button>
-    </div>
-  </section>
-
-  <section class="section" style="padding-top:0;">
-    <div class="container">
-      <div class="occasion-grid" id="occasionGrid"></div>
-    </div>
-  </section>
-
-  <section class="section">
-    <div class="container">
-      <div class="section-head"><p class="eyebrow">The Collection</p><h2>Bestselling Sarees</h2></div>
-      <div class="product-grid" id="bestsellerGrid"></div>
-      <div class="load-more-wrap"><a href="/shop" class="btn btn-outline">View All Sarees</a></div>
-    </div>
-  </section>
-
-  <section class="promo-band" id="promoBandSection" style="display:none;"></section>
 
   <div class="trust-strip">
     <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg><div><strong>Free Shipping</strong><span id="trustShippingLine">Above ₹1,999</span></div></div>
@@ -133,52 +216,30 @@
 <script src="js/components.js"></script>
 <script src="js/cursor.js"></script>
 <script>
-  // Hero banner is admin-managed (Storefront → Hero) — heading is split into
-  // pre/em/post so the gold-emphasized word in the middle survives being
-  // editable content instead of hand-authored HTML.
+  // Hero is admin-managed (Storefront → Hero): a desktop image, an optional
+  // separate mobile image, a click-through link, and the centred button label.
+  // With no image uploaded yet it falls back to the brand gradient so the
+  // button still shows rather than leaving a blank gap under the header.
+  function escAttr(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
   async function renderHero(){
     const section = document.getElementById('heroSection');
     try{
       const {hero: h} = await apiFetch('/content/hero');
       if(!h || h.active === false){ section.style.display = 'none'; return; }
-      const drapeStyle = h.desktopImage ? `background:url('${h.desktopImage}') center/cover;` : '';
-      document.querySelector('#heroSection .hero-inner').innerHTML = `
-        <div>
-          <p class="eyebrow">${h.eyebrow || ''}</p>
-          <h1>${h.headingPre || ''} <em>${h.headingEm || ''}</em> ${h.headingPost || ''}</h1>
-          <p>${h.subheading || ''}</p>
-          <div class="hero-ctas">
-            <a href="${h.ctaLink || '/shop'}" class="btn btn-primary">${h.ctaText || 'Shop Now'}</a>
-          </div>
-        </div>
-        <div class="hero-drape" style="${drapeStyle}">
-          ${h.badgeLabel ? `<div class="hero-drape-label"><p class="eyebrow" style="color:var(--gold-soft);">${h.badgeLabel}</p><strong>${h.badgeValue || ''}</strong></div>` : ''}
-        </div>`;
+      const desktop = h.desktopImage || h.mobileImage || '';
+      const link = escAttr(h.ctaLink || '/shop');
+      const label = escAttr(h.ctaText || 'Shop All Sarees');
+      const media = desktop
+        ? `<picture>${h.mobileImage ? `<source media="(max-width:760px)" srcset="${escAttr(h.mobileImage)}">` : ''}<img class="home-hero-img" src="${escAttr(desktop)}" alt="${escAttr(h.altText || 'Padmora sarees')}"></picture>`
+        : `<div class="home-hero-fallback"></div>`;
+      section.innerHTML = `<a class="home-hero-link" href="${link}" aria-label="${label}">${media}<span class="home-hero-btn"><span>${label}</span><i><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></i></span></a>`;
       section.style.display = '';
+      document.getElementById('rangoliDivider').style.display = '';
     }catch(e){ section.style.display = 'none'; }
   }
 
-  // Promo band is admin-managed (Storefront → Promo Band), including its own
-  // active window — the API already resolves start/end dates into a plain
-  // active flag, so the frontend just has to obey it.
-  async function renderPromoBand(){
-    const section = document.getElementById('promoBandSection');
-    try{
-      const {promoBand: b} = await apiFetch('/content/promo-band');
-      if(!b || !b.active){ section.style.display = 'none'; return; }
-      const message = (b.message || '').replace('{CODE}', `<strong>${b.couponCode || ''}</strong>`);
-      section.innerHTML = `
-        <p class="eyebrow" style="color:var(--gold-soft);">${b.eyebrow || ''}</p>
-        <h2>${b.heading || ''}</h2>
-        <p>${message}</p>
-        <a href="${b.ctaLink || '/shop'}" class="btn btn-gold">${b.ctaText || 'Shop Now'}</a>`;
-      section.style.display = '';
-    }catch(e){ section.style.display = 'none'; }
-  }
-
-  // Both rails are admin-managed now (Catalog → Fabrics / Occasions) — add a
-  // fifth fabric or feature a new occasion from admin and it shows up here
-  // with no frontend changes.
+  // Admin-managed (Catalog → Fabrics) — add a fifth fabric from admin and it
+  // shows up here with no frontend changes.
   async function renderCatRail(){
     try{
       const {fabrics} = await apiFetch('/fabrics');
@@ -196,121 +257,6 @@
       const wrap = document.getElementById('catRailWrap');
       requestAnimationFrame(()=> wrap.classList.toggle('has-overflow', rail.scrollWidth > rail.clientWidth + 4));
     }catch(e){ /* leave rail empty if the backend is unreachable */ }
-  }
-
-  const OCCASION_CARD_GRADIENTS = [
-    'linear-gradient(160deg,#7A2740,#AD3B5C)', 'linear-gradient(160deg,#AD3B5C,#F2B9BB)', 'linear-gradient(160deg,#7A2740,#B87F55)'
-  ];
-  async function renderOccasionCards(){
-    try{
-      const {occasions} = await apiFetch('/occasions');
-      const featured = occasions.filter(o=>o.featuredOnHome);
-      document.getElementById('occasionGrid').innerHTML = featured.map((o,i)=>`
-        <a class="occasion-card" style="background:${o.image ? `url('${o.image}') center/cover` : OCCASION_CARD_GRADIENTS[i % OCCASION_CARD_GRADIENTS.length]};" href="/shop?occasion=${encodeURIComponent(o.name)}">
-          <h3>${o.homeCardTitle || o.name}</h3><span>Shop Now →</span>
-        </a>`).join('');
-    }catch(e){ /* leave the grid empty if the backend is unreachable */ }
-  }
-
-  let wishlistedIds = new Set();
-  // Keyed by variantId -> {itemId, qty} for whatever's already in the bag, so
-  // a card whose default variant is already there shows a qty stepper
-  // instead of inviting a second, stacking "Add to Cart" click.
-  let cartQtyByVariant = {};
-
-  function productCardHTML(p){
-    const off = Math.round((1 - p.price/p.mrp)*100);
-    // A product with no badge set (p.badge is null/'') must show no badge at
-    // all — the old fallthrough ternary defaulted anything that wasn't
-    // 'sale'/'new' to 'Bestseller', which mislabeled every plain product.
-    const badgeLabel = p.badge==='sale'?'Sale':p.badge==='new'?'New':p.badge==='bestseller'?'Bestseller':'';
-    const isWished = wishlistedIds.has(p.id);
-    const soldOut = p.stock <= 0;
-    const defaultVariant = (p.variants && (p.variants.find(v=>v.isDefault) || p.variants[0])) || null;
-    const cartLine = defaultVariant ? cartQtyByVariant[defaultVariant.id] : null;
-    return `
-    <div class="product-card ${soldOut?'sold-out':''}">
-      <a href="/product?id=${p.id}" class="product-media" style="background:${swatchBg(p.swatch)};display:block;">
-        ${soldOut ? `<div class="sold-out-ribbon"><span class="ribbon-lotus">${LOTUS_GLYPH_SVG}</span>Sold Out</div>` : (badgeLabel ? `<span class="product-badge ${p.badge}">${badgeLabel}</span>` : '')}
-        <button class="wishlist-toggle ${isWished?'active':''}" data-wish="${p.id}" aria-label="${isWished?'Remove from wishlist':'Add to wishlist'}" onclick="event.preventDefault();quickWish(${p.id}, this);">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path class="petal-b" d="M12 20 C6.3 18.7 1.6 13 1.4 7.3 C6.9 8.5 11.6 14.2 12 20 Z"/>
-            <path class="petal-b" d="M12 20 C17.7 18.7 22.4 13 22.6 7.3 C17.1 8.5 12.4 14.2 12 20 Z"/>
-            <path class="petal-a" d="M12 20 C7.5 15.2 7.5 8.2 12 4 C16.5 8.2 16.5 15.2 12 20 Z"/>
-          </svg>
-        </button>
-        ${soldOut
-          ? `<span class="quick-add">Pre Book</span>`
-          : `<div class="quick-actions">
-              ${cartLine && cartLine.qty > 0
-                ? `<div class="card-qty-stepper">
-                    <button type="button" onclick="event.preventDefault();cardChangeQty('${cartLine.itemId}', -1);">−</button><span>${cartLine.qty}</span><button type="button" onclick="event.preventDefault();cardChangeQty('${cartLine.itemId}', 1);">+</button>
-                  </div>`
-                : `<button type="button" onclick="event.preventDefault();quickAddToCart(${p.id}, ${defaultVariant ? defaultVariant.id : 'null'}, '${(defaultVariant ? defaultVariant.colorName : p.swatch || '').replace(/'/g, "\\'")}', this);">Add to Cart</button>`}
-              <button type="button" onclick="event.preventDefault();openQuickView(${p.id});">Quick View</button>
-            </div>`}
-      </a>
-      <div class="product-info">
-        <div class="product-fabric">${p.fabric}</div>
-        <a href="/product?id=${p.id}" class="product-name">${p.name}</a>
-        <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews})</div>
-        <div class="product-price">
-          <span class="price-now">${money(p.price)}</span>
-          <span class="price-mrp">${money(p.mrp)}</span>
-          <span class="price-off">${off}% off</span>
-        </div>
-      </div>
-    </div>`;
-  }
-
-  async function quickWish(id, btn){
-    const nowActive = !wishlistedIds.has(id);
-    try{
-      if(nowActive){ await wishlistAdd(id); wishlistedIds.add(id); toast('Added to wishlist ♡'); }
-      else{ await wishlistRemove(id); wishlistedIds.delete(id); toast('Removed from wishlist'); }
-      if(btn){ btn.classList.toggle('active', nowActive); btn.setAttribute('aria-label', nowActive?'Remove from wishlist':'Add to wishlist'); }
-      refreshBadgeCounts();
-    }catch(e){ toast(e.message, 'error'); }
-  }
-
-  async function quickAddToCart(productId, variantId, color){
-    try{
-      await cartAdd(productId, 1, color, variantId);
-      refreshBadgeCounts();
-      toast('Added to bag');
-      loadBestsellers();
-    }catch(e){ toast(e.message, 'error'); }
-  }
-
-  async function cardChangeQty(itemId, delta){
-    try{
-      const cart = await cartGet();
-      const item = cart.items.find(i=>i.id===itemId);
-      if(!item){ loadBestsellers(); return; }
-      const newQty = item.qty + delta;
-      if(newQty <= 0){
-        await cartRemoveItem(itemId);
-      }else{
-        if(item.product && newQty > item.product.stock){ toast(`Only ${item.product.stock} left in stock.`); return; }
-        const updated = await cartUpdateQty(itemId, newQty);
-        if(updated.message) toast(updated.message);
-      }
-      refreshBadgeCounts();
-      loadBestsellers();
-    }catch(e){ toast(e.message, 'error'); }
-  }
-  window.refreshProductGrid = loadBestsellers;
-
-  async function loadBestsellers(){
-    try{
-      const [{products}, wishData, cart] = await Promise.all([apiFetch('/products?sort=popular'), wishlistGet(), cartGet()]);
-      wishlistedIds = new Set(wishData.products.map(p=>p.id));
-      cartQtyByVariant = {};
-      cart.items.forEach(i => { if(i.variantId) cartQtyByVariant[i.variantId] = { itemId: i.id, qty: i.qty }; });
-      document.getElementById('bestsellerGrid').innerHTML = products.slice(0,6).map(productCardHTML).join('');
-    }catch(e){
-      document.getElementById('bestsellerGrid').innerHTML = `<p style="grid-column:1/-1;text-align:center;color:var(--ink-soft);">Could not load products — is the backend server running?</p>`;
-    }
   }
 
   function reelCardHTML(p){
@@ -374,11 +320,46 @@
     if(rail && wrap) wrap.classList.toggle('has-overflow', rail.scrollWidth > rail.clientWidth + 4);
   });
 
+
+  // "Shop all sarees" band: a fan of up to three sarees that drift toward the
+  // pointer. Picked in admin (Storefront → Shop-all band); with no picks it
+  // falls back to the most popular sarees server-side. Nothing here is required — if the fetch fails the copy and
+  // button still render and the stage just stays empty.
+  async function renderShopAll(){
+    const stage = document.getElementById('shopAllStage');
+    try{
+      const {products} = await apiFetch('/content/shop-all');
+      if(!products.length){ stage.style.display = 'none'; return; }
+      const slots = [{sx:-1,y:'18px',rot:'-9deg',depth:-14,z:1,delay:'-2s'},{sx:0,y:'-10px',rot:'0deg',depth:10,z:3,delay:'0s'},{sx:1,y:'20px',rot:'9deg',depth:-14,z:2,delay:'-4s'}];
+      // Fewer than three sarees: use the outer/centre slots that look balanced rather than leaving a hole.
+      const order = products.length === 3 ? [0,1,2] : products.length === 2 ? [0,2] : [1];
+      stage.innerHTML = products.map((p,i)=>{
+        const sl = slots[order[i]];
+        const v = (p.variants || []).find(v=>v.isDefault) || (p.variants || [])[0];
+        const media = (v && v.media || []);
+        const img = media.find(m=>m.type==='image' && m.isPrimary) || media.find(m=>m.type==='image');
+        const bg = img ? `background-image:url('${escAttr(img.url)}');` : `background:${swatchBg(p.swatch)};`;
+        return `<a class="sa-card" href="/product?id=${p.id}" style="--sx:${sl.sx};--y:${sl.y};--rot:${sl.rot};--depth:${sl.depth};--z:${sl.z};">
+          <div class="sa-card-inner" style="${bg}--delay:${sl.delay};">
+            <div class="sa-card-cap"><strong>${escAttr(p.name)}</strong><span>${escAttr(p.fabric)} · ${money(p.price)}</span></div>
+          </div></a>`;
+      }).join('');
+      // Pointer parallax only where there's a real pointer; touch screens keep the idle float.
+      if(window.matchMedia('(hover:hover)').matches && !window.matchMedia('(prefers-reduced-motion:reduce)').matches){
+        const band = document.getElementById('shopAll');
+        band.addEventListener('pointermove', e=>{
+          const r = stage.getBoundingClientRect();
+          stage.style.setProperty('--mx', Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width/2)) / (r.width/2))).toFixed(3));
+          stage.style.setProperty('--my', Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height/2)) / (r.height/2))).toFixed(3));
+        });
+        band.addEventListener('pointerleave', ()=>{ stage.style.setProperty('--mx', 0); stage.style.setProperty('--my', 0); });
+      }
+    }catch(e){ stage.style.display = 'none'; }
+  }
+
   renderHero();
-  renderPromoBand();
   renderCatRail();
-  renderOccasionCards();
-  loadBestsellers();
+  renderShopAll();
   loadReels();
 
   // Trust-strip claim should match the admin's real Phase 7 shipping

@@ -1,5 +1,6 @@
 const express = require('express');
-const { getSetting, getFaqItems } = require('../utils/db');
+const { getSetting, getFaqItems, getProducts, getProductById } = require('../utils/db');
+const { toProductApiShape } = require('../utils/shape');
 
 const router = express.Router();
 
@@ -8,6 +9,33 @@ router.get('/content/hero', async (req, res) => {
     res.json({ hero: await getSetting('hero_banner', {}) });
   } catch (err) {
     console.error('GET /content/hero failed:', err);
+    res.status(500).json({ message: 'Something went wrong on the server.' });
+  }
+});
+
+// The three sarees in the homepage "Shop all sarees" band. Admin-picked when
+// set (Storefront -> Shop-all band); otherwise the same popularity order the
+// shop page defaults to, so the band is never empty on a fresh store.
+router.get('/content/shop-all', async (req, res) => {
+  try {
+    const cfg = await getSetting('shop_all_showcase', {});
+    const ids = (Array.isArray(cfg.productIds) ? cfg.productIds : []).slice(0, 3);
+    let products = [];
+    if (ids.length) {
+      // A stored id that no longer resolves must never take the whole homepage band down.
+      const rows = await Promise.all(ids.map(id => getProductById(id).catch(() => null)));
+      // A pick that was since archived or deleted just drops out.
+      products = rows.filter(r => r && r.status !== 'archived').map(toProductApiShape);
+    }
+    if (!products.length) {
+      products = (await getProducts()).filter(p => p.status !== 'archived').map(toProductApiShape)
+        .filter(p => p.badge !== 'sale')
+        .sort((a, b) => ((b.badge === 'bestseller') - (a.badge === 'bestseller')) || ((b.rating * b.reviews) - (a.rating * a.reviews)))
+        .slice(0, 3);
+    }
+    res.json({ products });
+  } catch (err) {
+    console.error('GET /content/shop-all failed:', err);
     res.status(500).json({ message: 'Something went wrong on the server.' });
   }
 });

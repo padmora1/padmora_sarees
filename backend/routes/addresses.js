@@ -67,7 +67,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id(\\d{1,9})', async (req, res) => {
   try {
     const id = Number(req.params.id);
     const existing = must(await supabase.from('addresses').select('id').eq('id', id).eq('user_id', req.userId).maybeSingle(), 'putAddress:lookup');
@@ -95,7 +95,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id(\\d{1,9})', async (req, res) => {
   try {
     must(await supabase.from('addresses').delete().eq('id', Number(req.params.id)).eq('user_id', req.userId), 'deleteAddress');
     res.json({ addresses: await listAddresses(req.userId) });

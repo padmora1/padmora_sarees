@@ -4,16 +4,17 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const {
   supabase, must, getProducts, getVariantById, getPrimaryImagesByVariantIds, syncProductMirrorFromDefaultVariant, getSetting, setSetting,
-  getFabrics, getOccasions, getBadges, getCollections, getReelItems, getFaqItems,
+  getFabrics, getOccasions, getBadges, getCollections, getCollectionProductIds, getReelItems, getFaqItems,
   ADMIN_ROLES, logActivity
 } = require('../utils/db');
 const { requireAdminAuth, requirePermission } = require('../middleware/adminAuth');
-const { computeStatus, buildTimeline, isCancellable, STAGE_NAMES, CANCEL_REASONS } = require('../utils/orderStatus');
+const { computeStatus, buildTimeline, isCancellable, setOrderManualStatus, getTrackingMode, clearTrackingModeCache, STAGE_NAMES, CANCEL_REASONS } = require('../utils/orderStatus');
+const { readOrderIds, buildTemplateXlsx, buildTemplateCsv, normalizeOrderId, MAX_IDS } = require('../utils/spreadsheet');
 const { upload, UPLOAD_DIR } = require('../middleware/upload');
 const { toProductApiShape } = require('../utils/shape');
 const { runBackup, listBackups, BACKUP_DIR } = require('../utils/backup');
 const { RETURN_REASONS } = require('../utils/returns');
-const { sendEmail, emailConfigured, smsConfigured } = require('../utils/notify');
+const { sendEmail, sendOrderStatusEmail, emailConfigured, smsConfigured } = require('../utils/notify');
 const razorpayUtil = require('../utils/razorpay');
 const { checkWishlistAlerts } = require('../utils/wishlistAlerts');
 const { checkAbandonedCarts } = require('../utils/abandonedCart');
@@ -42,11 +43,31 @@ function isUniqueViolation(err) {
 
 // Turns a multer failure (bad file type, file too large) into a clean 400
 // with the real reason, instead of falling through to the generic 500 handler.
+// Raw phone photos are 5-25MB; stored as-is they get served as-is to every
+// shopper on the product page, which is what makes the site crawl. The admin
+// page shrinks images in the browser before upload, so anything this big
+// arriving means that step was skipped (old tab, another client) — refuse it
+// with a clear reason instead of silently storing a page-weight bomb. Videos
+// (reels) are exempt; they have their own larger cap in middleware/upload.js.
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
 function uploadSingle(req, res, next) {
   upload.single('file')(req, res, (err) => {
     if (err) return res.status(400).json({ message: err.message || 'Upload failed.' });
+    if (req.file && req.file.mimetype.startsWith('image/') && req.file.size > MAX_IMAGE_BYTES) {
+      try { fs.unlinkSync(req.file.path); } catch (_) { /* already gone */ }
+      const mb = (req.file.size / 1024 / 1024).toFixed(1);
+      return res.status(400).json({ message: `That photo is ${mb}MB — please use one under 8MB (a normal phone photo is fine; refresh the admin page so it can shrink photos automatically).` });
+    }
     next();
   });
+}
+
+// Swatch keys are typed by hand in the admin ("Maroon", " green "), but the
+// storefront looks colours up by lowercase key — normalise on the way in so
+// "Maroon" and "maroon" are one colour, not two filter entries.
+function cleanSwatch(v) {
+  return typeof v === 'string' ? v.trim().toLowerCase() : v;
 }
 
 function asyncRoute(handler) {
@@ -131,7 +152,7 @@ router.get('/products', asyncRoute(async (req, res) => {
   res.json({ products });
 }));
 
-router.get('/products/:id', asyncRoute(async (req, res) => {
+router.get('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
   const product = (await getProducts()).map(toProductApiShape).find(p => p.id === id);
   if (!product) return res.status(404).json({ message: 'Product not found.' });
@@ -147,9 +168,9 @@ router.post('/products', asyncRoute(async (req, res) => {
   const id = (maxRow[0]?.id || 0) + 1;
   const rpc = await supabase.rpc('create_product_with_default_variant', {
     p_id: id, p_name: name, p_fabric: fabric, p_occasion: occasion, p_price: Number(price), p_mrp: Number(mrp),
-    p_badge: badge || null, p_swatch: swatch || 'maroon', p_description: desc || '', p_stock: Number(stock) || 20,
+    p_badge: badge || null, p_swatch: cleanSwatch(swatch) || 'maroon', p_description: desc || '', p_stock: Number(stock) || 20,
     p_weaver_name: weaverName || '', p_weaver_region: weaverRegion || '', p_loom_type: loomType || 'Handloom',
-    p_color_name: (swatch || 'maroon').replace(/^\w/, c => c.toUpperCase()), p_sku: `PDM-${id}-DEF`
+    p_color_name: (cleanSwatch(swatch) || 'maroon').replace(/^\w/, c => c.toUpperCase()), p_sku: `PDM-${id}-DEF`
   });
   if (rpc.error) throw new Error(rpc.error.message);
   await record(req, 'created', 'product', id, null, { name, fabric, price, mrp, stock });
@@ -157,7 +178,7 @@ router.post('/products', asyncRoute(async (req, res) => {
   res.status(201).json({ product: (await getProducts()).map(toProductApiShape).find(p => p.id === id) });
 }));
 
-router.put('/products/:id', asyncRoute(async (req, res) => {
+router.put('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
   const existing = must(await supabase.from('products').select('*').eq('id', id).maybeSingle(), 'updateProduct:lookup');
   if (!existing) return res.status(404).json({ message: 'Product not found.' });
@@ -176,7 +197,7 @@ router.put('/products/:id', asyncRoute(async (req, res) => {
 
 // Archive rather than hard-delete once a product has ever been ordered —
 // historical order_items must keep referring to something real.
-router.delete('/products/:id', asyncRoute(async (req, res) => {
+router.delete('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
   const wasOrdered = ((await supabase.from('order_items').select('*', { count: 'exact', head: true }).eq('product_id', id)).count || 0) > 0;
   if (wasOrdered) {
@@ -184,14 +205,33 @@ router.delete('/products/:id', asyncRoute(async (req, res) => {
     await record(req, 'archived', 'product', id);
     return res.json({ message: 'Product archived (it has past orders, so it can’t be deleted outright).', archived: true });
   }
+  // A never-ordered product can be removed outright, but several tables point
+  // at it and the database refuses the delete while any row remains — photos
+  // (via its variants), collection tags, Sarees-in-Motion entries. Clear those
+  // first, plus the loose references with no constraint (carts, wishlists,
+  // reviews, pre-book requests) so nothing is left pointing at a product that
+  // no longer exists (a cart line with no product would break the bag page).
+  const variantIds = must(await supabase.from('product_variants').select('id').eq('product_id', id), 'deleteProduct:variantIds').map(v => v.id);
+  let photoUrls = [];
+  if (variantIds.length) {
+    photoUrls = must(await supabase.from('variant_media').select('url').in('variant_id', variantIds), 'deleteProduct:mediaUrls').map(m => m.url);
+    must(await supabase.from('variant_media').delete().in('variant_id', variantIds), 'deleteProduct:media');
+  }
+  for (const table of ['collection_products', 'reel_items', 'cart_items', 'wishlist_items', 'reviews', 'prebook_requests']) {
+    must(await supabase.from(table).delete().eq('product_id', id), `deleteProduct:${table}`);
+  }
   must(await supabase.from('product_variants').delete().eq('product_id', id), 'deleteProduct:variants');
   must(await supabase.from('products').delete().eq('id', id), 'deleteProduct:product');
+  // Best-effort file cleanup — never let a missing file turn a successful delete into an error.
+  for (const url of photoUrls) {
+    try { fs.unlinkSync(path.join(UPLOAD_DIR, path.basename(url))); } catch (_) { /* already gone */ }
+  }
   await record(req, 'deleted', 'product', id);
   res.json({ message: 'Product deleted.', archived: false });
 }));
 
 // ---- Variants ----
-router.post('/products/:id/variants', asyncRoute(async (req, res) => {
+router.post('/products/:id(\\d{1,9})/variants', asyncRoute(async (req, res) => {
   const productId = Number(req.params.id);
   const product = must(await supabase.from('products').select('id').eq('id', productId).maybeSingle(), 'addVariant:product');
   if (!product) return res.status(404).json({ message: 'Product not found.' });
@@ -203,7 +243,7 @@ router.post('/products/:id/variants', asyncRoute(async (req, res) => {
   const maxSort = must(await supabase.from('product_variants').select('sort_order').eq('product_id', productId).order('sort_order', { ascending: false }).limit(1), 'addVariant:maxSort');
   const sortOrder = (maxSort[0]?.sort_order ?? -1) + 1;
   const inserted = must(await supabase.from('product_variants').insert({
-    product_id: productId, color_name: colorName, swatch: swatch || 'maroon', sku: sku || null,
+    product_id: productId, color_name: colorName, swatch: cleanSwatch(swatch) || 'maroon', sku: sku || null,
     price: Number(price), mrp: Number(mrp), stock: Number(stock) || 0, low_stock_threshold: Number(lowStockThreshold) || 10,
     description: description || '', is_default: false, sort_order: sortOrder
   }).select().single(), 'addVariant:insert');
@@ -211,7 +251,7 @@ router.post('/products/:id/variants', asyncRoute(async (req, res) => {
   res.status(201).json({ variant: await getVariantById(inserted.id) });
 }));
 
-router.put('/variants/:id', asyncRoute(async (req, res) => {
+router.put('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
   const existing = must(await supabase.from('product_variants').select('*').eq('id', id).maybeSingle(), 'updateVariant:lookup');
   if (!existing) return res.status(404).json({ message: 'Variant not found.' });
@@ -223,7 +263,7 @@ router.put('/variants/:id', asyncRoute(async (req, res) => {
   }
 
   must(await supabase.from('product_variants').update({
-    color_name: colorName ?? existing.color_name, swatch: swatch ?? existing.swatch,
+    color_name: colorName ?? existing.color_name, swatch: cleanSwatch(swatch) ?? existing.swatch,
     sku: sku !== undefined ? sku : existing.sku,
     price: price !== undefined ? Number(price) : existing.price, mrp: mrp !== undefined ? Number(mrp) : existing.mrp,
     stock: stock !== undefined ? Number(stock) : existing.stock,
@@ -239,7 +279,7 @@ router.put('/variants/:id', asyncRoute(async (req, res) => {
   res.json({ variant: await getVariantById(id) });
 }));
 
-router.delete('/variants/:id', asyncRoute(async (req, res) => {
+router.delete('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
   const existing = must(await supabase.from('product_variants').select('*').eq('id', id).maybeSingle(), 'deleteVariant:lookup');
   if (!existing) return res.status(404).json({ message: 'Variant not found.' });
@@ -268,7 +308,7 @@ router.delete('/variants/:id', asyncRoute(async (req, res) => {
 }));
 
 // ---- Variant media ----
-router.post('/variants/:id/media', uploadSingle, asyncRoute(async (req, res) => {
+router.post('/variants/:id(\\d{1,9})/media', uploadSingle, asyncRoute(async (req, res) => {
   const variantId = Number(req.params.id);
   const variant = must(await supabase.from('product_variants').select('*').eq('id', variantId).maybeSingle(), 'addMedia:variant');
   if (!variant) return res.status(404).json({ message: 'Variant not found.' });
@@ -287,7 +327,7 @@ router.post('/variants/:id/media', uploadSingle, asyncRoute(async (req, res) => 
   res.status(201).json({ media: inserted });
 }));
 
-router.delete('/media/:id', asyncRoute(async (req, res) => {
+router.delete('/media/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
   const media = must(await supabase.from('variant_media').select('*').eq('id', id).maybeSingle(), 'deleteMedia:lookup');
   if (!media) return res.status(404).json({ message: 'Media not found.' });
@@ -306,7 +346,7 @@ router.delete('/media/:id', asyncRoute(async (req, res) => {
   res.json({ message: 'Media removed.' });
 }));
 
-router.put('/media/:id/primary', asyncRoute(async (req, res) => {
+router.put('/media/:id(\\d{1,9})/primary', asyncRoute(async (req, res) => {
   const media = must(await supabase.from('variant_media').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'primaryMedia:lookup');
   if (!media) return res.status(404).json({ message: 'Media not found.' });
   must(await supabase.from('variant_media').update({ is_primary: false }).eq('variant_id', media.variant_id), 'primaryMedia:clear');
@@ -337,6 +377,7 @@ router.get('/inventory', asyncRoute(async (req, res) => {
 router.post('/inventory/adjust', asyncRoute(async (req, res) => {
   const { variantId, change, reason } = req.body;
   const id = Number(variantId);
+  if (!Number.isInteger(id) || id <= 0 || id > 2147483647) return res.status(400).json({ message: 'Choose a valid variant.' });
   const variant = must(await supabase.from('product_variants').select('*').eq('id', id).maybeSingle(), 'adjustInventory:lookup');
   if (!variant) return res.status(404).json({ message: 'Variant not found.' });
   const delta = Number(change);
@@ -354,7 +395,7 @@ router.post('/inventory/adjust', asyncRoute(async (req, res) => {
   res.json({ variant: await getVariantById(id) });
 }));
 
-router.get('/inventory/:variantId/history', asyncRoute(async (req, res) => {
+router.get('/inventory/:variantId(\\d{1,9})/history', asyncRoute(async (req, res) => {
   const rows = must(
     await supabase.from('inventory_history').select('*').eq('variant_id', Number(req.params.variantId)).order('created_at', { ascending: false }),
     'inventoryHistory'
@@ -600,10 +641,122 @@ router.put('/orders/:id/status', asyncRoute(async (req, res) => {
     return res.status(400).json({ message: 'Invalid status.' });
   }
 
-  must(await supabase.from('orders').update({ manual_status: manualStatus }).eq('id', order.id), 'setOrderStatus:update');
+  const { advanced } = await setOrderManualStatus(order, manualStatus, 'manual');
   await record(req, 'status changed', 'order', order.id, { manualStatus: order.manual_status }, { manualStatus });
+  // Same customer email as the bulk upload, but only when moving forward — fixing a
+  // mistake (stepping back, or reverting to automatic) never emails anyone.
+  if (advanced) notifyStatusChange([order.id], manualStatus);
   const updated = must(await supabase.from('orders').select('*').eq('id', order.id).single(), 'setOrderStatus:reread');
   res.json({ status: await computeStatus(updated), timeline: await buildTimeline(updated) });
+}));
+
+// ---- Bulk status update from an uploaded sheet of order IDs ----
+// The store ships by hand (no courier integration), so the day's packed orders
+// are listed in a spreadsheet and uploaded here. Two steps — preview (read the
+// file, show exactly what would change) then apply (re-checks every order at
+// that moment before touching anything).
+const BULK_TARGETS = ['Packed', 'Shipped', 'Out for Delivery', 'Delivered'];
+
+async function classifyBulk(ids, target) {
+  const found = new Map();
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const orders = await attachOrderExtras(must(await supabase.from('orders').select('*').in('id', chunk), 'bulkStatus:orders'));
+    orders.forEach(o => found.set(o.id, o));
+  }
+  const targetIdx = STAGE_NAMES.indexOf(target);
+  const rows = [];
+  for (const id of ids) {
+    const o = found.get(id);
+    if (!o) { rows.push({ orderId: id, outcome: 'notfound', message: 'No order with this ID.' }); continue; }
+    const base = { orderId: id, customer: o.address_name || o.customer_name || '' };
+    const current = await computeStatus(o);
+    if (current === 'Cancelled') { rows.push({ ...base, outcome: 'skip', current, message: 'Order is cancelled.' }); continue; }
+    if (o.cancel_request_status === 'Requested') { rows.push({ ...base, outcome: 'skip', current, message: 'Customer has requested a cancellation — review it first.' }); continue; }
+    if (current === target) { rows.push({ ...base, outcome: 'skip', current, message: `Already ${target}.` }); continue; }
+    if (STAGE_NAMES.indexOf(current) > targetIdx) { rows.push({ ...base, outcome: 'skip', current, message: `Already ${current} — won't move it back to ${target}.` }); continue; }
+    rows.push({ ...base, outcome: 'update', current, message: `${current} → ${target}` });
+  }
+  return { rows, found };
+}
+
+// Emails go out after the response, one at a time, so a 200-order upload never waits
+// on (or fails because of) the mail server; every attempt lands in notifications_log.
+function notifyStatusChange(orderIds, status) {
+  setImmediate(async () => {
+    try {
+      for (let i = 0; i < orderIds.length; i += 100) {
+        const orders = await attachOrderExtras(must(await supabase.from('orders').select('*').in('id', orderIds.slice(i, i + 100)), 'notifyStatus:orders'));
+        for (const o of orders) {
+          try { await sendOrderStatusEmail(o, { id: o.user_id, name: o.address_name || o.customer_name, email: o.customer_email }, status); }
+          catch (err) { console.error('Status email failed for', o.id, err.message); }
+        }
+      }
+    } catch (err) { console.error('notifyStatusChange failed:', err); }
+  });
+}
+
+router.get('/orders/bulk-status/template.xlsx', (req, res) => {
+  res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.header('Content-Disposition', 'attachment; filename="padmora-order-ids-template.xlsx"');
+  res.send(buildTemplateXlsx());
+});
+
+router.get('/orders/bulk-status/template.csv', (req, res) => {
+  res.header('Content-Type', 'text/csv; charset=utf-8');
+  res.header('Content-Disposition', 'attachment; filename="padmora-order-ids-template.csv"');
+  res.send(buildTemplateCsv());
+});
+
+router.post('/orders/bulk-status/preview', express.raw({ type: () => true, limit: '3mb' }), asyncRoute(async (req, res) => {
+  const target = String(req.query.status || '');
+  if (!BULK_TARGETS.includes(target)) return res.status(400).json({ message: 'Choose which status to apply.' });
+  let parsed;
+  try { parsed = readOrderIds(req.body); }
+  catch (err) { return res.status(400).json({ message: err.message }); }
+  if (!parsed.ids.length) return res.status(400).json({ message: 'No order IDs found. Put one order ID per row in column A.' });
+  const { rows } = await classifyBulk(parsed.ids, target);
+  res.json({
+    status: target,
+    rows,
+    counts: {
+      total: parsed.ids.length,
+      update: rows.filter(r => r.outcome === 'update').length,
+      skip: rows.filter(r => r.outcome === 'skip').length,
+      notFound: rows.filter(r => r.outcome === 'notfound').length,
+      duplicates: parsed.duplicates
+    }
+  });
+}));
+
+router.post('/orders/bulk-status/apply', asyncRoute(async (req, res) => {
+  const { status, orderIds, notify } = req.body || {};
+  if (!BULK_TARGETS.includes(status)) return res.status(400).json({ message: 'Choose which status to apply.' });
+  if (!Array.isArray(orderIds) || !orderIds.length) return res.status(400).json({ message: 'No orders to update.' });
+  const ids = [...new Set(orderIds.map(normalizeOrderId).filter(Boolean))];
+  if (ids.length > MAX_IDS) return res.status(400).json({ message: `At most ${MAX_IDS} orders at a time.` });
+
+  // Re-check at apply time: an order may have been cancelled or moved on since the preview.
+  const { rows } = await classifyBulk(ids, status);
+  const toUpdate = rows.filter(r => r.outcome === 'update').map(r => r.orderId);
+  const now = new Date().toISOString();
+  for (let i = 0; i < toUpdate.length; i += 100) {
+    const chunk = toUpdate.slice(i, i + 100);
+    must(await supabase.from('order_status_events').insert(chunk.map(id => ({ order_id: id, status, source: 'bulk' }))), 'bulkStatus:events');
+    must(await supabase.from('orders').update({ manual_status: status }).in('id', chunk), 'bulkStatus:update');
+    if (status === 'Delivered') {
+      must(await supabase.from('orders').update({ delivered_at: now }).in('id', chunk).is('delivered_at', null), 'bulkStatus:delivered');
+    }
+  }
+  if (toUpdate.length) {
+    await record(req, 'bulk status changed', 'order', 'bulk', null, { status, count: toUpdate.length, orderIds: toUpdate.slice(0, 200), emailed: notify !== false });
+    if (notify !== false) notifyStatusChange(toUpdate, status);
+  }
+  res.json({
+    updated: toUpdate.length,
+    skipped: rows.filter(r => r.outcome !== 'update').map(r => ({ orderId: r.orderId, message: r.message })),
+    emailsQueued: notify !== false ? toUpdate.length : 0
+  });
 }));
 
 // Recent notification attempts across all orders — lets an admin confirm
@@ -652,7 +805,7 @@ router.post('/jobs/prebook/run', asyncRoute(async (req, res) => {
 // Manual "Notify Now" for one saree/colour — same send logic as the
 // background job, scoped to a single variant so it can't ping anyone
 // pre-booked on a different saree that also happens to be in stock.
-router.post('/prebooks/:variantId/notify', asyncRoute(async (req, res) => {
+router.post('/prebooks/:variantId(\\d{1,9})/notify', asyncRoute(async (req, res) => {
   const variantId = Number(req.params.variantId);
   const variant = must(await supabase.from('product_variants').select('stock').eq('id', variantId).maybeSingle(), 'notifyPrebook:lookup');
   if (!variant) return res.status(404).json({ message: 'Variant not found.' });
@@ -866,13 +1019,13 @@ router.get('/returns', asyncRoute(async (req, res) => {
   res.json({ returns: await Promise.all(rows.map(shapeAdminReturn)) });
 }));
 
-router.get('/returns/:id', asyncRoute(async (req, res) => {
+router.get('/returns/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const row = must(await supabase.from('return_requests').select('*').eq('id', req.params.id).maybeSingle(), 'getAdminReturn');
   if (!row) return res.status(404).json({ message: 'Return request not found.' });
   res.json({ return: await shapeAdminReturn(row) });
 }));
 
-router.put('/returns/:id/decision', asyncRoute(async (req, res) => {
+router.put('/returns/:id(\\d{1,9})/decision', asyncRoute(async (req, res) => {
   const { approve, adminNote } = req.body || {};
   const existing = must(await supabase.from('return_requests').select('*').eq('id', req.params.id).maybeSingle(), 'decideReturn:lookup');
   if (!existing) return res.status(404).json({ message: 'Return request not found.' });
@@ -908,7 +1061,7 @@ router.put('/returns/:id/decision', asyncRoute(async (req, res) => {
   res.json({ return: await shapeAdminReturn(updated) });
 }));
 
-router.put('/returns/:id/receive', asyncRoute(async (req, res) => {
+router.put('/returns/:id(\\d{1,9})/receive', asyncRoute(async (req, res) => {
   const { itemRestock } = req.body || {}; // { [returnItemId]: true/false }
   const existing = must(await supabase.from('return_requests').select('*').eq('id', req.params.id).maybeSingle(), 'receiveReturn:lookup');
   if (!existing) return res.status(404).json({ message: 'Return request not found.' });
@@ -924,7 +1077,7 @@ router.put('/returns/:id/receive', asyncRoute(async (req, res) => {
   res.json({ return: await shapeAdminReturn(updated) });
 }));
 
-router.put('/returns/:id/refund', asyncRoute(async (req, res) => {
+router.put('/returns/:id(\\d{1,9})/refund', asyncRoute(async (req, res) => {
   const { refundMethod, finalAmount } = req.body || {};
   const existing = must(await supabase.from('return_requests').select('*').eq('id', req.params.id).maybeSingle(), 'refundReturn:lookup');
   if (!existing) return res.status(404).json({ message: 'Return request not found.' });
@@ -1011,19 +1164,33 @@ router.put('/returns/:id/refund', asyncRoute(async (req, res) => {
 
 // ---- Tracking settings ----
 router.get('/settings/tracking', asyncRoute(async (req, res) => {
-  res.json({ timing: await getSetting('tracking_timing', {}) });
+  const { mode, since } = await getTrackingMode();
+  res.json({ timing: await getSetting('tracking_timing', {}), mode, since: since ? new Date(since).toISOString() : null });
 }));
 
 router.put('/settings/tracking', asyncRoute(async (req, res) => {
-  const { timing } = req.body;
-  if (!timing || typeof timing !== 'object') return res.status(400).json({ message: 'A timing object is required.' });
-  for (const stage of STAGE_NAMES) {
-    if (timing[stage] === undefined || isNaN(Number(timing[stage])) || Number(timing[stage]) < 0) {
-      return res.status(400).json({ message: `Enter a valid hour count for "${stage}".` });
+  const { timing, mode } = req.body;
+  if (mode !== undefined && !['manual', 'simulated'].includes(mode)) return res.status(400).json({ message: 'Invalid tracking mode.' });
+  if (timing !== undefined) {
+    if (!timing || typeof timing !== 'object') return res.status(400).json({ message: 'A timing object is required.' });
+    for (const stage of STAGE_NAMES) {
+      if (timing[stage] === undefined || isNaN(Number(timing[stage])) || Number(timing[stage]) < 0) {
+        return res.status(400).json({ message: `Enter a valid hour count for "${stage}".` });
+      }
     }
+    await setSetting('tracking_timing', STAGE_NAMES.reduce((acc, s) => ({ ...acc, [s]: Number(timing[s]) }), {}));
   }
-  await setSetting('tracking_timing', STAGE_NAMES.reduce((acc, s) => ({ ...acc, [s]: Number(timing[s]) }), {}));
-  res.json({ timing: await getSetting('tracking_timing', {}) });
+  if (mode) {
+    const current = await getTrackingMode();
+    // Staying on manual keeps the original cut-off; switching to it starts a new one,
+    // so orders placed before today keep behaving exactly as they did.
+    const since = mode === 'manual' ? (current.mode === 'manual' && current.since ? new Date(current.since).toISOString() : new Date().toISOString()) : null;
+    await setSetting('tracking_mode', { mode, since });
+    clearTrackingModeCache();
+    await record(req, 'tracking mode changed', 'settings', 'tracking_mode', { mode: current.mode }, { mode });
+  }
+  const now = await getTrackingMode();
+  res.json({ timing: await getSetting('tracking_timing', {}), mode: now.mode, since: now.since ? new Date(now.since).toISOString() : null });
 }));
 
 // ---- Store / Shipping / Tax settings (Phase 7) ----
@@ -1113,12 +1280,12 @@ router.get('/contact', asyncRoute(async (req, res) => {
   res.json({ messages });
 }));
 
-router.put('/contact/:id/read', asyncRoute(async (req, res) => {
+router.put('/contact/:id(\\d{1,9})/read', asyncRoute(async (req, res) => {
   must(await supabase.from('contact_messages').update({ read: true }).eq('id', Number(req.params.id)), 'markContactRead');
   res.json({ message: 'Marked as read.' });
 }));
 
-router.put('/contact/:id/reply', asyncRoute(async (req, res) => {
+router.put('/contact/:id(\\d{1,9})/reply', asyncRoute(async (req, res) => {
   const { reply } = req.body || {};
   const cleanReply = String(reply || '').trim();
   if (!cleanReply) return res.status(400).json({ message: 'Write a reply before sending.' });
@@ -1161,7 +1328,7 @@ router.post('/fabrics', asyncRoute(async (req, res) => {
     const maxOrder = must(await supabase.from('fabrics').select('display_order').order('display_order', { ascending: false }).limit(1), 'addFabric:maxOrder');
     const inserted = must(await supabase.from('fabrics').insert({
       name, slug, short_description: shortDesc || '', full_description: fullDesc || '', region: region || '', state: state || '',
-      craft_type: craftType || 'Handloom', swatch: swatch || 'maroon', story: story || '', active: true,
+      craft_type: craftType || 'Handloom', swatch: cleanSwatch(swatch) || 'maroon', story: story || '', active: true,
       display_order: (maxOrder[0]?.display_order ?? -1) + 1
     }).select().single(), 'addFabric:insert');
     res.status(201).json({ fabric: inserted });
@@ -1170,14 +1337,14 @@ router.post('/fabrics', asyncRoute(async (req, res) => {
   }
 }));
 
-router.put('/fabrics/:id', asyncRoute(async (req, res) => {
+router.put('/fabrics/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('fabrics').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateFabric:lookup');
   if (!existing) return res.status(404).json({ message: 'Fabric not found.' });
   const { name, slug, shortDesc, fullDesc, region, state, craftType, swatch, story, active, displayOrder, heroImage, thumbnail } = req.body;
   const updated = must(await supabase.from('fabrics').update({
     name: name ?? existing.name, slug: slug ?? existing.slug, short_description: shortDesc ?? existing.short_description,
     full_description: fullDesc ?? existing.full_description, region: region ?? existing.region, state: state ?? existing.state,
-    craft_type: craftType ?? existing.craft_type, swatch: swatch ?? existing.swatch, story: story ?? existing.story,
+    craft_type: craftType ?? existing.craft_type, swatch: cleanSwatch(swatch) ?? existing.swatch, story: story ?? existing.story,
     active: active !== undefined ? !!active : existing.active,
     display_order: displayOrder !== undefined ? Number(displayOrder) : existing.display_order,
     hero_image: heroImage !== undefined ? heroImage : existing.hero_image, thumbnail: thumbnail !== undefined ? thumbnail : existing.thumbnail
@@ -1185,7 +1352,7 @@ router.put('/fabrics/:id', asyncRoute(async (req, res) => {
   res.json({ fabric: updated });
 }));
 
-router.delete('/fabrics/:id', asyncRoute(async (req, res) => {
+router.delete('/fabrics/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('fabrics').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'deleteFabric:lookup');
   if (!existing) return res.status(404).json({ message: 'Fabric not found.' });
   const inUse = (await supabase.from('products').select('*', { count: 'exact', head: true }).eq('fabric', existing.name)).count || 0;
@@ -1198,7 +1365,7 @@ router.delete('/fabrics/:id', asyncRoute(async (req, res) => {
 }));
 
 // slot is 'hero' or 'thumbnail'
-router.post('/fabrics/:id/image', uploadSingle, asyncRoute(async (req, res) => {
+router.post('/fabrics/:id(\\d{1,9})/image', uploadSingle, asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('fabrics').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'fabricImage:lookup');
   if (!existing) return res.status(404).json({ message: 'Fabric not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
@@ -1227,7 +1394,7 @@ router.post('/occasions', asyncRoute(async (req, res) => {
   }
 }));
 
-router.put('/occasions/:id', asyncRoute(async (req, res) => {
+router.put('/occasions/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('occasions').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateOccasion:lookup');
   if (!existing) return res.status(404).json({ message: 'Occasion not found.' });
   const { name, slug, description, featuredOnHome, homeCardTitle, active, displayOrder, image } = req.body;
@@ -1241,7 +1408,7 @@ router.put('/occasions/:id', asyncRoute(async (req, res) => {
   res.json({ occasion: updated });
 }));
 
-router.delete('/occasions/:id', asyncRoute(async (req, res) => {
+router.delete('/occasions/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('occasions').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'deleteOccasion:lookup');
   if (!existing) return res.status(404).json({ message: 'Occasion not found.' });
   const inUse = (await supabase.from('products').select('*', { count: 'exact', head: true }).eq('occasion', existing.name)).count || 0;
@@ -1253,7 +1420,7 @@ router.delete('/occasions/:id', asyncRoute(async (req, res) => {
   res.json({ message: 'Occasion deleted.', deactivated: false });
 }));
 
-router.post('/occasions/:id/image', uploadSingle, asyncRoute(async (req, res) => {
+router.post('/occasions/:id(\\d{1,9})/image', uploadSingle, asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('occasions').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'occasionImage:lookup');
   if (!existing) return res.status(404).json({ message: 'Occasion not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
@@ -1277,7 +1444,7 @@ router.post('/badges', asyncRoute(async (req, res) => {
   }
 }));
 
-router.put('/badges/:id', asyncRoute(async (req, res) => {
+router.put('/badges/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('badges').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateBadge:lookup');
   if (!existing) return res.status(404).json({ message: 'Badge not found.' });
   const { key, label, active, priority } = req.body;
@@ -1288,7 +1455,7 @@ router.put('/badges/:id', asyncRoute(async (req, res) => {
   res.json({ badge: updated });
 }));
 
-router.delete('/badges/:id', asyncRoute(async (req, res) => {
+router.delete('/badges/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('badges').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'deleteBadge:lookup');
   if (!existing) return res.status(404).json({ message: 'Badge not found.' });
   const inUse = (await supabase.from('products').select('*', { count: 'exact', head: true }).eq('badge', existing.key)).count || 0;
@@ -1301,16 +1468,15 @@ router.delete('/badges/:id', asyncRoute(async (req, res) => {
 }));
 
 // ---- Collections ----
-// A collection's product list is derived from its own `weaves` array (every
-// active, non-sale product whose fabric matches one of them — sale-badged
-// sarees are sale-page-only, same exclusion GET /products applies) — there's
-// no separate per-product tagging step, so the admin list below shows that
-// derived count rather than a stored id list, matching what's actually live.
+// A collection is a hand-picked set of products (collection_products). The
+// count shown is what a shopper can actually see in it — tagged, active and
+// not sale-badged (sale sarees live only on /sale) — so admin and storefront
+// always agree.
 router.get('/collections', asyncRoute(async (req, res) => {
   const [collections, products] = await Promise.all([getCollections({ activeOnly: false }), getProducts()]);
-  const visible = products.filter(p => p.status !== 'archived' && p.badge !== 'sale');
+  const visibleIds = new Set(products.filter(p => p.status !== 'archived' && p.badge !== 'sale').map(p => p.id));
   res.json({
-    collections: collections.map(c => ({ ...c, productCount: visible.filter(p => (c.weaves || []).includes(p.fabric)).length }))
+    collections: collections.map(c => ({ ...c, productCount: c.productIds.filter(id => visibleIds.has(id)).length }))
   });
 }));
 
@@ -1324,13 +1490,13 @@ router.post('/collections', asyncRoute(async (req, res) => {
       active: true, display_order: (maxOrder[0]?.display_order ?? -1) + 1,
       start_date: startDate || null, end_date: endDate || null
     }).select().single(), 'addCollection:insert');
-    res.status(201).json({ collection: inserted });
+    res.status(201).json({ collection: { ...inserted, productIds: [] } });
   } catch (e) {
     res.status(400).json({ message: isUniqueViolation(e) ? 'That slug is already in use.' : e.message });
   }
 }));
 
-router.put('/collections/:id', asyncRoute(async (req, res) => {
+router.put('/collections/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('collections').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateCollection:lookup');
   if (!existing) return res.status(404).json({ message: 'Collection not found.' });
   const { name, slug, description, tagline, weaves, active, displayOrder, startDate, endDate, bannerImage, thumbnail } = req.body;
@@ -1342,22 +1508,40 @@ router.put('/collections/:id', asyncRoute(async (req, res) => {
     start_date: startDate !== undefined ? startDate : existing.start_date, end_date: endDate !== undefined ? endDate : existing.end_date,
     banner_image: bannerImage !== undefined ? bannerImage : existing.banner_image, thumbnail: thumbnail !== undefined ? thumbnail : existing.thumbnail
   }).eq('id', existing.id).select().single(), 'updateCollection:update');
-  res.json({ collection: updated });
+  res.json({ collection: { ...updated, productIds: await getCollectionProductIds(existing.id) } });
 }));
 
-router.delete('/collections/:id', asyncRoute(async (req, res) => {
+router.delete('/collections/:id(\\d{1,9})', asyncRoute(async (req, res) => {
+  must(await supabase.from('collection_products').delete().eq('collection_id', Number(req.params.id)), 'deleteCollection:products');
   must(await supabase.from('collections').delete().eq('id', Number(req.params.id)), 'deleteCollection:collection');
   res.json({ message: 'Collection deleted.' });
 }));
 
 // slot is 'banner' or 'thumbnail'
-router.post('/collections/:id/image', uploadSingle, asyncRoute(async (req, res) => {
+router.post('/collections/:id(\\d{1,9})/image', uploadSingle, asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('collections').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'collectionImage:lookup');
   if (!existing) return res.status(404).json({ message: 'Collection not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
   const slot = req.body.slot === 'thumbnail' ? 'thumbnail' : 'banner_image';
   const updated = must(await supabase.from('collections').update({ [slot]: `/uploads/${req.file.filename}` }).eq('id', existing.id).select().single(), 'collectionImage:update');
-  res.json({ collection: updated });
+  res.json({ collection: { ...updated, productIds: await getCollectionProductIds(existing.id) } });
+}));
+
+// Replaces the full tagged-product list in one call — simpler for the admin
+// checklist than diffing adds/removes. Goes through the
+// replace_collection_products() Postgres function so the collection is never
+// briefly empty to a concurrent reader.
+router.put('/collections/:id(\\d{1,9})/products', asyncRoute(async (req, res) => {
+  const id = Number(req.params.id);
+  const existing = must(await supabase.from('collections').select('*').eq('id', id).maybeSingle(), 'setCollectionProducts:lookup');
+  if (!existing) return res.status(404).json({ message: 'Collection not found.' });
+  const { productIds } = req.body;
+  if (!Array.isArray(productIds)) return res.status(400).json({ message: 'productIds must be an array.' });
+
+  const rpc = await supabase.rpc('replace_collection_products', { p_collection_id: id, p_product_ids: productIds.map(Number) });
+  if (rpc.error) throw new Error(rpc.error.message);
+
+  res.json({ productIds: await getCollectionProductIds(id) });
 }));
 
 // ---- Coupons ----
@@ -1424,12 +1608,35 @@ router.put('/content/hero', asyncRoute(async (req, res) => {
   res.json({ hero: next });
 }));
 
+// slot is 'desktop' (default) or 'mobile' — the mobile image is optional; when
+// absent the desktop one is used at every width.
 router.post('/content/hero/image', uploadSingle, asyncRoute(async (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
   const current = await getSetting('hero_banner', {});
-  const next = { ...current, desktopImage: `/uploads/${req.file.filename}` };
+  const field = req.body.slot === 'mobile' ? 'mobileImage' : 'desktopImage';
+  const next = { ...current, [field]: `/uploads/${req.file.filename}` };
   await setSetting('hero_banner', next);
   res.json({ hero: next });
+}));
+
+// ---- Storefront content: "Shop all sarees" homepage band ----
+// Up to three hand-picked sarees shown in the fan on the homepage band. Stored
+// as plain ids; an empty list means "auto" (the public route falls back to the
+// most popular sarees), so clearing the picks can never leave the band blank.
+router.get('/content/shop-all', asyncRoute(async (req, res) => {
+  const cfg = await getSetting('shop_all_showcase', {});
+  res.json({ productIds: Array.isArray(cfg.productIds) ? cfg.productIds : [] });
+}));
+
+router.put('/content/shop-all', asyncRoute(async (req, res) => {
+  const raw = Array.isArray(req.body.productIds) ? req.body.productIds : [];
+  const productIds = [];
+  for (const v of raw) {
+    const id = Number(v);
+    if (Number.isInteger(id) && id > 0 && id <= 2147483647 && !productIds.includes(id)) productIds.push(id);
+  }
+  await setSetting('shop_all_showcase', { productIds: productIds.slice(0, 3) });
+  res.json({ productIds: productIds.slice(0, 3) });
 }));
 
 // ---- Storefront content: Promo band ----
@@ -1452,6 +1659,7 @@ router.get('/reels', asyncRoute(async (req, res) => {
 router.post('/reels', asyncRoute(async (req, res) => {
   const { productId } = req.body;
   const id = Number(productId);
+  if (!Number.isInteger(id) || id <= 0 || id > 2147483647) return res.status(400).json({ message: 'Choose a saree to add.' });
   const product = must(await supabase.from('products').select('id').eq('id', id).maybeSingle(), 'addReel:product');
   if (!product) return res.status(404).json({ message: 'Product not found.' });
   const alreadyIn = must(await supabase.from('reel_items').select('id').eq('product_id', id).maybeSingle(), 'addReel:existing');
@@ -1474,7 +1682,7 @@ router.put('/reels/reorder', asyncRoute(async (req, res) => {
   res.json({ reels: await getReelItems({ activeOnly: false }) });
 }));
 
-router.put('/reels/:id', asyncRoute(async (req, res) => {
+router.put('/reels/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('reel_items').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateReel:lookup');
   if (!existing) return res.status(404).json({ message: 'Reel item not found.' });
   const { active, sortOrder, clearVideo, clearThumbnail } = req.body;
@@ -1487,12 +1695,12 @@ router.put('/reels/:id', asyncRoute(async (req, res) => {
   res.json({ reelItem: updated });
 }));
 
-router.delete('/reels/:id', asyncRoute(async (req, res) => {
+router.delete('/reels/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   must(await supabase.from('reel_items').delete().eq('id', Number(req.params.id)), 'deleteReel');
   res.json({ message: 'Removed from Sarees in Motion.' });
 }));
 
-router.post('/reels/:id/video', uploadSingle, asyncRoute(async (req, res) => {
+router.post('/reels/:id(\\d{1,9})/video', uploadSingle, asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('reel_items').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'reelVideo:lookup');
   if (!existing) return res.status(404).json({ message: 'Reel item not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
@@ -1536,7 +1744,7 @@ router.post('/upcoming-sarees', asyncRoute(async (req, res) => {
   res.status(201).json({ upcomingSaree: await shapeAdminUpcoming(inserted) });
 }));
 
-router.put('/upcoming-sarees/:id', asyncRoute(async (req, res) => {
+router.put('/upcoming-sarees/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('upcoming_sarees').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateUpcoming:lookup');
   if (!existing) return res.status(404).json({ message: 'Not found.' });
   const { name, fabric, description, expectedLabel, active, sortOrder } = req.body || {};
@@ -1552,13 +1760,13 @@ router.put('/upcoming-sarees/:id', asyncRoute(async (req, res) => {
   res.json({ upcomingSaree: await shapeAdminUpcoming(updated) });
 }));
 
-router.delete('/upcoming-sarees/:id', asyncRoute(async (req, res) => {
+router.delete('/upcoming-sarees/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   must(await supabase.from('upcoming_sarees').delete().eq('id', Number(req.params.id)), 'deleteUpcoming');
   await record(req, 'deleted', 'upcoming_saree', req.params.id);
   res.json({ message: 'Deleted.' });
 }));
 
-router.post('/upcoming-sarees/:id/image', uploadSingle, asyncRoute(async (req, res) => {
+router.post('/upcoming-sarees/:id(\\d{1,9})/image', uploadSingle, asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('upcoming_sarees').select('id').eq('id', Number(req.params.id)).maybeSingle(), 'upcomingImage:lookup');
   if (!existing) return res.status(404).json({ message: 'Not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
@@ -1566,7 +1774,7 @@ router.post('/upcoming-sarees/:id/image', uploadSingle, asyncRoute(async (req, r
   res.json({ upcomingSaree: await shapeAdminUpcoming(updated) });
 }));
 
-router.post('/upcoming-sarees/:id/notify', asyncRoute(async (req, res) => {
+router.post('/upcoming-sarees/:id(\\d{1,9})/notify', asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
   const entry = must(await supabase.from('upcoming_sarees').select('*').eq('id', id).maybeSingle(), 'notifyUpcoming:lookup');
   if (!entry) return res.status(404).json({ message: 'Not found.' });
@@ -1609,7 +1817,7 @@ router.post('/faq', asyncRoute(async (req, res) => {
   res.status(201).json({ faqItem: inserted });
 }));
 
-router.put('/faq/:id', asyncRoute(async (req, res) => {
+router.put('/faq/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('faq_items').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateFaq:lookup');
   if (!existing) return res.status(404).json({ message: 'FAQ item not found.' });
   const { question, answer, category, active, displayOrder } = req.body;
@@ -1621,7 +1829,7 @@ router.put('/faq/:id', asyncRoute(async (req, res) => {
   res.json({ faqItem: updated });
 }));
 
-router.delete('/faq/:id', asyncRoute(async (req, res) => {
+router.delete('/faq/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   must(await supabase.from('faq_items').delete().eq('id', Number(req.params.id)), 'deleteFaq');
   res.json({ message: 'FAQ item deleted.' });
 }));
@@ -1718,7 +1926,7 @@ router.get('/reviews', asyncRoute(async (req, res) => {
   });
 }));
 
-router.put('/reviews/:id/reply', asyncRoute(async (req, res) => {
+router.put('/reviews/:id(\\d{1,9})/reply', asyncRoute(async (req, res) => {
   const { reply } = req.body || {};
   const cleanReply = String(reply || '').trim();
   if (!cleanReply) return res.status(400).json({ message: 'Write a reply before sending.' });
@@ -1749,7 +1957,7 @@ router.put('/reviews/:id/reply', asyncRoute(async (req, res) => {
   res.json({ message: 'Reply posted — it now shows on the product page.' });
 }));
 
-router.put('/reviews/:id', asyncRoute(async (req, res) => {
+router.put('/reviews/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('reviews').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'moderateReview:lookup');
   if (!existing) return res.status(404).json({ message: 'Review not found.' });
   const { status, featured } = req.body;
@@ -1763,7 +1971,7 @@ router.put('/reviews/:id', asyncRoute(async (req, res) => {
   res.json({ message: 'Review updated.' });
 }));
 
-router.delete('/reviews/:id', asyncRoute(async (req, res) => {
+router.delete('/reviews/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   must(await supabase.from('reviews').delete().eq('id', Number(req.params.id)), 'deleteReview');
   await record(req, 'deleted', 'review', req.params.id);
   res.json({ message: 'Review deleted.' });

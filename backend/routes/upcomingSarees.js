@@ -48,7 +48,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/:id/notify-me', async (req, res) => {
+router.post('/:id(\\d{1,9})/notify-me', async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { email, name } = req.body || {};
