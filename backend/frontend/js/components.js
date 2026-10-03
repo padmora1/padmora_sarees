@@ -369,7 +369,7 @@ async function renderMiniCart() {
     }
     body.innerHTML = cart.items.map(item => `
       <div class="mini-cart-line">
-        <div class="mini-cart-thumb" style="background:${swatchBg(item.color)};"></div>
+        <div class="mini-cart-thumb" style="background:${photoBg(item.imageUrl, item.color)};"></div>
         <div class="mini-cart-line-info">
           <strong>${item.product.name}</strong>
           <span>${money(item.product.price)}</span>
@@ -575,7 +575,7 @@ async function runInstantSearch(query) {
       <div class="search-result-list">
         ${top.map(p => `
           <a class="search-result-item" href="/product?id=${p.id}">
-            <div class="search-result-media" style="background:${swatchBg(p.swatch)};"></div>
+            <div class="search-result-media" style="background:${productBg(p)};"></div>
             <div class="search-result-info"><strong>${p.name}</strong><span>${p.fabric} · ${money(p.price)}</span></div>
           </a>`).join('')}
       </div>
@@ -719,7 +719,7 @@ async function renderFinderResults() {
       <div class="finder-results">
         ${top.map(p => `
           <a class="finder-result-card" href="/product?id=${p.id}">
-            <div class="finder-result-media" style="background:${swatchBg(p.swatch)};"></div>
+            <div class="finder-result-media" style="background:${productBg(p)};"></div>
             <div><strong>${p.name}</strong><span>${money(p.price)}</span></div>
           </a>`).join('')}
       </div>

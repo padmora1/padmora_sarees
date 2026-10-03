@@ -116,6 +116,26 @@ const SWATCHES = {
   pink:['#E58BA6','#B03A5C'], orange:['#D9792B','#7A3A12'], purple:['#6B2D84','#C9A227'], black:['#1B1B1D','#6B5B2A'],
   white:['#F6F1E8','#CDBFA6'], gold:['#C9A227','#7A5C10'], cream:['#F2E6C8','#C9A227'], grey:['#8C8C90','#4A4A4D'], brown:['#6B4226','#C9A227']
 };
+// Real photos, with the colour swatch as the fallback — so a saree that has pictures shows them
+// in every grid, bag and search result, and one that doesn't still shows its colour.
+function primaryPhotoOf(media) {
+  const imgs = (media || []).filter(m => m.type === 'image');
+  const m = imgs.find(x => x.isPrimary) || imgs[0];
+  return m ? m.url : '';
+}
+function productPhotoUrl(p) {
+  const vs = (p && p.variants) || [];
+  const def = vs.find(v => v.isDefault) || vs[0];
+  let url = def ? primaryPhotoOf(def.media) : '';
+  for (let i = 0; !url && i < vs.length; i++) url = primaryPhotoOf(vs[i].media);
+  return url;
+}
+function photoBg(url, swatchKey) {
+  const u = String(url || '').replace(/'/g, '%27');
+  return u ? `url('${u}') center/cover no-repeat, ${swatchBg(swatchKey)}` : swatchBg(swatchKey);
+}
+function productBg(p) { return photoBg(productPhotoUrl(p), p && p.swatch); }
+
 function swatchBg(key) {
   const c = SWATCHES[String(key || '').trim().toLowerCase()] || SWATCHES.maroon;
   return `linear-gradient(160deg, ${c[0]} 0%, ${c[1]} 100%)`;
@@ -166,7 +186,8 @@ async function guestCartResponse() {
         id: product.id, name: product.name, fabric: product.fabric, occasion: product.occasion,
         price: variant.price, mrp: variant.mrp, rating: product.rating, reviews: product.reviews,
         badge: product.badge, swatch: variant.swatch, desc: variant.desc || product.desc, stock: variant.stock
-      } : product
+      } : product,
+      imageUrl: variant ? primaryPhotoOf(variant.media) : ''
     };
   }).filter(i => i.product);
 

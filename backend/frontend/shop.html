@@ -305,7 +305,7 @@
     const cartLine = defaultVariant ? cartQtyByVariant[defaultVariant.id] : null;
     return `
     <div class="product-card ${soldOut?'sold-out':''}">
-      <a href="/product?id=${p.id}" class="product-media" style="background:${swatchBg(p.swatch)};display:block;">
+      <a href="/product?id=${p.id}" class="product-media" style="background:${productBg(p)};display:block;">
         ${soldOut ? `<div class="sold-out-ribbon"><span class="ribbon-lotus">${LOTUS_GLYPH_SVG}</span>Sold Out</div>` : (badgeLabel ? `<span class="product-badge ${p.badge}">${badgeLabel}</span>` : '')}
         <button class="wishlist-toggle ${isWished?'active':''}" aria-label="${isWished?'Remove from wishlist':'Add to wishlist'}" onclick="event.preventDefault();quickWish(${p.id}, this);">
           <svg viewBox="0 0 24 24" aria-hidden="true">
