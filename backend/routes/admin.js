@@ -10,7 +10,8 @@ const {
 const { requireAdminAuth, requirePermission } = require('../middleware/adminAuth');
 const { computeStatus, buildTimeline, isCancellable, setOrderManualStatus, getTrackingMode, clearTrackingModeCache, STAGE_NAMES, CANCEL_REASONS } = require('../utils/orderStatus');
 const { readOrderIds, buildTemplateXlsx, buildTemplateCsv, normalizeOrderId, MAX_IDS } = require('../utils/spreadsheet');
-const { upload, UPLOAD_DIR } = require('../middleware/upload');
+const { upload } = require('../middleware/upload');
+const { saveUpload, removeUpload } = require('../utils/storage');
 const { toProductApiShape } = require('../utils/shape');
 const { runBackup, listBackups, BACKUP_DIR } = require('../utils/backup');
 const { RETURN_REASONS } = require('../utils/returns');
@@ -52,12 +53,19 @@ function isUniqueViolation(err) {
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 function uploadSingle(req, res, next) {
-  upload.single('file')(req, res, (err) => {
+  upload.single('file')(req, res, async (err) => {
     if (err) return res.status(400).json({ message: err.message || 'Upload failed.' });
     if (req.file && req.file.mimetype.startsWith('image/') && req.file.size > MAX_IMAGE_BYTES) {
-      try { fs.unlinkSync(req.file.path); } catch (_) { /* already gone */ }
       const mb = (req.file.size / 1024 / 1024).toFixed(1);
       return res.status(400).json({ message: `That photo is ${mb}MB — please use one under 8MB (a normal phone photo is fine; refresh the admin page so it can shrink photos automatically).` });
+    }
+    // Store the file permanently (Supabase Storage); routes save req.file.publicUrl in the database.
+    if (req.file) {
+      try { req.file.publicUrl = await saveUpload(req.file); }
+      catch (e) {
+        console.error('Upload could not be stored:', e);
+        return res.status(502).json({ message: 'The file could not be saved. Please try again in a moment.' });
+      }
     }
     next();
   });
@@ -223,9 +231,7 @@ router.delete('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   must(await supabase.from('product_variants').delete().eq('product_id', id), 'deleteProduct:variants');
   must(await supabase.from('products').delete().eq('id', id), 'deleteProduct:product');
   // Best-effort file cleanup — never let a missing file turn a successful delete into an error.
-  for (const url of photoUrls) {
-    try { fs.unlinkSync(path.join(UPLOAD_DIR, path.basename(url))); } catch (_) { /* already gone */ }
-  }
+  for (const url of photoUrls) await removeUpload(url);
   await record(req, 'deleted', 'product', id);
   res.json({ message: 'Product deleted.', archived: false });
 }));
@@ -315,7 +321,7 @@ router.post('/variants/:id(\\d{1,9})/media', uploadSingle, asyncRoute(async (req
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
 
   const type = req.file.mimetype.startsWith('video') ? 'video' : 'image';
-  const url = `/uploads/${req.file.filename}`;
+  const url = req.file.publicUrl;
   const hasAny = ((await supabase.from('variant_media').select('*', { count: 'exact', head: true }).eq('variant_id', variantId)).count || 0) > 0;
   const maxSort = must(await supabase.from('variant_media').select('sort_order').eq('variant_id', variantId).order('sort_order', { ascending: false }).limit(1), 'addMedia:maxSort');
   const sortOrder = (maxSort[0]?.sort_order ?? -1) + 1;
@@ -337,11 +343,8 @@ router.delete('/media/:id(\\d{1,9})', asyncRoute(async (req, res) => {
     const next = must(await supabase.from('variant_media').select('id').eq('variant_id', media.variant_id).order('sort_order').order('id').limit(1), 'deleteMedia:next');
     if (next[0]) must(await supabase.from('variant_media').update({ is_primary: true }).eq('id', next[0].id), 'deleteMedia:promote');
   }
-  // Best-effort local cleanup — never let a missing file block the API response.
-  try {
-    const filePath = path.join(UPLOAD_DIR, path.basename(media.url));
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-  } catch (_) { /* ignore */ }
+  // Best-effort file cleanup — never let a missing file block the API response.
+  await removeUpload(media.url);
 
   res.json({ message: 'Media removed.' });
 }));
@@ -1370,7 +1373,7 @@ router.post('/fabrics/:id(\\d{1,9})/image', uploadSingle, asyncRoute(async (req,
   if (!existing) return res.status(404).json({ message: 'Fabric not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
   const slot = req.body.slot === 'thumbnail' ? 'thumbnail' : 'hero_image';
-  const updated = must(await supabase.from('fabrics').update({ [slot]: `/uploads/${req.file.filename}` }).eq('id', existing.id).select().single(), 'fabricImage:update');
+  const updated = must(await supabase.from('fabrics').update({ [slot]: req.file.publicUrl }).eq('id', existing.id).select().single(), 'fabricImage:update');
   res.json({ fabric: updated });
 }));
 
@@ -1424,7 +1427,7 @@ router.post('/occasions/:id(\\d{1,9})/image', uploadSingle, asyncRoute(async (re
   const existing = must(await supabase.from('occasions').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'occasionImage:lookup');
   if (!existing) return res.status(404).json({ message: 'Occasion not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
-  const updated = must(await supabase.from('occasions').update({ image: `/uploads/${req.file.filename}` }).eq('id', existing.id).select().single(), 'occasionImage:update');
+  const updated = must(await supabase.from('occasions').update({ image: req.file.publicUrl }).eq('id', existing.id).select().single(), 'occasionImage:update');
   res.json({ occasion: updated });
 }));
 
@@ -1523,7 +1526,7 @@ router.post('/collections/:id(\\d{1,9})/image', uploadSingle, asyncRoute(async (
   if (!existing) return res.status(404).json({ message: 'Collection not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
   const slot = req.body.slot === 'thumbnail' ? 'thumbnail' : 'banner_image';
-  const updated = must(await supabase.from('collections').update({ [slot]: `/uploads/${req.file.filename}` }).eq('id', existing.id).select().single(), 'collectionImage:update');
+  const updated = must(await supabase.from('collections').update({ [slot]: req.file.publicUrl }).eq('id', existing.id).select().single(), 'collectionImage:update');
   res.json({ collection: { ...updated, productIds: await getCollectionProductIds(existing.id) } });
 }));
 
@@ -1614,7 +1617,7 @@ router.post('/content/hero/image', uploadSingle, asyncRoute(async (req, res) => 
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
   const current = await getSetting('hero_banner', {});
   const field = req.body.slot === 'mobile' ? 'mobileImage' : 'desktopImage';
-  const next = { ...current, [field]: `/uploads/${req.file.filename}` };
+  const next = { ...current, [field]: req.file.publicUrl };
   await setSetting('hero_banner', next);
   res.json({ hero: next });
 }));
@@ -1706,7 +1709,7 @@ router.post('/reels/:id(\\d{1,9})/video', uploadSingle, asyncRoute(async (req, r
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
   const isVideo = req.file.mimetype.startsWith('video');
   const field = isVideo ? 'video_url' : 'thumbnail_url';
-  const updated = must(await supabase.from('reel_items').update({ [field]: `/uploads/${req.file.filename}` }).eq('id', existing.id).select().single(), 'reelVideo:update');
+  const updated = must(await supabase.from('reel_items').update({ [field]: req.file.publicUrl }).eq('id', existing.id).select().single(), 'reelVideo:update');
   res.json({ reelItem: updated });
 }));
 
@@ -1770,7 +1773,7 @@ router.post('/upcoming-sarees/:id(\\d{1,9})/image', uploadSingle, asyncRoute(asy
   const existing = must(await supabase.from('upcoming_sarees').select('id').eq('id', Number(req.params.id)).maybeSingle(), 'upcomingImage:lookup');
   if (!existing) return res.status(404).json({ message: 'Not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
-  const updated = must(await supabase.from('upcoming_sarees').update({ image_url: `/uploads/${req.file.filename}` }).eq('id', existing.id).select().single(), 'upcomingImage:update');
+  const updated = must(await supabase.from('upcoming_sarees').update({ image_url: req.file.publicUrl }).eq('id', existing.id).select().single(), 'upcomingImage:update');
   res.json({ upcomingSaree: await shapeAdminUpcoming(updated) });
 }));
 

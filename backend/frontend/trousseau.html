@@ -115,7 +115,7 @@
 
   function pickCardHTML(p){
     return `<a class="pick-card" href="/product?id=${p.id}">
-      <div class="pick-media" style="background:${swatchBg(p.swatch)};"></div>
+      <div class="pick-media" style="background:${productBg(p)};"></div>
       <div class="pick-info"><strong>${p.name}</strong><span>${money(p.price)}</span></div>
     </a>`;
   }

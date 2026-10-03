@@ -4,7 +4,8 @@ const path = require('path');
 const { supabase, must } = require('../utils/db');
 const { requireAuth } = require('../middleware/auth');
 const { computeStatus } = require('../utils/orderStatus');
-const { uploadReturnPhotos, UPLOAD_DIR } = require('../middleware/upload');
+const { uploadReturnPhotos } = require('../middleware/upload');
+const { saveUpload, isReturnPhotoUrl } = require('../utils/storage');
 const {
   RETURN_REASONS, categoryForReason, getReturnPolicy, isWithinReturnWindow, computeReturnRefund
 } = require('../utils/returns');
@@ -98,9 +99,15 @@ router.get('/:id(\\d{1,9})', async (req, res) => {
 // still filling out the form, gets back URLs, then submits those URLs as
 // part of POST / below. Keeps this endpoint reusable if we ever want a
 // "manage return photos after submission" flow without redesigning it.
-router.post('/photos', uploadPhotos, (req, res) => {
+router.post('/photos', uploadPhotos, async (req, res) => {
   if (!req.files || !req.files.length) return res.status(400).json({ message: 'No photos uploaded.' });
-  res.status(201).json({ urls: req.files.map(f => `/uploads/${f.filename}`) });
+  try {
+    const urls = await Promise.all(req.files.map(f => saveUpload(f, 'return-')));
+    res.status(201).json({ urls });
+  } catch (err) {
+    console.error('POST /returns/photos failed:', err);
+    res.status(502).json({ message: 'The photos could not be saved. Please try again in a moment.' });
+  }
 });
 
 router.post('/', async (req, res) => {
@@ -162,15 +169,15 @@ router.post('/', async (req, res) => {
     // WE messed up (damaged/wrong item/not as described/quality) — a plain
     // "changed my mind" doesn't need proof of anything. Each URL must be one
     // this customer actually got back from POST /photos just now, not an
-    // arbitrary string, and must still exist on disk.
-    const photos = Array.isArray(photoUrls) ? photoUrls.filter(u => typeof u === 'string' && /^\/uploads\/return-[\w.-]+$/.test(u)) : [];
+    // arbitrary string (a photo stored by this server; old local-path photos must still exist on disk).
+    const photos = Array.isArray(photoUrls) ? photoUrls.filter(isReturnPhotoUrl) : [];
     if (reasonCategory === 'seller_fault' && !photos.length) {
       return res.status(400).json({ message: 'Add at least one photo showing the issue — it helps us process your claim faster.' });
     }
     if (photos.length > 5) {
       return res.status(400).json({ message: 'Up to 5 photos per request.' });
     }
-    const missingPhoto = photos.find(u => !fs.existsSync(path.join(UPLOAD_DIR, path.basename(u))));
+    const missingPhoto = photos.find(u => u.startsWith('/uploads/') && !fs.existsSync(path.join(__dirname, '..', 'uploads', path.basename(u))));
     if (missingPhoto) {
       return res.status(400).json({ message: 'One of the uploaded photos could not be found — please re-upload it.' });
     }

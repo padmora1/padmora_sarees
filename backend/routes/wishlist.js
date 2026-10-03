@@ -1,17 +1,13 @@
 const express = require('express');
 const { supabase, must, getProducts } = require('../utils/db');
 const { requireAuth } = require('../middleware/auth');
+const { toProductApiShape } = require('../utils/shape');
 
 const router = express.Router();
 router.use(requireAuth);
 
-function toApiShape(row) {
-  return {
-    id: row.id, name: row.name, fabric: row.fabric, occasion: row.occasion,
-    price: row.price, mrp: row.mrp, rating: row.rating, reviews: row.reviews_count,
-    badge: row.badge, swatch: row.swatch, desc: row.description, stock: row.stock
-  };
-}
+// Same shape the shop uses (includes each colour's photos), so the wishlist grid can show real pictures.
+const toApiShape = toProductApiShape;
 
 // Joins in price_at_add so the wishlist page can show a real "price dropped"
 // badge — price_at_add is set once, the moment an item is first wishlisted,

@@ -1,5 +1,5 @@
 const express = require('express');
-const { supabase, must, getProducts, getVariantById, getDefaultVariant, getVariants } = require('../utils/db');
+const { supabase, must, getProducts, getVariantById, getDefaultVariant, getVariants, getPrimaryImagesByVariantIds } = require('../utils/db');
 const { requireAuth } = require('../middleware/auth');
 const { resolveCoupon, computeOrderTotals } = require('../utils/pricing');
 
@@ -23,6 +23,7 @@ async function resolveVariantId(productId, variantId, color) {
 
 async function withProductDetails(items) {
   const products = await getProducts();
+  const photoByVariant = await getPrimaryImagesByVariantIds(items.map(i => i.variant_id).filter(Boolean));
   return Promise.all(items.map(async item => {
     const product = products.find(p => p.id === item.product_id);
     const variant = item.variant_id ? await getVariantById(item.variant_id) : null;
@@ -33,6 +34,7 @@ async function withProductDetails(items) {
       color: variant ? variant.swatch : item.color,
       colorName: variant ? variant.color_name : item.color,
       qty: item.qty,
+      imageUrl: (item.variant_id && photoByVariant[item.variant_id]) || null,
       product: (product && variant) ? {
         id: product.id, name: product.name, fabric: product.fabric, occasion: product.occasion,
         price: variant.price, mrp: variant.mrp, rating: product.rating, reviews: product.reviews_count,

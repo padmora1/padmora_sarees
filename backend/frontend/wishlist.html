@@ -49,7 +49,7 @@
     const soldOut = p.stock <= 0;
     return `
     <div class="product-card ${soldOut?'sold-out':''}">
-      <a href="/product?id=${p.id}" class="product-media" style="background:${swatchBg(p.swatch)};display:block;">
+      <a href="/product?id=${p.id}" class="product-media" style="background:${productBg(p)};display:block;">
         ${soldOut ? `<div class="sold-out-ribbon"><span class="ribbon-lotus">${LOTUS_GLYPH_SVG}</span>Sold Out</div>` : ''}
         <button class="wishlist-toggle active" aria-label="Remove from wishlist" onclick="event.preventDefault();removeWish(${p.id});">
           <svg viewBox="0 0 24 24" aria-hidden="true">
