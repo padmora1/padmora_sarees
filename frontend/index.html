@@ -249,7 +249,7 @@
       // this clickable rail until there's something to actually show.
       rail.innerHTML = fabrics.filter(f=>f.productCount > 0).map(f=>`
         <a class="cat-item" href="/shop?fabric=${encodeURIComponent(f.name)}">
-          <div class="cat-swatch"><div class="cat-swatch-inner" style="background:${swatchBg(f.swatch)};"></div></div>
+          <div class="cat-swatch"><div class="cat-swatch-inner" style="background:${photoBg(f.thumbnail || f.heroImage, f.swatch)};"></div></div>
           <strong>${f.name}</strong>
         </a>`).join('');
       // Only show scroll arrows once there's actually more to scroll to —

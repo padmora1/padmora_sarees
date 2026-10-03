@@ -914,7 +914,8 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
    visible at a time; an admin adding more fabrics scrolls instead of
    wrapping into a cramped row. */
 .cat-rail-wrap{position:relative;}
-.cat-rail{display:flex;gap:22px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding-bottom:2px;}
+/* the rail scrolls, which clips anything outside it — padding (cancelled by the negative margin) leaves room for a circle's hover grow/tilt and shadow */
+.cat-rail{display:flex;gap:22px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding:14px 14px 30px;margin:-14px -14px -26px;scroll-padding:0 14px;}
 .cat-rail::-webkit-scrollbar{display:none;}
 .cat-item{flex:0 0 calc(25% - 16.5px);scroll-snap-align:start;text-align:center;cursor:pointer;}
 .cat-swatch{width:100%;aspect-ratio:1;border-radius:50%;margin-bottom:12px;border:2px solid var(--gold-soft);padding:5px;}
