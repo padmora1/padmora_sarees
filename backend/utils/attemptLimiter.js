@@ -33,4 +33,14 @@ function recordFailure(key) {
   else b.count++;
 }
 
-module.exports = { isBlocked, recordFailure };
+function clearFailures(key) {
+  buckets.delete(key);
+}
+
+// The caller's address as seen behind Hostinger's proxy (first X-Forwarded-For entry).
+function clientIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.ip || 'unknown';
+}
+
+module.exports = { isBlocked, recordFailure, clearFailures, clientIp };

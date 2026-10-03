@@ -83,7 +83,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.get('/:id', async (req, res) => {
+router.get('/:id(\\d{1,9})', async (req, res) => {
   try {
     const row = must(await supabase.from('return_requests').select('*').eq('id', req.params.id).eq('user_id', req.userId).maybeSingle(), 'getReturn');
     if (!row) return res.status(404).json({ message: 'Return request not found.' });

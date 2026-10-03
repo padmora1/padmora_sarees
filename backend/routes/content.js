@@ -22,7 +22,8 @@ router.get('/content/shop-all', async (req, res) => {
     const ids = (Array.isArray(cfg.productIds) ? cfg.productIds : []).slice(0, 3);
     let products = [];
     if (ids.length) {
-      const rows = await Promise.all(ids.map(id => getProductById(id)));
+      // A stored id that no longer resolves must never take the whole homepage band down.
+      const rows = await Promise.all(ids.map(id => getProductById(id).catch(() => null)));
       // A pick that was since archived or deleted just drops out.
       products = rows.filter(r => r && r.status !== 'archived').map(toProductApiShape);
     }

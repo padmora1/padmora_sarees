@@ -146,7 +146,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.get('/:id', async (req, res) => {
+router.get('/:id(\\d{1,9})', async (req, res) => {
   try {
     const id = Number(req.params.id);
     // A non-numeric id (a typo'd link, a stray query string, someone poking
@@ -184,7 +184,7 @@ router.get('/:id', async (req, res) => {
 // "Pre Book" a sold-out variant — no account required, just an email. Real
 // demand data for admin (Inventory → Pre-Book Requests) and a real email the
 // moment backend/utils/prebookAlerts.js sees that variant's stock go above 0.
-router.post('/:id/prebook', async (req, res) => {
+router.post('/:id(\\d{1,9})/prebook', async (req, res) => {
   try {
     const { variantId, email, name } = req.body || {};
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {

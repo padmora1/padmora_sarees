@@ -63,7 +63,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/orders', orderRoutes);
-app.use('/api/products/:productId/reviews', reviewRoutes);
+app.use('/api/products/:productId(\\d{1,9})/reviews', reviewRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/admin', adminHostOnly, adminRoutes);
 app.use('/api/addresses', addressRoutes);

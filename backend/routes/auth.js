@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { supabase, must } = require('../utils/db');
 const { requireAuth } = require('../middleware/auth');
 const { sendEmail } = require('../utils/notify');
+const { isBlocked, recordFailure, clearFailures, clientIp } = require('../utils/attemptLimiter');
 const { createOtp, verifyOtp } = require('../utils/otp');
 
 const router = express.Router();
@@ -133,10 +134,19 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Email and password are required.' });
     }
 
+    // Failed guesses are counted per (address + email) and per address, so someone hammering
+    // passwords is cut off, while a stranger can't lock the real owner out from elsewhere.
+    const ip = clientIp(req);
+    const pairKey = 'login:' + ip + '|' + String(email).trim().toLowerCase();
+    const ipKey = 'login:ip:' + ip;
+    if (isBlocked(pairKey, 8) || isBlocked(ipKey, 40)) {
+      return res.status(429).json({ message: 'Too many login attempts. Please wait a few minutes and try again, or reset your password.' });
+    }
+
     // Same message and status whether the email doesn't exist or the password
     // is wrong — telling the two apart would let someone probe which emails
     // have an account here just by trying to log in.
-    const badCredentials = () => res.status(401).json({ message: 'Incorrect email or password.' });
+    const badCredentials = () => { recordFailure(pairKey); recordFailure(ipKey); return res.status(401).json({ message: 'Incorrect email or password.' }); };
 
     const user = must(await supabase.from('users').select('*').ilike('email', email || '').maybeSingle(), 'login:lookup');
     if (!user) {
@@ -151,6 +161,7 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ message: 'This account has been blocked. Contact support for help.' });
     }
 
+    clearFailures(pairKey);
     const token = signToken(user.id, user.token_version);
     res.json({ token, user: publicUser(user) });
   } catch (err) {

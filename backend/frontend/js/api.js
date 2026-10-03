@@ -89,6 +89,22 @@ function escapeHtml(value) {
   }[ch]));
 }
 
+// Every state and union territory the store can ship to — the address forms used to
+// hard-code five, which locked out most of India (Madhya Pradesh, Gujarat, Rajasthan...).
+const INDIAN_STATES = ['Andaman and Nicobar Islands', 'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chandigarh', 'Chhattisgarh',
+  'Dadra and Nagar Haveli and Daman and Diu', 'Delhi', 'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jammu and Kashmir', 'Jharkhand',
+  'Karnataka', 'Kerala', 'Ladakh', 'Lakshadweep', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha',
+  'Puducherry', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal'];
+function fillStateSelects() {
+  document.querySelectorAll('select[data-states]').forEach(sel => {
+    if (sel.options.length) return; // already filled
+    sel.innerHTML = INDIAN_STATES.map(s => `<option>${s}</option>`).join('');
+    sel.value = 'Maharashtra';
+  });
+}
+fillStateSelects();
+document.addEventListener('DOMContentLoaded', fillStateSelects);
+
 const SWATCHES = {
   maroon:['#7A1F2B','#C9A227'], emerald:['#0F5132','#C9A227'], ivory:['#EDE3D0','#B08968'],
   teal:['#1F4B4A','#8FBFB6'], blush:['#E7C6C0','#B75D5D'], sand:['#C9B183','#7A6A4E'],

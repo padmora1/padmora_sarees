@@ -152,7 +152,7 @@ router.get('/products', asyncRoute(async (req, res) => {
   res.json({ products });
 }));
 
-router.get('/products/:id', asyncRoute(async (req, res) => {
+router.get('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
   const product = (await getProducts()).map(toProductApiShape).find(p => p.id === id);
   if (!product) return res.status(404).json({ message: 'Product not found.' });
@@ -178,7 +178,7 @@ router.post('/products', asyncRoute(async (req, res) => {
   res.status(201).json({ product: (await getProducts()).map(toProductApiShape).find(p => p.id === id) });
 }));
 
-router.put('/products/:id', asyncRoute(async (req, res) => {
+router.put('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
   const existing = must(await supabase.from('products').select('*').eq('id', id).maybeSingle(), 'updateProduct:lookup');
   if (!existing) return res.status(404).json({ message: 'Product not found.' });
@@ -197,7 +197,7 @@ router.put('/products/:id', asyncRoute(async (req, res) => {
 
 // Archive rather than hard-delete once a product has ever been ordered —
 // historical order_items must keep referring to something real.
-router.delete('/products/:id', asyncRoute(async (req, res) => {
+router.delete('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
   const wasOrdered = ((await supabase.from('order_items').select('*', { count: 'exact', head: true }).eq('product_id', id)).count || 0) > 0;
   if (wasOrdered) {
@@ -231,7 +231,7 @@ router.delete('/products/:id', asyncRoute(async (req, res) => {
 }));
 
 // ---- Variants ----
-router.post('/products/:id/variants', asyncRoute(async (req, res) => {
+router.post('/products/:id(\\d{1,9})/variants', asyncRoute(async (req, res) => {
   const productId = Number(req.params.id);
   const product = must(await supabase.from('products').select('id').eq('id', productId).maybeSingle(), 'addVariant:product');
   if (!product) return res.status(404).json({ message: 'Product not found.' });
@@ -251,7 +251,7 @@ router.post('/products/:id/variants', asyncRoute(async (req, res) => {
   res.status(201).json({ variant: await getVariantById(inserted.id) });
 }));
 
-router.put('/variants/:id', asyncRoute(async (req, res) => {
+router.put('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
   const existing = must(await supabase.from('product_variants').select('*').eq('id', id).maybeSingle(), 'updateVariant:lookup');
   if (!existing) return res.status(404).json({ message: 'Variant not found.' });
@@ -279,7 +279,7 @@ router.put('/variants/:id', asyncRoute(async (req, res) => {
   res.json({ variant: await getVariantById(id) });
 }));
 
-router.delete('/variants/:id', asyncRoute(async (req, res) => {
+router.delete('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
   const existing = must(await supabase.from('product_variants').select('*').eq('id', id).maybeSingle(), 'deleteVariant:lookup');
   if (!existing) return res.status(404).json({ message: 'Variant not found.' });
@@ -308,7 +308,7 @@ router.delete('/variants/:id', asyncRoute(async (req, res) => {
 }));
 
 // ---- Variant media ----
-router.post('/variants/:id/media', uploadSingle, asyncRoute(async (req, res) => {
+router.post('/variants/:id(\\d{1,9})/media', uploadSingle, asyncRoute(async (req, res) => {
   const variantId = Number(req.params.id);
   const variant = must(await supabase.from('product_variants').select('*').eq('id', variantId).maybeSingle(), 'addMedia:variant');
   if (!variant) return res.status(404).json({ message: 'Variant not found.' });
@@ -327,7 +327,7 @@ router.post('/variants/:id/media', uploadSingle, asyncRoute(async (req, res) => 
   res.status(201).json({ media: inserted });
 }));
 
-router.delete('/media/:id', asyncRoute(async (req, res) => {
+router.delete('/media/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
   const media = must(await supabase.from('variant_media').select('*').eq('id', id).maybeSingle(), 'deleteMedia:lookup');
   if (!media) return res.status(404).json({ message: 'Media not found.' });
@@ -346,7 +346,7 @@ router.delete('/media/:id', asyncRoute(async (req, res) => {
   res.json({ message: 'Media removed.' });
 }));
 
-router.put('/media/:id/primary', asyncRoute(async (req, res) => {
+router.put('/media/:id(\\d{1,9})/primary', asyncRoute(async (req, res) => {
   const media = must(await supabase.from('variant_media').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'primaryMedia:lookup');
   if (!media) return res.status(404).json({ message: 'Media not found.' });
   must(await supabase.from('variant_media').update({ is_primary: false }).eq('variant_id', media.variant_id), 'primaryMedia:clear');
@@ -377,6 +377,7 @@ router.get('/inventory', asyncRoute(async (req, res) => {
 router.post('/inventory/adjust', asyncRoute(async (req, res) => {
   const { variantId, change, reason } = req.body;
   const id = Number(variantId);
+  if (!Number.isInteger(id) || id <= 0 || id > 2147483647) return res.status(400).json({ message: 'Choose a valid variant.' });
   const variant = must(await supabase.from('product_variants').select('*').eq('id', id).maybeSingle(), 'adjustInventory:lookup');
   if (!variant) return res.status(404).json({ message: 'Variant not found.' });
   const delta = Number(change);
@@ -394,7 +395,7 @@ router.post('/inventory/adjust', asyncRoute(async (req, res) => {
   res.json({ variant: await getVariantById(id) });
 }));
 
-router.get('/inventory/:variantId/history', asyncRoute(async (req, res) => {
+router.get('/inventory/:variantId(\\d{1,9})/history', asyncRoute(async (req, res) => {
   const rows = must(
     await supabase.from('inventory_history').select('*').eq('variant_id', Number(req.params.variantId)).order('created_at', { ascending: false }),
     'inventoryHistory'
@@ -804,7 +805,7 @@ router.post('/jobs/prebook/run', asyncRoute(async (req, res) => {
 // Manual "Notify Now" for one saree/colour — same send logic as the
 // background job, scoped to a single variant so it can't ping anyone
 // pre-booked on a different saree that also happens to be in stock.
-router.post('/prebooks/:variantId/notify', asyncRoute(async (req, res) => {
+router.post('/prebooks/:variantId(\\d{1,9})/notify', asyncRoute(async (req, res) => {
   const variantId = Number(req.params.variantId);
   const variant = must(await supabase.from('product_variants').select('stock').eq('id', variantId).maybeSingle(), 'notifyPrebook:lookup');
   if (!variant) return res.status(404).json({ message: 'Variant not found.' });
@@ -1018,13 +1019,13 @@ router.get('/returns', asyncRoute(async (req, res) => {
   res.json({ returns: await Promise.all(rows.map(shapeAdminReturn)) });
 }));
 
-router.get('/returns/:id', asyncRoute(async (req, res) => {
+router.get('/returns/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const row = must(await supabase.from('return_requests').select('*').eq('id', req.params.id).maybeSingle(), 'getAdminReturn');
   if (!row) return res.status(404).json({ message: 'Return request not found.' });
   res.json({ return: await shapeAdminReturn(row) });
 }));
 
-router.put('/returns/:id/decision', asyncRoute(async (req, res) => {
+router.put('/returns/:id(\\d{1,9})/decision', asyncRoute(async (req, res) => {
   const { approve, adminNote } = req.body || {};
   const existing = must(await supabase.from('return_requests').select('*').eq('id', req.params.id).maybeSingle(), 'decideReturn:lookup');
   if (!existing) return res.status(404).json({ message: 'Return request not found.' });
@@ -1060,7 +1061,7 @@ router.put('/returns/:id/decision', asyncRoute(async (req, res) => {
   res.json({ return: await shapeAdminReturn(updated) });
 }));
 
-router.put('/returns/:id/receive', asyncRoute(async (req, res) => {
+router.put('/returns/:id(\\d{1,9})/receive', asyncRoute(async (req, res) => {
   const { itemRestock } = req.body || {}; // { [returnItemId]: true/false }
   const existing = must(await supabase.from('return_requests').select('*').eq('id', req.params.id).maybeSingle(), 'receiveReturn:lookup');
   if (!existing) return res.status(404).json({ message: 'Return request not found.' });
@@ -1076,7 +1077,7 @@ router.put('/returns/:id/receive', asyncRoute(async (req, res) => {
   res.json({ return: await shapeAdminReturn(updated) });
 }));
 
-router.put('/returns/:id/refund', asyncRoute(async (req, res) => {
+router.put('/returns/:id(\\d{1,9})/refund', asyncRoute(async (req, res) => {
   const { refundMethod, finalAmount } = req.body || {};
   const existing = must(await supabase.from('return_requests').select('*').eq('id', req.params.id).maybeSingle(), 'refundReturn:lookup');
   if (!existing) return res.status(404).json({ message: 'Return request not found.' });
@@ -1279,12 +1280,12 @@ router.get('/contact', asyncRoute(async (req, res) => {
   res.json({ messages });
 }));
 
-router.put('/contact/:id/read', asyncRoute(async (req, res) => {
+router.put('/contact/:id(\\d{1,9})/read', asyncRoute(async (req, res) => {
   must(await supabase.from('contact_messages').update({ read: true }).eq('id', Number(req.params.id)), 'markContactRead');
   res.json({ message: 'Marked as read.' });
 }));
 
-router.put('/contact/:id/reply', asyncRoute(async (req, res) => {
+router.put('/contact/:id(\\d{1,9})/reply', asyncRoute(async (req, res) => {
   const { reply } = req.body || {};
   const cleanReply = String(reply || '').trim();
   if (!cleanReply) return res.status(400).json({ message: 'Write a reply before sending.' });
@@ -1336,7 +1337,7 @@ router.post('/fabrics', asyncRoute(async (req, res) => {
   }
 }));
 
-router.put('/fabrics/:id', asyncRoute(async (req, res) => {
+router.put('/fabrics/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('fabrics').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateFabric:lookup');
   if (!existing) return res.status(404).json({ message: 'Fabric not found.' });
   const { name, slug, shortDesc, fullDesc, region, state, craftType, swatch, story, active, displayOrder, heroImage, thumbnail } = req.body;
@@ -1351,7 +1352,7 @@ router.put('/fabrics/:id', asyncRoute(async (req, res) => {
   res.json({ fabric: updated });
 }));
 
-router.delete('/fabrics/:id', asyncRoute(async (req, res) => {
+router.delete('/fabrics/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('fabrics').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'deleteFabric:lookup');
   if (!existing) return res.status(404).json({ message: 'Fabric not found.' });
   const inUse = (await supabase.from('products').select('*', { count: 'exact', head: true }).eq('fabric', existing.name)).count || 0;
@@ -1364,7 +1365,7 @@ router.delete('/fabrics/:id', asyncRoute(async (req, res) => {
 }));
 
 // slot is 'hero' or 'thumbnail'
-router.post('/fabrics/:id/image', uploadSingle, asyncRoute(async (req, res) => {
+router.post('/fabrics/:id(\\d{1,9})/image', uploadSingle, asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('fabrics').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'fabricImage:lookup');
   if (!existing) return res.status(404).json({ message: 'Fabric not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
@@ -1393,7 +1394,7 @@ router.post('/occasions', asyncRoute(async (req, res) => {
   }
 }));
 
-router.put('/occasions/:id', asyncRoute(async (req, res) => {
+router.put('/occasions/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('occasions').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateOccasion:lookup');
   if (!existing) return res.status(404).json({ message: 'Occasion not found.' });
   const { name, slug, description, featuredOnHome, homeCardTitle, active, displayOrder, image } = req.body;
@@ -1407,7 +1408,7 @@ router.put('/occasions/:id', asyncRoute(async (req, res) => {
   res.json({ occasion: updated });
 }));
 
-router.delete('/occasions/:id', asyncRoute(async (req, res) => {
+router.delete('/occasions/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('occasions').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'deleteOccasion:lookup');
   if (!existing) return res.status(404).json({ message: 'Occasion not found.' });
   const inUse = (await supabase.from('products').select('*', { count: 'exact', head: true }).eq('occasion', existing.name)).count || 0;
@@ -1419,7 +1420,7 @@ router.delete('/occasions/:id', asyncRoute(async (req, res) => {
   res.json({ message: 'Occasion deleted.', deactivated: false });
 }));
 
-router.post('/occasions/:id/image', uploadSingle, asyncRoute(async (req, res) => {
+router.post('/occasions/:id(\\d{1,9})/image', uploadSingle, asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('occasions').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'occasionImage:lookup');
   if (!existing) return res.status(404).json({ message: 'Occasion not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
@@ -1443,7 +1444,7 @@ router.post('/badges', asyncRoute(async (req, res) => {
   }
 }));
 
-router.put('/badges/:id', asyncRoute(async (req, res) => {
+router.put('/badges/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('badges').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateBadge:lookup');
   if (!existing) return res.status(404).json({ message: 'Badge not found.' });
   const { key, label, active, priority } = req.body;
@@ -1454,7 +1455,7 @@ router.put('/badges/:id', asyncRoute(async (req, res) => {
   res.json({ badge: updated });
 }));
 
-router.delete('/badges/:id', asyncRoute(async (req, res) => {
+router.delete('/badges/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('badges').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'deleteBadge:lookup');
   if (!existing) return res.status(404).json({ message: 'Badge not found.' });
   const inUse = (await supabase.from('products').select('*', { count: 'exact', head: true }).eq('badge', existing.key)).count || 0;
@@ -1495,7 +1496,7 @@ router.post('/collections', asyncRoute(async (req, res) => {
   }
 }));
 
-router.put('/collections/:id', asyncRoute(async (req, res) => {
+router.put('/collections/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('collections').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateCollection:lookup');
   if (!existing) return res.status(404).json({ message: 'Collection not found.' });
   const { name, slug, description, tagline, weaves, active, displayOrder, startDate, endDate, bannerImage, thumbnail } = req.body;
@@ -1510,14 +1511,14 @@ router.put('/collections/:id', asyncRoute(async (req, res) => {
   res.json({ collection: { ...updated, productIds: await getCollectionProductIds(existing.id) } });
 }));
 
-router.delete('/collections/:id', asyncRoute(async (req, res) => {
+router.delete('/collections/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   must(await supabase.from('collection_products').delete().eq('collection_id', Number(req.params.id)), 'deleteCollection:products');
   must(await supabase.from('collections').delete().eq('id', Number(req.params.id)), 'deleteCollection:collection');
   res.json({ message: 'Collection deleted.' });
 }));
 
 // slot is 'banner' or 'thumbnail'
-router.post('/collections/:id/image', uploadSingle, asyncRoute(async (req, res) => {
+router.post('/collections/:id(\\d{1,9})/image', uploadSingle, asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('collections').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'collectionImage:lookup');
   if (!existing) return res.status(404).json({ message: 'Collection not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
@@ -1530,7 +1531,7 @@ router.post('/collections/:id/image', uploadSingle, asyncRoute(async (req, res) 
 // checklist than diffing adds/removes. Goes through the
 // replace_collection_products() Postgres function so the collection is never
 // briefly empty to a concurrent reader.
-router.put('/collections/:id/products', asyncRoute(async (req, res) => {
+router.put('/collections/:id(\\d{1,9})/products', asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
   const existing = must(await supabase.from('collections').select('*').eq('id', id).maybeSingle(), 'setCollectionProducts:lookup');
   if (!existing) return res.status(404).json({ message: 'Collection not found.' });
@@ -1632,7 +1633,7 @@ router.put('/content/shop-all', asyncRoute(async (req, res) => {
   const productIds = [];
   for (const v of raw) {
     const id = Number(v);
-    if (Number.isInteger(id) && id > 0 && !productIds.includes(id)) productIds.push(id);
+    if (Number.isInteger(id) && id > 0 && id <= 2147483647 && !productIds.includes(id)) productIds.push(id);
   }
   await setSetting('shop_all_showcase', { productIds: productIds.slice(0, 3) });
   res.json({ productIds: productIds.slice(0, 3) });
@@ -1658,6 +1659,7 @@ router.get('/reels', asyncRoute(async (req, res) => {
 router.post('/reels', asyncRoute(async (req, res) => {
   const { productId } = req.body;
   const id = Number(productId);
+  if (!Number.isInteger(id) || id <= 0 || id > 2147483647) return res.status(400).json({ message: 'Choose a saree to add.' });
   const product = must(await supabase.from('products').select('id').eq('id', id).maybeSingle(), 'addReel:product');
   if (!product) return res.status(404).json({ message: 'Product not found.' });
   const alreadyIn = must(await supabase.from('reel_items').select('id').eq('product_id', id).maybeSingle(), 'addReel:existing');
@@ -1680,7 +1682,7 @@ router.put('/reels/reorder', asyncRoute(async (req, res) => {
   res.json({ reels: await getReelItems({ activeOnly: false }) });
 }));
 
-router.put('/reels/:id', asyncRoute(async (req, res) => {
+router.put('/reels/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('reel_items').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateReel:lookup');
   if (!existing) return res.status(404).json({ message: 'Reel item not found.' });
   const { active, sortOrder, clearVideo, clearThumbnail } = req.body;
@@ -1693,12 +1695,12 @@ router.put('/reels/:id', asyncRoute(async (req, res) => {
   res.json({ reelItem: updated });
 }));
 
-router.delete('/reels/:id', asyncRoute(async (req, res) => {
+router.delete('/reels/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   must(await supabase.from('reel_items').delete().eq('id', Number(req.params.id)), 'deleteReel');
   res.json({ message: 'Removed from Sarees in Motion.' });
 }));
 
-router.post('/reels/:id/video', uploadSingle, asyncRoute(async (req, res) => {
+router.post('/reels/:id(\\d{1,9})/video', uploadSingle, asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('reel_items').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'reelVideo:lookup');
   if (!existing) return res.status(404).json({ message: 'Reel item not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
@@ -1742,7 +1744,7 @@ router.post('/upcoming-sarees', asyncRoute(async (req, res) => {
   res.status(201).json({ upcomingSaree: await shapeAdminUpcoming(inserted) });
 }));
 
-router.put('/upcoming-sarees/:id', asyncRoute(async (req, res) => {
+router.put('/upcoming-sarees/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('upcoming_sarees').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateUpcoming:lookup');
   if (!existing) return res.status(404).json({ message: 'Not found.' });
   const { name, fabric, description, expectedLabel, active, sortOrder } = req.body || {};
@@ -1758,13 +1760,13 @@ router.put('/upcoming-sarees/:id', asyncRoute(async (req, res) => {
   res.json({ upcomingSaree: await shapeAdminUpcoming(updated) });
 }));
 
-router.delete('/upcoming-sarees/:id', asyncRoute(async (req, res) => {
+router.delete('/upcoming-sarees/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   must(await supabase.from('upcoming_sarees').delete().eq('id', Number(req.params.id)), 'deleteUpcoming');
   await record(req, 'deleted', 'upcoming_saree', req.params.id);
   res.json({ message: 'Deleted.' });
 }));
 
-router.post('/upcoming-sarees/:id/image', uploadSingle, asyncRoute(async (req, res) => {
+router.post('/upcoming-sarees/:id(\\d{1,9})/image', uploadSingle, asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('upcoming_sarees').select('id').eq('id', Number(req.params.id)).maybeSingle(), 'upcomingImage:lookup');
   if (!existing) return res.status(404).json({ message: 'Not found.' });
   if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
@@ -1772,7 +1774,7 @@ router.post('/upcoming-sarees/:id/image', uploadSingle, asyncRoute(async (req, r
   res.json({ upcomingSaree: await shapeAdminUpcoming(updated) });
 }));
 
-router.post('/upcoming-sarees/:id/notify', asyncRoute(async (req, res) => {
+router.post('/upcoming-sarees/:id(\\d{1,9})/notify', asyncRoute(async (req, res) => {
   const id = Number(req.params.id);
   const entry = must(await supabase.from('upcoming_sarees').select('*').eq('id', id).maybeSingle(), 'notifyUpcoming:lookup');
   if (!entry) return res.status(404).json({ message: 'Not found.' });
@@ -1815,7 +1817,7 @@ router.post('/faq', asyncRoute(async (req, res) => {
   res.status(201).json({ faqItem: inserted });
 }));
 
-router.put('/faq/:id', asyncRoute(async (req, res) => {
+router.put('/faq/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('faq_items').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'updateFaq:lookup');
   if (!existing) return res.status(404).json({ message: 'FAQ item not found.' });
   const { question, answer, category, active, displayOrder } = req.body;
@@ -1827,7 +1829,7 @@ router.put('/faq/:id', asyncRoute(async (req, res) => {
   res.json({ faqItem: updated });
 }));
 
-router.delete('/faq/:id', asyncRoute(async (req, res) => {
+router.delete('/faq/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   must(await supabase.from('faq_items').delete().eq('id', Number(req.params.id)), 'deleteFaq');
   res.json({ message: 'FAQ item deleted.' });
 }));
@@ -1924,7 +1926,7 @@ router.get('/reviews', asyncRoute(async (req, res) => {
   });
 }));
 
-router.put('/reviews/:id/reply', asyncRoute(async (req, res) => {
+router.put('/reviews/:id(\\d{1,9})/reply', asyncRoute(async (req, res) => {
   const { reply } = req.body || {};
   const cleanReply = String(reply || '').trim();
   if (!cleanReply) return res.status(400).json({ message: 'Write a reply before sending.' });
@@ -1955,7 +1957,7 @@ router.put('/reviews/:id/reply', asyncRoute(async (req, res) => {
   res.json({ message: 'Reply posted — it now shows on the product page.' });
 }));
 
-router.put('/reviews/:id', asyncRoute(async (req, res) => {
+router.put('/reviews/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('reviews').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'moderateReview:lookup');
   if (!existing) return res.status(404).json({ message: 'Review not found.' });
   const { status, featured } = req.body;
@@ -1969,7 +1971,7 @@ router.put('/reviews/:id', asyncRoute(async (req, res) => {
   res.json({ message: 'Review updated.' });
 }));
 
-router.delete('/reviews/:id', asyncRoute(async (req, res) => {
+router.delete('/reviews/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   must(await supabase.from('reviews').delete().eq('id', Number(req.params.id)), 'deleteReview');
   await record(req, 'deleted', 'review', req.params.id);
   res.json({ message: 'Review deleted.' });
