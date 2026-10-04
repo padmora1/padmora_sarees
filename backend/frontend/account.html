@@ -316,6 +316,109 @@
     }
   }
 
+  // ---- Return photos: camera only ----
+  // The customer can only TAKE a photo here (no gallery / file picker). On phones the input's `capture`
+  // attribute opens the camera app straight away; on a computer a small webcam window is used instead. Each
+  // photo is shrunk right away, kept in this list (max 5) and shown as a thumbnail with a remove button.
+  const MAX_RETURN_PHOTOS = 5;
+  const retPhotos = {}; // orderId -> [File]
+  const isTouchDevice = () => (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  function renderRetPhotos(orderId){
+    const list = retPhotos[orderId] || [];
+    const box = document.getElementById('retPhotoPreview-' + orderId);
+    const count = document.getElementById('retPhotoCount-' + orderId);
+    const take = document.getElementById('retTake-' + orderId);
+    if(!box) return;
+    box.innerHTML = '';
+    list.forEach((file, i) => {
+      if(!file._preview) file._preview = URL.createObjectURL(file);
+      const item = document.createElement('div');
+      item.className = 'return-photo-item';
+      const img = document.createElement('img');
+      img.src = file._preview; img.alt = 'Photo ' + (i + 1); img.className = 'return-photo-thumb';
+      const rm = document.createElement('button');
+      rm.type = 'button'; rm.className = 'return-photo-remove'; rm.setAttribute('aria-label', 'Remove photo ' + (i + 1)); rm.textContent = '×';
+      rm.addEventListener('click', () => {
+        URL.revokeObjectURL(file._preview);
+        retPhotos[orderId].splice(i, 1);
+        renderRetPhotos(orderId);
+      });
+      item.appendChild(img); item.appendChild(rm); box.appendChild(item);
+    });
+    if(count) count.textContent = list.length + ' of ' + MAX_RETURN_PHOTOS + ' photos';
+    if(take) take.disabled = list.length >= MAX_RETURN_PHOTOS;
+  }
+
+  async function addRetPhoto(orderId, rawFile){
+    const errorBox = document.getElementById('retError-' + orderId);
+    const take = document.getElementById('retTake-' + orderId);
+    errorBox.classList.remove('show'); errorBox.textContent = '';
+    if(!rawFile) return;
+    if((retPhotos[orderId] || []).length >= MAX_RETURN_PHOTOS){ errorBox.textContent = 'You can add up to ' + MAX_RETURN_PHOTOS + ' photos.'; errorBox.classList.add('show'); return; }
+    const label = take ? take.textContent : '';
+    if(take){ take.disabled = true; take.textContent = 'Preparing photo…'; }
+    try{
+      const small = await shrinkPhoto(rawFile);
+      (retPhotos[orderId] = retPhotos[orderId] || []).push(small);
+      renderRetPhotos(orderId);
+    }catch(e){
+      errorBox.textContent = e.message; errorBox.classList.add('show');
+    }finally{
+      if(take){ take.textContent = label; take.disabled = (retPhotos[orderId] || []).length >= MAX_RETURN_PHOTOS; }
+    }
+  }
+
+  // Webcam window for computers: live picture + Take photo. Nothing can be picked from files.
+  async function openWebcam(orderId){
+    const errorBox = document.getElementById('retError-' + orderId);
+    errorBox.classList.remove('show'); errorBox.textContent = '';
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      errorBox.textContent = 'This device has no camera we can use. Please open this page on your phone to take the photo.'; errorBox.classList.add('show'); return;
+    }
+    let stream;
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    }catch(e){
+      errorBox.textContent = 'We could not open the camera. Allow camera access in your browser, or open this page on your phone to take the photo.'; errorBox.classList.add('show'); return;
+    }
+    const modal = document.createElement('div');
+    modal.className = 'cam-modal'; modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-label', 'Take a photo');
+    modal.innerHTML = '<div class="cam-box"><video class="cam-video" autoplay playsinline muted></video><div class="cam-actions"><button type="button" class="btn btn-primary btn-sm" data-cam="shoot">Take photo</button><button type="button" class="btn btn-sm" data-cam="cancel">Cancel</button></div></div>';
+    document.body.appendChild(modal);
+    const video = modal.querySelector('video');
+    video.srcObject = stream;
+    const close = () => { stream.getTracks().forEach(t => t.stop()); modal.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = e => { if(e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    modal.addEventListener('click', async e => {
+      const b = e.target.closest('[data-cam]');
+      if(!b) return;
+      if(b.dataset.cam === 'cancel') return close();
+      if(!video.videoWidth) return;
+      const c = document.createElement('canvas');
+      c.width = video.videoWidth; c.height = video.videoHeight;
+      c.getContext('2d').drawImage(video, 0, 0);
+      close();
+      const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+      if(blob) addRetPhoto(orderId, new File([blob], 'photo.jpg', { type: 'image/jpeg' }));
+    });
+    modal.querySelector('[data-cam="shoot"]').focus();
+  }
+
+  function setupReturnPhotos(orderId){
+    retPhotos[orderId] = [];
+    const input = document.getElementById('retPhotos-' + orderId);
+    const take = document.getElementById('retTake-' + orderId);
+    take.addEventListener('click', () => { if(isTouchDevice()) input.click(); else openWebcam(orderId); });
+    input.addEventListener('change', () => {
+      const f = input.files && input.files[0];
+      input.value = ''; // so taking the next photo fires again
+      if(f) addRetPhoto(orderId, f);
+    });
+    renderRetPhotos(orderId);
+  }
+
   // ---- Return / Refund request (expands inline under the order card) ----
   async function openReturnForm(orderId){
     const mount = document.getElementById('returnForm-' + orderId);
@@ -362,8 +465,12 @@
 
         <div class="form-field">
           <label id="retPhotoLabel-${orderId}">Photos (optional)</label>
-          <input type="file" id="retPhotos-${orderId}" accept="image/jpeg,image/png,image/webp" multiple>
-          <p style="font-size:11.5px;color:var(--ink-soft);margin-top:4px;">Up to 5 photos, 8MB each. A clear shot of the issue helps us approve faster.</p>
+          <input type="file" id="retPhotos-${orderId}" accept="image/*" capture="environment" hidden>
+          <div class="return-photo-actions">
+            <button type="button" class="btn btn-sm btn-outline" id="retTake-${orderId}"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:6px;"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Take a photo</button>
+            <span class="return-photo-count" id="retPhotoCount-${orderId}">0 of 5 photos</span>
+          </div>
+          <p style="font-size:11.5px;color:var(--ink-soft);margin-top:4px;">Take a clear photo of the issue with your camera (up to 5). Photos are taken here, not picked from your gallery.</p>
           <div class="return-photo-preview" id="retPhotoPreview-${orderId}"></div>
         </div>
 
@@ -404,17 +511,7 @@
     reasonSelect.addEventListener('change', updatePhotoLabel);
     updatePhotoLabel();
 
-    const photoInput = document.getElementById('retPhotos-' + orderId);
-    const photoPreview = document.getElementById('retPhotoPreview-' + orderId);
-    photoInput.addEventListener('change', () => {
-      photoPreview.innerHTML = '';
-      Array.from(photoInput.files).slice(0, 5).forEach(file => {
-        const url = URL.createObjectURL(file);
-        const img = document.createElement('img');
-        img.src = url; img.alt = file.name; img.className = 'return-photo-thumb';
-        photoPreview.appendChild(img);
-      });
-    });
+    setupReturnPhotos(orderId);
 
     document.getElementById('retCancel-' + orderId).addEventListener('click', () => { mount.innerHTML = ''; });
     document.getElementById('retSubmit-' + orderId).addEventListener('click', () => submitReturnRequest(orderId));
@@ -436,8 +533,7 @@
 
     const reasonSelect = document.getElementById('retReason-' + orderId);
     const reasonCategory = reasonSelect.selectedOptions[0]?.dataset.category;
-    const photoInput = document.getElementById('retPhotos-' + orderId);
-    const photoFiles = photoInput.files;
+    const photoFiles = retPhotos[orderId] || [];
 
     if(reasonCategory === 'seller_fault' && !photoFiles.length){
       errorBox.textContent = 'Add at least one photo showing the issue — it helps us process your claim faster.';
@@ -454,16 +550,38 @@
       refundAccountDetail: document.getElementById('retAccount-' + orderId) ? document.getElementById('retAccount-' + orderId).value : ''
     };
 
+    // Lock the form while it works, and always unlock it again - whatever happens, the page never stays stuck.
+    const submitBtn = document.getElementById('retSubmit-' + orderId);
+    const takeBtn = document.getElementById('retTake-' + orderId);
+    const idleLabel = submitBtn.textContent;
+    const setBusy = (text) => { submitBtn.disabled = true; if(takeBtn) takeBtn.disabled = true; submitBtn.textContent = text; };
+    const setIdle = () => { submitBtn.disabled = false; submitBtn.textContent = idleLabel; if(takeBtn) takeBtn.disabled = photoFiles.length >= MAX_RETURN_PHOTOS; };
     try{
+      setBusy(photoFiles.length ? 'Uploading photos…' : 'Sending request…');
       if(photoFiles.length){
-        const { urls } = await returnUploadPhotos(photoFiles);
+        const { urls } = await returnUploadPhotos(photoFiles, (done, total, pct) => {
+          setBusy(done >= total ? 'Sending request…' : 'Uploading ' + (done + 1) + '/' + total + ' · ' + pct + '%');
+        });
         payload.photoUrls = urls;
       }
-      await returnCreate(payload);
+      setBusy('Sending request…');
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 45000);
+      try{
+        await returnCreate(payload, ctl.signal);
+      }catch(err){
+        if(err && err.name === 'AbortError') throw new Error('This is taking too long. Check your connection, then press Submit again - your photos are already uploaded.');
+        throw err;
+      }finally{
+        clearTimeout(timer);
+      }
+      (retPhotos[orderId] || []).forEach(f => f._preview && URL.revokeObjectURL(f._preview));
+      delete retPhotos[orderId];
       toast('Return request submitted — we\'ll review it shortly');
       loadOrders();
     }catch(e){
-      errorBox.textContent = e.message; errorBox.classList.add('show');
+      errorBox.textContent = e.message || 'Something went wrong. Please try again.'; errorBox.classList.add('show');
+      setIdle();
     }
   }
 

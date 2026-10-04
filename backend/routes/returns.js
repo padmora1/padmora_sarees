@@ -102,10 +102,16 @@ router.get('/:id(\\d{1,9})', async (req, res) => {
 router.post('/photos', uploadPhotos, async (req, res) => {
   if (!req.files || !req.files.length) return res.status(400).json({ message: 'No photos uploaded.' });
   try {
-    const urls = await Promise.all(req.files.map(f => saveUpload(f, 'return-')));
+    // Never let a stalled storage call keep the customer waiting: give up after 40 seconds with a clear message.
+    const save = Promise.all(req.files.map(f => saveUpload(f, 'return-')));
+    const urls = await Promise.race([
+      save,
+      new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error('storage timeout'), { timedOut: true })), 40000))
+    ]);
     res.status(201).json({ urls });
   } catch (err) {
     console.error('POST /returns/photos failed:', err);
+    if (err.timedOut) return res.status(504).json({ message: 'Saving the photo took too long. Please try again.' });
     res.status(502).json({ message: 'The photos could not be saved. Please try again in a moment.' });
   }
 });
