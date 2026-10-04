@@ -1314,6 +1314,7 @@
             <div class="detail-block">
               <h5>Customer</h5>
               <p><strong>${escHTML(r.customerName)}</strong><br>${escHTML(r.customerEmail)}<br>${escHTML(r.customerPhone || '')}</p>
+              ${r.address ? `<p style="margin-top:10px;"><span style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);">Delivery address</span><br>${escHTML(r.address.name)}<br>${escHTML(r.address.line1)}<br>${escHTML(r.address.city)}, ${escHTML(r.address.state)} ${escHTML(r.address.pincode)}${r.address.phone ? '<br>' + escHTML(r.address.phone) : ''}</p>` : ''}
             </div>
             <div class="detail-block">
               <h5>Reason</h5>

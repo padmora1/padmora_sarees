@@ -482,7 +482,7 @@ async function openQuickView(productId) {
               <span class="price-now">${money(selected.price)}</span>${priceExtrasHTML(p, selected)}
             </div>
             ${variants.length > 1 ? `<div class="swatch-row" id="qvSwatches">${variants.map(v => `<span class="swatch-dot ${v.id === selected.id ? 'active' : ''}" data-qv-variant="${v.id}" title="${v.colorName}" style="background:${swatchBg(v.swatch)};"></span>`).join('')}</div>` : ''}
-            <p class="stock-note ${soldOut ? '' : 'ok'}" style="margin:6px 0 14px;">${soldOut ? 'Out of stock in this colour.' : `In stock · ${selected.stock} available`}</p>
+            ${(() => { const n = stockNote(selected.stock, selected.colorName); return n ? `<p class="stock-note ${n.level}" style="margin:6px 0 14px;">${n.text}</p>` : '<div style="height:14px;"></div>'; })()}
             <button class="btn btn-primary btn-block" id="qvAddToBag" style="justify-content:center;" ${soldOut ? 'disabled' : ''}>${soldOut ? 'Out of Stock' : 'Add to Bag'}</button>
             <a href="/product?id=${p.id}" class="size-guide-link" style="display:block;margin-top:12px;">View Full Details →</a>
           </div>
