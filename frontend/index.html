@@ -149,9 +149,9 @@
     <span class="rangoli-line right"></span>
   </div>
 
-  <section class="section">
+  <section class="section" id="weaveSection">
     <div class="container">
-      <div class="section-head"><h2>Shop by Weave</h2></div>
+      <div class="section-head"><p class="eyebrow" id="weaveEyebrow" hidden></p><h2 id="weaveTitle">Shop by Weave</h2><p class="section-sub" id="weaveSub" hidden></p></div>
     </div>
     <div class="cat-rail-wrap" id="catRailWrap">
       <button class="reel-scroll-btn left" id="catScrollLeft" aria-label="Scroll left">‹</button>
@@ -223,7 +223,16 @@
   // shows up here with no frontend changes.
   async function renderCatRail(){
     try{
-      const {fabrics} = await apiFetch('/fabrics');
+      // The heading, visibility, which weaves show and their order are edited in Admin → Storefront → Shop by Weave.
+      const [{fabrics: allFabrics}, secRes] = await Promise.all([apiFetch('/fabrics'), apiFetch('/content/weave-section').catch(() => null)]);
+      const sec = (secRes && secRes.section) || {};
+      if(sec.enabled === false){ document.getElementById('weaveSection').style.display = 'none'; return; }
+      const setText = (id, text) => { const el = document.getElementById(id); if(!el) return; el.textContent = text || ''; el.hidden = !text; };
+      if(sec.title) document.getElementById('weaveTitle').textContent = sec.title;
+      setText('weaveEyebrow', sec.eyebrow); setText('weaveSub', sec.subtitle);
+      const hidden = new Set(sec.hiddenFabricIds || []), order = sec.order || [];
+      const fabrics = allFabrics.filter(f => !hidden.has(f.id))
+        .sort((a, b) => { const ia = order.indexOf(a.id), ib = order.indexOf(b.id); return (ia === -1 ? 1e6 : ia) - (ib === -1 ? 1e6 : ib); });
       const rail = document.getElementById('catRail');
       // A fabric with no products yet (admin added the taxonomy entry ahead
       // of stocking it) would just lead to an empty shop grid — hide it from

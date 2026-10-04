@@ -367,17 +367,44 @@
     });
   }
 
+  // ---- Recommended sarees ("More From This Edit" / other weaves) ----
+  // The same card as the shop grid: heart, and on hover "Add to Cart" + "Quick View" (a +/- stepper once the
+  // colour is already in the bag, "Pre Book" when sold out). These need the shopper's wishlist and bag to
+  // draw themselves, so they are fetched together and the grids are redrawn after every change.
+  let wishlistedIds = new Set();
+  let cartQtyByVariant = {};
+  const recLists = { related: [], other: [] };
+
   function productCardHTML(p){
     // A product with no badge set (p.badge is null/'') must show no badge at
     // all — the old fallthrough ternary defaulted anything that wasn't
     // 'sale'/'new' to 'Bestseller', which mislabeled every plain product.
     const badgeLabel = p.badge==='sale'?'Sale':p.badge==='new'?'New':p.badge==='bestseller'?'Bestseller':'';
+    const isWished = wishlistedIds.has(p.id);
     const soldOut = p.stock <= 0;
+    const defaultVariant = (p.variants && (p.variants.find(v=>v.isDefault) || p.variants[0])) || null;
+    const cartLine = defaultVariant ? cartQtyByVariant[defaultVariant.id] : null;
     return `
     <div class="product-card ${soldOut?'sold-out':''}">
       <a href="/product?id=${p.id}" class="product-media" style="background:${productBg(p)};display:block;">
         ${soldOut ? `<div class="sold-out-ribbon"><span class="ribbon-lotus">${LOTUS_GLYPH_SVG}</span>Sold Out</div>` : (badgeLabel ? `<span class="product-badge ${p.badge}">${badgeLabel}</span>` : '')}
-        ${soldOut ? `<span class="quick-add">Pre Book</span>` : ''}
+        <button class="wishlist-toggle ${isWished?'active':''}" aria-label="${isWished?'Remove from wishlist':'Add to wishlist'}" onclick="event.preventDefault();quickWish(${p.id}, this);">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path class="petal-b" d="M12 20 C6.3 18.7 1.6 13 1.4 7.3 C6.9 8.5 11.6 14.2 12 20 Z"/>
+            <path class="petal-b" d="M12 20 C17.7 18.7 22.4 13 22.6 7.3 C17.1 8.5 12.4 14.2 12 20 Z"/>
+            <path class="petal-a" d="M12 20 C7.5 15.2 7.5 8.2 12 4 C16.5 8.2 16.5 15.2 12 20 Z"/>
+          </svg>
+        </button>
+        ${soldOut
+          ? `<span class="quick-add">Pre Book</span>`
+          : `<div class="quick-actions">
+              ${cartLine && cartLine.qty > 0
+                ? `<div class="card-qty-stepper">
+                    <button type="button" onclick="event.preventDefault();cardChangeQty('${cartLine.itemId}', -1);">−</button><span>${cartLine.qty}</span><button type="button" onclick="event.preventDefault();cardChangeQty('${cartLine.itemId}', 1);">+</button>
+                  </div>`
+                : `<button type="button" onclick="event.preventDefault();quickAddToCart(${p.id}, ${defaultVariant ? defaultVariant.id : 'null'}, '${(defaultVariant ? defaultVariant.colorName : p.swatch || '').replace(/'/g, "\\'")}', this);">Add to Cart</button>`}
+              <button type="button" onclick="event.preventDefault();openQuickView(${p.id});">Quick View</button>
+            </div>`}
       </a>
       <div class="product-info">
         <div class="product-fabric">${p.fabric}</div>
@@ -388,6 +415,58 @@
         </div>
       </div>
     </div>`;
+  }
+
+  async function loadRecState(){
+    try{
+      const [wishData, cart] = await Promise.all([wishlistGet(), cartGet()]);
+      wishlistedIds = new Set(wishData.products.map(x => x.id));
+      cartQtyByVariant = {};
+      cart.items.forEach(i => { if(i.variantId) cartQtyByVariant[i.variantId] = { itemId: i.id, qty: i.qty }; });
+    }catch(e){ /* the cards still work without it: no filled hearts, no steppers */ }
+  }
+  function renderRecs(){
+    const rel = document.getElementById('relatedGrid'), oth = document.getElementById('otherWeavesGrid');
+    if(rel) rel.innerHTML = recLists.related.map(productCardHTML).join('');
+    if(oth) oth.innerHTML = recLists.other.map(productCardHTML).join('');
+  }
+  async function refreshRecs(){ await loadRecState(); renderRecs(); }
+
+  async function quickWish(id, btn){
+    const nowActive = !wishlistedIds.has(id);
+    try{
+      if(nowActive){ await wishlistAdd(id); wishlistedIds.add(id); toast('Added to wishlist ♡'); }
+      else{ await wishlistRemove(id); wishlistedIds.delete(id); toast('Removed from wishlist'); }
+      if(btn){ btn.classList.toggle('active', nowActive); btn.setAttribute('aria-label', nowActive ? 'Remove from wishlist' : 'Add to wishlist'); }
+      refreshBadgeCounts();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function quickAddToCart(productId, variantId, color){
+    try{
+      await cartAdd(productId, 1, color, variantId);
+      refreshBadgeCounts();
+      toast('Added to bag');
+      refreshRecs();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  async function cardChangeQty(itemId, delta){
+    try{
+      const cart = await cartGet();
+      const item = cart.items.find(i => i.id === itemId);
+      if(!item){ refreshRecs(); return; }
+      const newQty = item.qty + delta;
+      if(newQty <= 0){
+        await cartRemoveItem(itemId);
+      }else{
+        if(item.product && newQty > item.product.stock){ toast(`Only ${item.product.stock} left in stock.`); return; }
+        const updated = await cartUpdateQty(itemId, newQty);
+        if(updated.message) toast(updated.message);
+      }
+      refreshBadgeCounts();
+      refreshRecs();
+    }catch(e){ toast(e.message, 'error'); }
   }
 
   // Real per-product SEO/social tags, filled in once the product actually
@@ -736,8 +815,10 @@
       const {products} = await apiFetch('/products?fabric=' + encodeURIComponent(p.fabric));
       const related = products.filter(x=>x.id!==p.id).slice(0,3);
       if(!related.length) return;
+      recLists.related = related;
+      await loadRecState();
       document.getElementById('relatedSection').style.display = 'block';
-      document.getElementById('relatedGrid').innerHTML = related.map(productCardHTML).join('');
+      renderRecs();
     }catch(e){ /* ignore */ }
   }
 
@@ -751,8 +832,10 @@
       others.forEach(x=>{ (byFabric[x.fabric] = byFabric[x.fabric] || []).push(x); });
       const picks = Object.values(byFabric).flatMap(arr=>arr.slice(0,2)).slice(0,6);
       if(!picks.length) return;
+      recLists.other = picks;
+      await loadRecState();
       document.getElementById('otherWeavesSection').style.display = 'block';
-      document.getElementById('otherWeavesGrid').innerHTML = picks.map(productCardHTML).join('');
+      renderRecs();
     }catch(e){ /* ignore */ }
   }
 

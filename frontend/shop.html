@@ -113,7 +113,9 @@
     fabric: params.get('fabric') ? new Set([params.get('fabric')]) : new Set(),
     occasion: params.get('occasion') ? new Set([params.get('occasion')]) : new Set(),
     color: params.get('color') ? new Set([params.get('color')]) : new Set(),
-    maxPrice: 25000,
+    // a budget handed over by a link (the Find My Saree results) - a floor and/or a ceiling
+    maxPrice: (Number(params.get('maxPrice')) > 0 && Number(params.get('maxPrice')) < 25000) ? Math.max(1500, Number(params.get('maxPrice'))) : 25000,
+    minPrice: Number(params.get('minPrice')) > 0 ? Number(params.get('minPrice')) : 0,
     sort: params.get('sort') || 'popular',
     search: params.get('search') || '',
     loadedCount: 20
@@ -217,6 +219,8 @@
     }));
   }
 
+  document.getElementById('priceRange').value = state.maxPrice;
+  document.getElementById('priceLabel').textContent = state.maxPrice.toLocaleString('en-IN');
   document.getElementById('priceRange').addEventListener('input', e=>{
     state.maxPrice = Number(e.target.value);
     document.getElementById('priceLabel').textContent = state.maxPrice.toLocaleString('en-IN');
@@ -281,7 +285,7 @@
   // Badge on the Filters button = how many filters are on; the drawer's
   // footer button shows the live result count.
   function updateFilterSummary(total){
-    const n = state.fabric.size + state.occasion.size + state.color.size + (state.maxPrice < 25000 ? 1 : 0) + (state.search ? 1 : 0);
+    const n = state.fabric.size + state.occasion.size + state.color.size + (state.maxPrice < 25000 ? 1 : 0) + (state.minPrice ? 1 : 0) + (state.search ? 1 : 0);
     const badge = document.getElementById('filtersBadge');
     badge.textContent = n;
     badge.style.display = n ? '' : 'none';
@@ -381,6 +385,7 @@
     if(state.occasion.size) q.set('occasion', [...state.occasion].join(','));
     if(state.color.size) q.set('color', [...state.color].join(','));
     if(state.maxPrice < 25000) q.set('maxPrice', state.maxPrice);
+    if(state.minPrice) q.set('minPrice', state.minPrice);
     if(state.search) q.set('search', state.search);
     if(state.sort) q.set('sort', state.sort);
     q.set('limit', state.loadedCount);
