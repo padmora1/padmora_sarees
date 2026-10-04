@@ -1088,6 +1088,8 @@ async function shapeAdminReturn(r) {
     customerName: customer ? customer.name : null,
     customerEmail: customer ? customer.email : null,
     customerPhone: customer ? customer.phone : null,
+    // where the order was delivered (and where a return pickup would be arranged)
+    address: order ? { name: order.address_name, line1: order.address_line1, city: order.address_city, state: order.address_state, pincode: order.address_pincode, phone: order.address_phone } : null,
     reason: r.reason,
     reasonLabel: (RETURN_REASONS.find(x => x.key === r.reason) || {}).label || r.reason,
     reasonCategory: r.reason_category,
