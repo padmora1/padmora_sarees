@@ -59,7 +59,7 @@ router.get('/reels', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     let products = (await getProducts()).filter(p => p.status !== 'archived').map(toProductApiShape);
-    const { fabric, occasion, color, maxPrice, search, sort, badge, collection, limit } = req.query;
+    const { fabric, occasion, color, minPrice, maxPrice, search, sort, badge, collection, limit } = req.query;
 
     // Sale-badged sarees live on their own page (see routes GET /?badge=sale
     // and frontend/sale.html) — excluded from every general listing (shop
@@ -93,6 +93,9 @@ router.get('/', async (req, res) => {
       // Case-insensitive: admins type swatch keys by hand ("Maroon" vs "maroon").
       const colors = color.split(',').map(c => c.trim().toLowerCase());
       products = products.filter(p => colors.includes(String(p.swatch || '').trim().toLowerCase()));
+    }
+    if (minPrice && Number(minPrice) > 0) {
+      products = products.filter(p => p.price >= Number(minPrice));
     }
     if (maxPrice) {
       products = products.filter(p => p.price <= Number(maxPrice));

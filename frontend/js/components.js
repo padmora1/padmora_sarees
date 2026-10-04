@@ -452,6 +452,7 @@ function initQuickView() {
   }
   document.getElementById('quickViewClose').addEventListener('click', close);
   document.getElementById('quickViewBackdrop').addEventListener('click', close);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
 }
 
 async function openQuickView(productId) {
@@ -631,120 +632,190 @@ function updateBottomNavBadges(cartData, wishData) {
 }
 
 // ---------------------------------------------------------------------
-// Saree Finder — a quick 3-question quiz (occasion, budget, fabric) that
-// recommends sarees, floating bottom-right on every page.
+// Saree Finder — three quick questions (occasion, budget, weave) that end in real sarees to look at.
+// Floating bottom-right on every page. It uses the store's live occasions and weaves, shows how many sarees
+// match as you go, never dead-ends (if nothing matches exactly it relaxes the answers and says so), remembers
+// the last picks, and closes with the X, the Esc key, or a tap anywhere outside it.
 // ---------------------------------------------------------------------
+const FINDER_KEY = 'padmora_finder_picks';
+const FINDER_BUDGETS = [
+  { label: 'Under ₹3,000', min: 0, max: 3000 },
+  { label: '₹3,000 – ₹8,000', min: 3000, max: 8000 },
+  { label: '₹8,000 – ₹15,000', min: 8000, max: 15000 },
+  { label: '₹15,000 & above', min: 15000, max: 0 }
+];
+const FINDER_STATE = { occasion: null, budget: null, fabric: null }; // null = not answered yet, '' / -1 = "any"
+let finderMeta = null;
+let finderRun = 0; // guards against an older, slower answer overwriting a newer screen
+
+async function loadFinderMeta() {
+  if (finderMeta) return finderMeta;
+  const fallback = { occasions: ['Wedding', 'Festive', 'Party', 'Casual', 'Office'], fabrics: ['Maheshwari', 'Ajrakh', 'Paithani', 'Narayanpeth'] };
+  try {
+    const [o, f] = await Promise.all([apiFetch('/occasions'), apiFetch('/fabrics')]);
+    const occasions = (o.occasions || []).map(x => x.name).filter(Boolean);
+    const fabrics = (f.fabrics || []).filter(x => x.productCount > 0).map(x => x.name);
+    finderMeta = { occasions: occasions.length ? occasions : fallback.occasions, fabrics: fabrics.length ? fabrics : fallback.fabrics };
+  } catch (e) { finderMeta = fallback; }
+  return finderMeta;
+}
+
+function finderQuery(state, { withLimit } = {}) {
+  const q = new URLSearchParams();
+  if (state.occasion) q.set('occasion', state.occasion);
+  const b = state.budget != null && state.budget >= 0 ? FINDER_BUDGETS[state.budget] : null;
+  if (b) { if (b.min) q.set('minPrice', b.min); if (b.max) q.set('maxPrice', b.max); }
+  if (state.fabric) q.set('fabric', state.fabric);
+  if (withLimit) q.set('limit', withLimit);
+  return q;
+}
+
 function initSareeFinder() {
   if (document.getElementById('sareeFinderBtn')) return;
   const btn = document.createElement('button');
   btn.id = 'sareeFinderBtn';
   btn.className = 'saree-finder-btn';
+  btn.setAttribute('aria-haspopup', 'dialog');
   btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><path d="M12 2l2.5 6.5L21 11l-6.5 2.5L12 20l-2.5-6.5L3 11l6.5-2.5z"/></svg><span>Find My Saree</span>`;
   document.body.appendChild(btn);
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'sareeFinderBackdrop';
+  backdrop.className = 'saree-finder-backdrop';
+  document.body.appendChild(backdrop);
 
   const panel = document.createElement('div');
   panel.id = 'sareeFinderPanel';
   panel.className = 'saree-finder-panel';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', 'Find my saree');
   document.body.appendChild(panel);
 
-  btn.addEventListener('click', () => {
-    panel.classList.toggle('open');
-    if (panel.classList.contains('open')) renderFinderStep('occasion');
-  });
-
-  // Delegated, bound once — every step's panel.innerHTML gets replaced on
-  // navigation, which was silently dropping a fresh per-step listener on
-  // #finderCloseBtn (only the final results step ever rebound it, so × did
-  // nothing on the occasion/budget/fabric steps). Delegation survives re-renders.
-  panel.addEventListener('click', (e) => {
-    if (e.target.closest('#finderCloseBtn')) panel.classList.remove('open');
-  });
+  const isOpen = () => panel.classList.contains('open');
+  const close = () => {
+    panel.classList.remove('open'); backdrop.classList.remove('open');
+    btn.setAttribute('aria-expanded', 'false');
+    finderRun++;
+  };
+  const open = () => {
+    panel.classList.add('open'); backdrop.classList.add('open');
+    btn.setAttribute('aria-expanded', 'true');
+    FINDER_STATE.occasion = null; FINDER_STATE.budget = null; FINDER_STATE.fabric = null;
+    renderFinderStep('occasion');
+  };
+  btn.addEventListener('click', () => (isOpen() ? close() : open()));
+  // a tap anywhere outside the window (the dimmed page behind it) closes it
+  backdrop.addEventListener('click', close);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && isOpen()) close(); });
+  // Delegated and bound once — every step replaces panel.innerHTML, so per-step listeners would be lost.
+  panel.addEventListener('click', e => { if (e.target.closest('#finderCloseBtn')) close(); });
 }
 
-const FINDER_STATE = { occasion: null, maxPrice: null, fabric: null };
-
-function renderFinderStep(step) {
-  const panel = document.getElementById('sareeFinderPanel');
-  if (step === 'occasion') {
-    panel.innerHTML = finderShell('What\'s the occasion?', `
-      <div class="finder-options">
-        ${['Wedding','Festive','Party','Casual','Office'].map(o=>`<button class="finder-opt" data-occasion="${o}">${o}</button>`).join('')}
-      </div>`);
-    panel.querySelectorAll('[data-occasion]').forEach(b => b.addEventListener('click', () => {
-      FINDER_STATE.occasion = b.dataset.occasion;
-      renderFinderStep('budget');
-    }));
-  } else if (step === 'budget') {
-    panel.innerHTML = finderShell('What\'s your budget?', `
-      <div class="finder-options">
-        ${[['Under ₹3,000','3000'],['₹3,000–₹8,000','8000'],['₹8,000–₹15,000','15000'],['₹15,000+','']].map(([label,val])=>`<button class="finder-opt" data-budget="${val}">${label}</button>`).join('')}
-      </div>`, true);
-    bindFinderBack(panel, 'occasion');
-    panel.querySelectorAll('[data-budget]').forEach(b => b.addEventListener('click', () => {
-      FINDER_STATE.maxPrice = b.dataset.budget || null;
-      renderFinderStep('fabric');
-    }));
-  } else if (step === 'fabric') {
-    panel.innerHTML = finderShell('Any weave preference?', `
-      <div class="finder-options">
-        ${['Any','Maheshwari','Ajrakh','Paithani','Narayanpeth'].map(f=>`<button class="finder-opt" data-fabric="${f}">${f}</button>`).join('')}
-      </div>`, true);
-    bindFinderBack(panel, 'budget');
-    panel.querySelectorAll('[data-fabric]').forEach(b => b.addEventListener('click', () => {
-      FINDER_STATE.fabric = b.dataset.fabric;
-      renderFinderResults();
-    }));
-  }
-}
-
-function bindFinderBack(panel, prevStep) {
-  const backBtn = panel.querySelector('[data-finder-back]');
-  if (backBtn) backBtn.addEventListener('click', () => renderFinderStep(prevStep));
-}
-
-function finderShell(title, bodyHTML, showBack) {
+function finderShell(title, bodyHTML, { back, step } = {}) {
+  const dots = step ? `<div class="finder-progress" aria-label="Question ${step} of 3">${[1, 2, 3].map(n => `<span class="${n <= step ? 'on' : ''}"></span>`).join('')}</div>` : '';
   return `
     <div class="finder-head">
-      ${showBack ? '<button class="finder-back" data-finder-back aria-label="Back">←</button>' : '<span></span>'}
+      ${back ? '<button class="finder-back" data-finder-back aria-label="Back">←</button>' : '<span class="finder-back"></span>'}
       <strong>${title}</strong>
       <button class="finder-close" id="finderCloseBtn" aria-label="Close">&times;</button>
     </div>
+    ${dots}
     ${bodyHTML}`;
+}
+
+function chipsHTML(items, attr, selectedValue) {
+  return `<div class="finder-chips">${items.map(i => `<button type="button" class="finder-chip${String(i.value) === String(selectedValue) ? ' picked' : ''}" ${attr}="${String(i.value).replace(/"/g, '&quot;')}">${i.label}</button>`).join('')}</div>`;
+}
+
+// "34 sarees match so far" — updates itself under the options as the answers narrow things down.
+async function updateFinderCount() {
+  const el = document.getElementById('finderCount');
+  if (!el) return;
+  const run = finderRun;
+  try {
+    const { total } = await apiFetch('/products?' + finderQuery(FINDER_STATE, { withLimit: 1 }).toString());
+    if (run !== finderRun || !document.getElementById('finderCount')) return;
+    el.textContent = total === 0 ? 'No exact match yet — we will find the closest.' : `${total} saree${total === 1 ? '' : 's'} to choose from`;
+  } catch (e) { /* the count is a nicety; the quiz works without it */ }
+}
+
+async function renderFinderStep(step) {
+  const panel = document.getElementById('sareeFinderPanel');
+  const run = ++finderRun;
+  const meta = await loadFinderMeta();
+  if (run !== finderRun) return;
+  const saved = (() => { try { return JSON.parse(localStorage.getItem(FINDER_KEY) || 'null'); } catch (e) { return null; } })();
+
+  if (step === 'occasion') {
+    const again = saved && (saved.occasion != null || saved.budget != null || saved.fabric != null)
+      ? `<button type="button" class="finder-again" id="finderUseLast">Use my last picks</button>` : '';
+    panel.innerHTML = finderShell('What\'s the occasion?',
+      chipsHTML([...meta.occasions.map(o => ({ value: o, label: o })), { value: '', label: 'Any occasion' }], 'data-occasion', FINDER_STATE.occasion) +
+      again + `<p class="finder-count" id="finderCount" aria-live="polite"></p>`, { step: 1 });
+    panel.querySelectorAll('[data-occasion]').forEach(b => b.addEventListener('click', () => { FINDER_STATE.occasion = b.dataset.occasion; renderFinderStep('budget'); }));
+    const last = document.getElementById('finderUseLast');
+    if (last) last.addEventListener('click', () => { Object.assign(FINDER_STATE, saved); renderFinderResults(); });
+  } else if (step === 'budget') {
+    panel.innerHTML = finderShell('What\'s your budget?',
+      chipsHTML([...FINDER_BUDGETS.map((b, i) => ({ value: i, label: b.label })), { value: -1, label: 'Show me everything' }], 'data-budget', FINDER_STATE.budget) +
+      `<p class="finder-count" id="finderCount" aria-live="polite"></p>`, { back: true, step: 2 });
+    panel.querySelector('[data-finder-back]').addEventListener('click', () => renderFinderStep('occasion'));
+    panel.querySelectorAll('[data-budget]').forEach(b => b.addEventListener('click', () => { FINDER_STATE.budget = Number(b.dataset.budget); renderFinderStep('fabric'); }));
+  } else if (step === 'fabric') {
+    panel.innerHTML = finderShell('Which weave?',
+      chipsHTML([...meta.fabrics.map(f => ({ value: f, label: f })), { value: '', label: 'Surprise me' }], 'data-fabric', FINDER_STATE.fabric) +
+      `<p class="finder-count" id="finderCount" aria-live="polite"></p>`, { back: true, step: 3 });
+    panel.querySelector('[data-finder-back]').addEventListener('click', () => renderFinderStep('budget'));
+    panel.querySelectorAll('[data-fabric]').forEach(b => b.addEventListener('click', () => { FINDER_STATE.fabric = b.dataset.fabric; renderFinderResults(); }));
+  }
+  updateFinderCount();
 }
 
 async function renderFinderResults() {
   const panel = document.getElementById('sareeFinderPanel');
-  panel.innerHTML = finderShell('Picked for you', `<div class="loading-state"><span class="zari-spinner"></span></div>`, true);
-  bindFinderBack(panel, 'fabric');
-
-  const q = new URLSearchParams();
-  if (FINDER_STATE.occasion) q.set('occasion', FINDER_STATE.occasion);
-  if (FINDER_STATE.maxPrice) q.set('maxPrice', FINDER_STATE.maxPrice);
-  if (FINDER_STATE.fabric && FINDER_STATE.fabric !== 'Any') {
-    q.set('fabric', FINDER_STATE.fabric);
-  }
-  q.set('sort', 'rating');
+  const run = ++finderRun;
+  panel.innerHTML = finderShell('Picked for you', `<div class="loading-state" style="padding:24px 0;"><span class="zari-spinner"></span></div>`, { back: true });
+  panel.querySelector('[data-finder-back]').addEventListener('click', () => renderFinderStep('fabric'));
+  try { localStorage.setItem(FINDER_KEY, JSON.stringify(FINDER_STATE)); } catch (e) { /* private mode */ }
 
   try {
-    const { products } = await apiFetch('/products?' + q.toString());
+    // Exact answers first; if nothing fits, loosen one answer at a time (weave, then budget, then occasion) so the
+    // shopper always sees real sarees — and is told when they are "closest" picks rather than exact matches.
+    const attempts = [
+      { state: FINDER_STATE, note: '' },
+      { state: { ...FINDER_STATE, fabric: '' }, note: 'No exact match for that weave — here are the closest picks.' },
+      { state: { ...FINDER_STATE, fabric: '', budget: -1 }, note: 'Nothing in that budget — here are the closest picks.' },
+      { state: { occasion: '', budget: -1, fabric: '' }, note: 'Nothing matched exactly — here are our most loved sarees.' }
+    ];
+    let products = [], note = '', used = FINDER_STATE, total = 0;
+    for (const a of attempts) {
+      const q = finderQuery(a.state); q.set('sort', 'rating');
+      const res = await apiFetch('/products?' + q.toString());
+      if (run !== finderRun) return;
+      if (res.products.length) { products = res.products; total = res.total != null ? res.total : res.products.length; note = a.note; used = a.state; break; }
+    }
     const top = products.slice(0, 4);
-    const resultsHTML = top.length ? `
+    const allQuery = finderQuery(used).toString();
+    const body = top.length ? `
+      ${note ? `<p class="finder-note">${note}</p>` : ''}
       <div class="finder-results">
         ${top.map(p => `
           <a class="finder-result-card" href="/product?id=${p.id}">
             <div class="finder-result-media" style="background:${productBg(p)};"></div>
-            <div><strong>${p.name}</strong><span>${money(p.price)}</span></div>
+            <div class="finder-result-text"><strong>${escHTML(p.name)}</strong><small>${escHTML(p.fabric)}${p.occasion ? ' · ' + escHTML(p.occasion) : ''}</small><span>${money(p.price)}${p.rating ? ` <em>★ ${p.rating}</em>` : ''}</span></div>
           </a>`).join('')}
       </div>
-      <a class="btn btn-primary btn-block" style="justify-content:center;margin-top:10px;" href="/shop?${q.toString()}">See All Matches</a>`
-      : `<p style="padding:14px 4px;font-size:13px;color:var(--ink-soft);">No exact matches — but browse the full collection, we're adding new weaves often.</p>
-         <a class="btn btn-outline btn-block" style="justify-content:center;" href="/shop">Browse All Sarees</a>`;
-
-    panel.innerHTML = finderShell('Picked for you', resultsHTML, true);
-    bindFinderBack(panel, 'fabric');
+      <a class="btn btn-primary btn-block" style="justify-content:center;" href="/shop${allQuery ? '?' + allQuery : ''}">See all ${total} match${total === 1 ? '' : 'es'}</a>
+      <button type="button" class="finder-again" id="finderRestart">Start over</button>`
+      : `<p class="finder-note">We could not find sarees right now.</p><a class="btn btn-outline btn-block" style="justify-content:center;" href="/shop">Browse all sarees</a>`;
+    panel.innerHTML = finderShell('Picked for you', body, { back: true });
+    panel.querySelector('[data-finder-back]').addEventListener('click', () => renderFinderStep('fabric'));
+    const restart = document.getElementById('finderRestart');
+    if (restart) restart.addEventListener('click', () => { FINDER_STATE.occasion = null; FINDER_STATE.budget = null; FINDER_STATE.fabric = null; renderFinderStep('occasion'); });
   } catch (e) {
-    panel.innerHTML = finderShell('Picked for you', `<p style="padding:14px 4px;font-size:13px;color:var(--ink-soft);">Could not load recommendations right now.</p>`, true);
-    bindFinderBack(panel, 'fabric');
+    if (run !== finderRun) return;
+    panel.innerHTML = finderShell('Picked for you', `<p class="finder-note">Could not load recommendations right now.</p>`, { back: true });
+    panel.querySelector('[data-finder-back]').addEventListener('click', () => renderFinderStep('fabric'));
   }
 }
 
