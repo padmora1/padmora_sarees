@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/images/favicon-192.png">
+<link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+<title>Policies — Padmora Sarees by Yashi</title>
+<meta name="description" content="Shipping, returns and exchange, cancellations, refunds, terms of service and privacy policy for Padmora Sarees by Yashi.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .policy-tabs{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:760px;margin:0 auto 28px;}
+  .policy-tab{font:inherit;font-size:13.5px;padding:9px 18px;border-radius:999px;border:1px solid var(--gold-soft);background:var(--white);color:var(--ink-soft);cursor:pointer;transition:background .2s ease,color .2s ease,border-color .2s ease;}
+  .policy-tab:hover{border-color:var(--maroon);color:var(--maroon);}
+  .policy-tab[aria-selected="true"]{background:var(--maroon);border-color:var(--maroon);color:var(--ivory);}
+  .policy-tab:focus-visible{outline:2px solid var(--maroon);outline-offset:2px;}
+  .policy-panel[hidden]{display:none;}
+  .policy-panel h3{font-size:16px;margin:22px 0 8px;color:var(--ink);}
+  @media (max-width:760px){
+    .policy-tabs{flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;margin:0 -18px 22px;padding:2px 18px 6px;scrollbar-width:none;}
+    .policy-tabs::-webkit-scrollbar{display:none;}
+    .policy-tab{flex:0 0 auto;white-space:nowrap;}
+  }
+</style>
+</head>
+<body data-page="policies.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="page-banner">
+    <div class="container">
+      <p class="breadcrumb"><a href="/">Home</a> / Policies</p>
+      <h1>Policies</h1>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:28px;">
+    <div class="container" style="max-width:760px;">
+      <div class="policy-tabs" role="tablist" aria-label="Policies">
+        <button class="policy-tab" role="tab" id="tab-shipping" aria-controls="shipping" data-policy="shipping">Shipping</button>
+        <button class="policy-tab" role="tab" id="tab-returns" aria-controls="returns" data-policy="returns">Returns &amp; Exchange</button>
+        <button class="policy-tab" role="tab" id="tab-cancellations" aria-controls="cancellations" data-policy="cancellations">Cancellations</button>
+        <button class="policy-tab" role="tab" id="tab-refunds" aria-controls="refunds" data-policy="refunds">Refunds</button>
+        <button class="policy-tab" role="tab" id="tab-terms" aria-controls="terms" data-policy="terms">Terms of Service</button>
+        <button class="policy-tab" role="tab" id="tab-privacy" aria-controls="privacy" data-policy="privacy">Privacy</button>
+      </div>
+
+      <div class="policy-panel prose" id="shipping" role="tabpanel" aria-labelledby="tab-shipping" hidden>
+        <h2>Shipping</h2>
+        <p>We currently ship across India only. Orders are packed and dispatched within 24-48 hours of confirmation, and delivery typically takes <span id="shipDays">4-7 business days</span> depending on your pincode.</p>
+        <ul>
+          <li id="shipFreeLine">Free shipping on orders above the minimum order value shown at checkout</li>
+          <li id="shipFeeLine">A flat shipping fee applies below that value</li>
+          <li>You can track progress under Account → Order History — every order shows a live status timeline (Confirmed → Packed → Shipped → Out for Delivery → Delivered)</li>
+        </ul>
+      </div>
+
+      <div class="policy-panel prose" id="returns" role="tabpanel" aria-labelledby="tab-returns" hidden>
+        <h2>Returns &amp; Exchange</h2>
+        <p>We want you to love your saree, not just accept it. If something's off, you have <strong><span id="returnDays">7</span> days from delivery</strong> to request a return or exchange, provided:</p>
+        <ul>
+          <li>The saree is unused, unwashed, and unaltered</li>
+          <li>Original tags and packaging are intact</li>
+          <li>The blouse piece has not been cut</li>
+        </ul>
+        <p>To start one: go to Account → Order History, open the delivered order, and select <strong>Return / Refund</strong>. Choose which item(s), tell us why, and how you'd like the refund — you'll see the request's status right there as we process it.</p>
+      </div>
+
+      <div class="policy-panel prose" id="cancellations" role="tabpanel" aria-labelledby="tab-cancellations" hidden>
+        <h2>Cancellations</h2>
+        <p>Orders can be self-cancelled from Account → Order History for free as long as they're still in the "Confirmed" or "Packed" stage. Once an order ships, it can no longer be cancelled — please use the return process instead after delivery.</p>
+      </div>
+
+      <div class="policy-panel prose" id="refunds" role="tabpanel" aria-labelledby="tab-refunds" hidden>
+        <h2>Refunds</h2>
+        <p>Approved refunds are issued to the original payment method within 5-7 business days of us receiving the returned item.</p>
+      </div>
+
+      <div class="policy-panel prose" id="terms" role="tabpanel" aria-labelledby="tab-terms" hidden>
+        <h2>Terms of Service</h2>
+            <h3>Orders</h3>
+            <p>Placing an order on Padmora is an offer to purchase, which we accept once your order is confirmed. Prices are listed in Indian Rupees (₹) and are inclusive of applicable taxes unless stated otherwise.</p>
+
+            <h3>Product Descriptions</h3>
+            <p>We describe fabric, loom type, and craftsmanship as accurately as possible, including honest disclosure of handloom vs powerloom origin. Minor variations in color, weave, and zari pattern are natural in handcrafted textiles and are not considered defects.</p>
+
+            <h3>Promo Codes</h3>
+            <p>Promo codes are subject to minimum order value and maximum discount caps as stated at the time of application, and may be withdrawn or modified without notice. Only one promo code may be applied per order.</p>
+
+            <h3>Account Responsibility</h3>
+            <p>You're responsible for keeping your login credentials confidential. Notify us immediately if you suspect unauthorized access to your account.</p>
+
+            <h3>Limitation of Liability</h3>
+            <p>Padmora's liability for any order is limited to the value of that order. We are not liable for delays caused by courier partners or events outside our reasonable control.</p>
+
+            <h3>Governing Law</h3>
+            <p>These terms are governed by the laws of India, and any disputes are subject to the jurisdiction of the courts in Mumbai, Maharashtra.</p>
+      </div>
+
+      <div class="policy-panel prose" id="privacy" role="tabpanel" aria-labelledby="tab-privacy" hidden>
+        <h2>Privacy Policy</h2>
+            <h3>What We Collect</h3>
+            <p>When you create a Padmora account, we collect your name, email address, phone number, and shipping address. When you place an order, we store your order details and the address it was shipped to.</p>
+
+            <h3>How We Use It</h3>
+            <ul>
+              <li>To process and deliver your orders</li>
+              <li>To let you track order status and view order history</li>
+              <li>To respond to enquiries submitted via Contact Us</li>
+              <li>To improve our catalog and customer experience</li>
+            </ul>
+
+            <h3>What We Don't Do</h3>
+            <p>We do not sell your personal data to third parties. Your password is stored as a one-way cryptographic hash and is never visible to us in plain text.</p>
+
+            <h3>Cookies &amp; Local Storage</h3>
+            <p>We use browser local storage to keep you signed in between visits (a session token) and to remember items in your bag. We don't use third-party tracking cookies.</p>
+
+            <h3>Your Rights</h3>
+            <p>You can update your profile and saved address anytime from your Account page. To request full account deletion, contact us via the Contact Us page.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script src="js/api.js"></script>
+<script src="js/components.js"></script>
+<script src="js/cursor.js"></script>
+<script>
+  // One page, one panel at a time. The address hash picks the panel (/policies#returns), so the old
+  // /shipping-returns, /terms and /privacy-policy links land on the right one and every panel is shareable.
+  const POLICY_IDS = ['shipping','returns','cancellations','refunds','terms','privacy'];
+  const POLICY_NAMES = { shipping:'Shipping', returns:'Returns & Exchange', cancellations:'Cancellations', refunds:'Refunds', terms:'Terms of Service', privacy:'Privacy Policy' };
+  function showPolicy(id, updateHash){
+    if(!POLICY_IDS.includes(id)) id = 'shipping';
+    POLICY_IDS.forEach(p => {
+      document.getElementById(p).hidden = p !== id;
+      document.getElementById('tab-' + p).setAttribute('aria-selected', p === id ? 'true' : 'false');
+    });
+    document.title = POLICY_NAMES[id] + ' — Policies — Padmora Sarees by Yashi';
+    if(updateHash) history.replaceState(null, '', '#' + id);
+  }
+  document.querySelectorAll('.policy-tab').forEach(btn => btn.addEventListener('click', () => showPolicy(btn.dataset.policy, true)));
+  window.addEventListener('hashchange', () => showPolicy(location.hash.slice(1), false));
+  showPolicy(location.hash.slice(1), false);
+
+  // Shipping and return numbers come from the admin's own settings, so this page can never disagree with checkout.
+  apiFetch('/settings/shipping').then(({ shipping }) => {
+    if(!shipping) return;
+    if(shipping.estimatedDays) document.getElementById('shipDays').textContent = shipping.estimatedDays;
+    if(shipping.freeShippingThreshold != null) document.getElementById('shipFreeLine').textContent = 'Free shipping on all orders above ' + money(shipping.freeShippingThreshold);
+    if(shipping.fee != null) document.getElementById('shipFeeLine').textContent = 'A flat ' + money(shipping.fee) + ' shipping fee applies below that threshold';
+  }).catch(() => {});
+  apiFetch('/settings/return-policy').then(({ returnPolicy }) => {
+    if(returnPolicy && returnPolicy.windowDays) document.getElementById('returnDays').textContent = returnPolicy.windowDays;
+  }).catch(() => {});
+</script>
+</body>
+</html>

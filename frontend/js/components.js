@@ -11,7 +11,6 @@ const NAV_LINKS = [
   { href: '/collections', page: 'collections.html', label: 'Collections', dropdown: true },
   { href: '/shop', page: 'shop.html', label: 'All Sarees' },
   { href: '/sale', page: 'sale.html', label: 'Sale' },
-  { href: '/our-weaves', page: 'our-weaves.html', label: 'Our Weaves' },
   { href: '/upcoming-sarees', page: 'upcoming-sarees.html', label: 'Upcoming' }
 ];
 
@@ -199,7 +198,7 @@ function initHeader(activeHref) {
 // The header wordmark cycles English -> Marathi -> English every 8s, on every
 // customer page. Both words are always in the DOM (see the header markup
 // above) and simply crossfade via a shared "active" class — nothing is
-// measured or resized here, which is what keeps Home/Menu/Sale/Our Weaves
+// measured or resized here, which is what keeps Home/Menu/Sale
 // from shifting: the logo's own box never changes size, only which of the
 // two stacked words is visible does. Re-running initHeader (shouldn't
 // normally happen, but is cheap to guard) would otherwise stack a second
@@ -235,7 +234,7 @@ async function refreshBadgeCounts() {
 function initFooter() {
   const mount = document.getElementById('site-footer');
   if (!mount) return;
-  // The marketing footer (weaver story, shop-by-fabric links, social icons)
+  // The marketing footer (tagline, link columns, social icons)
   // has no place under a dashboard — leave the mount point empty there.
   if (isAdminRealm()) { mount.innerHTML = ''; return; }
   mount.innerHTML = `
@@ -262,7 +261,7 @@ function initFooter() {
         <div class="footer-grid">
           <div>
             <div class="footer-logo">Padmora</div>
-            <p>Bringing handloom weavers and heritage crafts directly to your wardrobe — one drape at a time.</p>
+            <p id="footerTagline"></p>
             <a class="footer-mail" id="footerMailLink" href="mailto:hello@padmora.example">
               <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
               <span id="footerMailText">hello@padmora.example</span>
@@ -276,26 +275,43 @@ function initFooter() {
               </a>
             </div>
           </div>
-          <div>
-            <h5>Shop</h5>
-            <ul><li><a href="/shop?fabric=Maheshwari">Maheshwari</a></li><li><a href="/shop?fabric=Ajrakh">Ajrakh</a></li><li><a href="/shop?fabric=Paithani">Paithani</a></li><li><a href="/shop?fabric=Narayanpeth">Narayanpet</a></li></ul>
-          </div>
-          <div>
-            <h5>Customer Care</h5>
-            <ul><li><a href="/track-order">Track Order</a></li><li><a href="/shipping-returns">Shipping Policy</a></li><li><a href="/shipping-returns#returns">Returns &amp; Exchange</a></li><li><a href="/faq">FAQ</a></li><li><a href="/contact">Contact Us</a></li></ul>
-          </div>
-          <div>
-            <h5>Company</h5>
-            <ul><li><a href="/about">About Padmora</a></li><li><a href="/our-weaves">Our Weaves</a></li><li><a href="/privacy-policy">Privacy Policy</a></li><li><a href="/terms">Terms of Service</a></li></ul>
-          </div>
+          <div class="footer-cols" id="footerCols" style="display:contents;"></div>
         </div>
       </div>
       <div class="footer-bottom">
-        <span>© 2026 Padmora. All rights reserved.</span>
+        <span id="footerBottomLeft"></span>
         <span class="footer-lotus-mark">${LOTUS_GLYPH_SVG}</span>
-        <span>Made with care for handloom weavers across India.</span>
+        <span id="footerBottomRight"></span>
       </div>
     </footer>`;
+
+  // Footer text and link columns are edited in Admin → Settings → Footer. These
+  // defaults match what the admin starts with, so the footer is complete even
+  // before the settings arrive (or if they can't be fetched).
+  const FOOTER_DEFAULT = {
+    tagline: 'Bringing handloom weavers and heritage crafts directly to your wardrobe — one drape at a time.',
+    columns: [
+      { title: 'Customer Care', links: [{ label: 'Track Order', url: '/track-order' }, { label: 'Policies', url: '/policies' }, { label: 'FAQ', url: '/faq' }, { label: 'Contact Us', url: '/contact' }] },
+      { title: 'Company', links: [{ label: 'About Padmora', url: '/about' }] }
+    ],
+    bottomLeft: '© 2026 Padmora. All rights reserved.',
+    bottomRight: 'Made with care for handloom weavers across India.'
+  };
+  function renderFooterContent(f) {
+    const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text || ''; };
+    set('footerTagline', f.tagline); set('footerBottomLeft', f.bottomLeft); set('footerBottomRight', f.bottomRight);
+    const cols = document.getElementById('footerCols');
+    if (!cols) return;
+    cols.parentElement.style.setProperty('--footer-cols', Math.max(1, (f.columns || []).length));
+    const safeUrl = u => /^(\/(?!\/)|https?:\/\/|mailto:|tel:)/i.test(u) ? u : '#';
+    cols.innerHTML = (f.columns || []).map(c => `
+      <div>
+        <h5>${escHTML(c.title)}</h5>
+        <ul>${(c.links || []).map(l => `<li><a href="${escHTML(safeUrl(l.url))}"${/^https?:/i.test(l.url) ? ' target="_blank" rel="noopener noreferrer"' : ''}>${escHTML(l.label)}</a></li>`).join('')}</ul>
+      </div>`).join('');
+  }
+  renderFooterContent(FOOTER_DEFAULT);
+  apiFetch('/settings/footer').then(({ footer }) => { if (footer) renderFooterContent(footer); }).catch(() => {});
 
   // Patched in after the initial paint (Phase 7 store settings) — the footer
   // still renders instantly with sensible defaults even if this fetch is slow

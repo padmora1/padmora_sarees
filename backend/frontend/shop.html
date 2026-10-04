@@ -37,7 +37,7 @@
     </div>
   </div>
 
-  <section class="section" style="padding-top:36px;">
+  <section class="section" id="shopSection" style="padding-top:36px;">
     <div class="container">
       <div class="shop-layout">
         <aside class="filters" id="filtersPanel">
@@ -159,8 +159,9 @@
         ${c.tagline ? `<p class="collection-hero-tagline">${esc(c.tagline)}</p>` : ''}
       </div>`;
     hero.style.display = '';
-    if(c.description){ meaning.innerHTML = `<div class="collection-meaning"><p>${esc(c.description)}</p></div>`; meaning.style.display = ''; }
-    else meaning.style.display = 'none';
+    // The collection's meaning/description is intentionally not shown here — the banner goes straight to the sarees.
+    meaning.style.display = 'none';
+    document.getElementById('shopSection').classList.add('in-collection');
   }
 
   // Colour has no dedicated admin taxonomy table (unlike fabric/occasion) —

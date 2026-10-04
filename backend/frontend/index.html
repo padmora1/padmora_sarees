@@ -16,15 +16,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <style>
-  /* Even spacing at every width via gap alone, no border dividers — the old
-     border-right/:last-child approach only drew correctly for a single row
-     of 4 and left a dangling divider once the 980px breakpoint below wraps
-     this to 2x2. */
-  .trust-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;border-top:1px solid rgba(173,59,92,0.12);border-bottom:1px solid rgba(173,59,92,0.12);background:rgba(173,59,92,0.1);margin-top:40px;}
-  .trust-item{display:flex;align-items:center;justify-content:center;gap:12px;padding:20px 24px;background:var(--white);text-align:left;}
-  .trust-item svg{width:22px;height:22px;stroke:var(--maroon);flex-shrink:0;}
-  .trust-item strong{display:block;font-size:13px;}
-  .trust-item span{font-size:11.5px;color:var(--ink-soft);}
   .reel-rail-wrap{position:relative;}
   .reel-rail{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;padding:6px 28px 28px;scrollbar-width:none;}
   .reel-rail::-webkit-scrollbar{display:none;}
@@ -46,35 +37,29 @@
   .reel-scroll-btn.right{right:2px;}
   @media (max-width:760px){ .reel-scroll-btn{display:none;} }
 
-  @media (max-width:980px){
-    .trust-strip{grid-template-columns:repeat(2,1fr);}
-  }
-
   /* Full-width, admin-managed hero image — one picture for desktop, an
      optional different one under 760px, the whole thing clickable with a
      slow zoom + button invert on hover. No text of its own; the only copy is
-     the centred button label, also editable from admin. */
+     the button label, also editable from admin. */
   .home-hero{position:relative;overflow:hidden;background:linear-gradient(160deg,#7A2740 0%,#AD3B5C 45%,#D9A97C 100%);}
   .home-hero-link{display:block;position:relative;color:inherit;}
-  .home-hero-img{display:block;width:100%;height:auto;max-height:82vh;object-fit:cover;transition:transform .9s ease;}
-  .home-hero-fallback{min-height:62vh;}
+  .home-hero-img{display:block;width:100%;height:auto;transition:transform .9s ease;}
+  .home-hero-fallback{aspect-ratio:16/9;}
   .home-hero-link::after{content:'';position:absolute;inset:0;background:rgba(20,10,10,0.04);transition:background .4s ease;pointer-events:none;}
   .home-hero-link:hover::after,.home-hero-link:focus-visible::after{background:rgba(20,10,10,0.2);}
   .home-hero-link:hover .home-hero-img{transform:scale(1.045);}
-  .home-hero-btn{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2;display:inline-flex;align-items:center;gap:18px;padding:9px 9px 9px 34px;background:rgba(255,240,230,0.96);color:var(--maroon-deep);font-size:13.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;border-radius:999px;box-shadow:0 0 0 7px rgba(255,240,230,0.26),0 14px 34px rgba(0,0,0,0.3);transition:background .35s ease,color .35s ease,transform .35s ease,box-shadow .35s ease;white-space:nowrap;overflow:hidden;}
+  /* The hero picture is shown whole (16:9, 1672x941). The button sits in the clear space under the
+     "Aarambh / Festive Collection" wordmark on the right, and everything inside it is sized in em from one
+     font-size that follows the screen width, so it stays under the wordmark from phone to desktop. */
+  .home-hero-btn{position:absolute;top:65%;left:78%;transform:translate(-50%,-50%);z-index:2;display:inline-flex;align-items:center;gap:1em;padding:.6em .6em .6em 1.9em;max-width:38%;font-size:clamp(7px,1.15vw,14px);background:rgba(255,240,230,0.96);color:var(--maroon-deep);font-weight:600;letter-spacing:.12em;text-transform:uppercase;border-radius:999px;box-shadow:0 0 0 .5em rgba(255,240,230,0.26),0 1em 2.4em rgba(0,0,0,0.3);transition:background .35s ease,color .35s ease,transform .35s ease,box-shadow .35s ease;white-space:nowrap;overflow:hidden;}
+  .home-hero-btn > span{overflow:hidden;text-overflow:ellipsis;}
   .home-hero-btn::before{content:'';position:absolute;top:0;left:-70%;width:45%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,0.7),transparent);transform:skewX(-20deg);transition:left .8s ease;pointer-events:none;}
-  .home-hero-btn i{position:relative;display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:var(--maroon);transition:background .35s ease;}
-  .home-hero-btn i svg{width:19px;height:19px;stroke:var(--ivory);fill:none;stroke-width:2;transition:transform .35s ease;}
-  .home-hero-link:hover .home-hero-btn,.home-hero-link:focus-visible .home-hero-btn{background:var(--maroon-deep);color:var(--ivory);transform:translate(-50%,-50%) scale(1.06);box-shadow:0 0 0 12px rgba(255,240,230,0.2),0 18px 42px rgba(0,0,0,0.38);}
+  .home-hero-btn i{position:relative;flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:3em;height:3em;border-radius:50%;background:var(--maroon);transition:background .35s ease;}
+  .home-hero-btn i svg{width:1.3em;height:1.3em;stroke:var(--ivory);fill:none;stroke-width:2;transition:transform .35s ease;}
+  .home-hero-link:hover .home-hero-btn,.home-hero-link:focus-visible .home-hero-btn{background:var(--maroon-deep);color:var(--ivory);transform:translate(-50%,-50%) scale(1.06);box-shadow:0 0 0 .85em rgba(255,240,230,0.2),0 1.3em 3em rgba(0,0,0,0.38);}
   .home-hero-link:hover .home-hero-btn::before,.home-hero-link:focus-visible .home-hero-btn::before{left:130%;}
   .home-hero-link:hover .home-hero-btn i,.home-hero-link:focus-visible .home-hero-btn i{background:var(--gold);}
   .home-hero-link:hover .home-hero-btn i svg,.home-hero-link:focus-visible .home-hero-btn i svg{transform:translateX(3px);}
-  @media (max-width:760px){
-    .home-hero-img{max-height:78vh;}
-    .home-hero-fallback{min-height:52vh;}
-    .home-hero-btn{padding:7px 7px 7px 24px;gap:14px;font-size:12px;letter-spacing:.13em;}
-    .home-hero-btn i{width:40px;height:40px;}
-  }
   @media (prefers-reduced-motion:reduce){
     .home-hero-img,.home-hero-btn,.home-hero-btn::before,.home-hero-btn i svg,.home-hero-link::after{transition:none;}
     .home-hero-link:hover .home-hero-img{transform:none;}
@@ -83,14 +68,16 @@
   /* Lined rangoli — a line-art kolam motif flanked by a repeating diamond-and-dot
      chain, drawn in the brand gold. Sits between the hero and Shop by Weave
      (shown only while the hero is, so it never floats under the header alone). */
-  .rangoli{display:flex;align-items:center;justify-content:center;gap:10px;padding:30px 16px 4px;}
+  .rangoli{display:flex;align-items:center;justify-content:center;gap:10px;padding:20px 16px 0;}
+  .rangoli + .section{padding-top:18px;}
+  .rangoli + .section .section-head{margin-bottom:24px;}
   .rangoli-line{flex:1 1 0;max-width:420px;height:18px;opacity:.85;
     background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='18' viewBox='0 0 24 18' fill='none' stroke='%23B87F55' stroke-width='1'%3E%3Cpath d='M1 9L7 3L13 9L7 15Z'/%3E%3Cpath d='M13 9H17M21 9H24M0 9H1'/%3E%3Ccircle cx='19' cy='9' r='1.6' fill='%23B87F55'/%3E%3C/svg%3E") repeat-x center;}
   .rangoli-line.left{-webkit-mask-image:linear-gradient(to right,transparent,#000 70%);mask-image:linear-gradient(to right,transparent,#000 70%);}
   .rangoli-line.right{-webkit-mask-image:linear-gradient(to left,transparent,#000 70%);mask-image:linear-gradient(to left,transparent,#000 70%);}
   .rangoli-motif{flex:0 0 auto;width:150px;height:46px;color:var(--gold);}
   .rangoli-motif svg{display:block;width:100%;height:100%;}
-  @media (max-width:760px){ .rangoli{padding-top:22px;} .rangoli-motif{width:118px;height:36px;} }
+  @media (max-width:760px){ .rangoli{padding-top:14px;} .rangoli-motif{width:118px;height:36px;} .rangoli + .section{padding-top:8px;padding-bottom:20px;} .rangoli + .section .section-head{margin-bottom:16px;} }
 
   /* "Shop all sarees" band — deep-maroon stage with a slowly turning rangoli
      behind a fan of three real sarees that drift toward the pointer. */
@@ -101,9 +88,8 @@
   @keyframes shopAllSpin{to{transform:rotate(360deg);}}
   .shop-all-inner{position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);align-items:center;gap:32px;padding-top:72px;padding-bottom:72px;}
   .shop-all .eyebrow{color:var(--gold-soft);}
-  .shop-all h2{color:var(--ivory);font-size:clamp(32px,4.2vw,50px);line-height:1.12;margin:12px 0 16px;}
+  .shop-all h2{color:var(--ivory);font-size:clamp(32px,4.2vw,50px);line-height:1.12;margin:12px 0 28px;}
   .shop-all h2 em{font-style:normal;color:var(--gold-soft);}
-  .shop-all-copy p.lede{font-size:15.5px;line-height:1.7;color:rgba(255,240,230,0.82);max-width:440px;margin-bottom:30px;}
   .shop-all-btn{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:16px;padding:8px 8px 8px 30px;border-radius:999px;background:var(--ivory);color:var(--maroon-deep);font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;box-shadow:0 10px 30px rgba(0,0,0,0.28);transition:transform .3s ease,box-shadow .3s ease,background .3s ease;}
   .shop-all-btn::before{content:'';position:absolute;top:0;left:-70%;width:45%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,0.65),transparent);transform:skewX(-20deg);transition:left .7s ease;}
   .shop-all-btn:hover,.shop-all-btn:focus-visible{transform:translateY(-3px);box-shadow:0 16px 38px rgba(0,0,0,0.34);background:#fff;}
@@ -123,16 +109,18 @@
   .sa-card-cap strong{display:block;font-family:var(--font-display);font-weight:400;font-size:15px;line-height:1.25;}
   .sa-card-cap span{font-size:12px;color:var(--gold-soft);}
   @media (max-width:980px){
-    .shop-all-inner{grid-template-columns:1fr;text-align:center;padding-top:56px;padding-bottom:48px;}
-    .shop-all-copy p.lede{margin:0 auto 30px;}
+    .shop-all-inner{grid-template-columns:1fr;text-align:center;padding-top:44px;padding-bottom:36px;gap:20px;}
     .shop-all-spin{right:50%;margin-right:-380px;opacity:.12;}
   }
   @media (max-width:760px){
-    .shop-all{margin-top:40px;}
-    .shop-all-stage{height:330px;--spread:108px;}
-    .sa-card{width:150px;height:216px;margin:-108px 0 0 -75px;}
+    .shop-all{margin-top:28px;}
+    .shop-all-inner{padding-top:32px;padding-bottom:24px;gap:6px;}
+    .shop-all h2{font-size:28px;margin:8px 0 20px;}
+    .shop-all-stage{height:250px;--spread:92px;}
+    .sa-card{width:122px;height:176px;margin:-88px 0 0 -61px;}
     .sa-card-cap{padding:24px 9px 9px;} .sa-card-cap strong{font-size:13px;} .sa-card-cap span{font-size:11px;}
-    .shop-all-btn{padding-left:24px;font-size:12px;}
+    .shop-all-btn{padding:6px 6px 6px 22px;font-size:11.5px;}
+    .shop-all-btn i{width:38px;height:38px;}
   }
   @media (prefers-reduced-motion:reduce){
     .shop-all-spin,.sa-card-inner{animation:none;}
@@ -163,7 +151,7 @@
 
   <section class="section">
     <div class="container">
-      <div class="section-head"><p class="eyebrow">Curated Weaves</p><h2>Shop by Weave</h2></div>
+      <div class="section-head"><h2>Shop by Weave</h2></div>
     </div>
     <div class="cat-rail-wrap" id="catRailWrap">
       <button class="reel-scroll-btn left" id="catScrollLeft" aria-label="Scroll left">‹</button>
@@ -184,7 +172,6 @@
       <div class="shop-all-copy">
         <p class="eyebrow">The Complete Collection</p>
         <h2 id="shopAllTitle">Every saree, <em>one place</em></h2>
-        <p class="lede">Handloom pieces from Maheshwar, Kutch, Paithan and Narayanpet &mdash; each one sourced straight from the weaver. Browse the whole range, then narrow it by weave, colour or occasion.</p>
         <a class="shop-all-btn" href="/shop"><span>View all sarees</span><i><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></i></a>
       </div>
       <div class="shop-all-stage" id="shopAllStage"></div>
@@ -202,12 +189,6 @@
     </div>
   </section>
 
-  <div class="trust-strip">
-    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/></svg><div><strong>Free Shipping</strong><span id="trustShippingLine">Above ₹1,999</span></div></div>
-    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M4 4h16v16H4z"/><path d="M4 9h16"/></svg><div><strong>Easy Returns</strong><span>7-day exchange</span></div></div>
-    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><div><strong>Secure Payments</strong><span>Cards &amp; UPI</span></div></div>
-    <div class="trust-item"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="9"/></svg><div><strong>Handloom Certified</strong><span>Direct from weavers</span></div></div>
-  </div>
 </main>
 
 <div id="site-footer"></div>
@@ -254,8 +235,7 @@
         </a>`).join('');
       // Only show scroll arrows once there's actually more to scroll to —
       // 4 or fewer fabrics fit the row exactly and need no affordance.
-      const wrap = document.getElementById('catRailWrap');
-      requestAnimationFrame(()=> wrap.classList.toggle('has-overflow', rail.scrollWidth > rail.clientWidth + 4));
+      requestAnimationFrame(()=>{ updateCatArrows(); nudgeCatRail(); });
     }catch(e){ /* leave rail empty if the backend is unreachable */ }
   }
 
@@ -322,11 +302,37 @@
     const rail = document.getElementById('catRail');
     rail.scrollBy({left: rail.clientWidth, behavior: 'smooth'});
   });
-  window.addEventListener('resize', ()=>{
+  // Arrows only appear when there is more to scroll to, and each fades out at its own end.
+  function updateCatArrows(){
     const rail = document.getElementById('catRail');
     const wrap = document.getElementById('catRailWrap');
-    if(rail && wrap) wrap.classList.toggle('has-overflow', rail.scrollWidth > rail.clientWidth + 4);
-  });
+    if(!rail || !wrap) return;
+    wrap.classList.toggle('has-overflow', rail.scrollWidth > rail.clientWidth + 4);
+    document.getElementById('catScrollLeft').classList.toggle('at-end', rail.scrollLeft <= 4);
+    document.getElementById('catScrollRight').classList.toggle('at-end', rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - 4);
+  }
+  // One small nudge the first time the row scrolls into view, so it is obvious it moves sideways.
+  // Skipped for people who ask for less motion, and cancelled if they touch the row first.
+  function nudgeCatRail(){
+    const rail = document.getElementById('catRail');
+    if(!rail || rail.scrollWidth <= rail.clientWidth + 4 || !('IntersectionObserver' in window)) return;
+    if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let touched = false;
+    ['pointerdown','wheel','touchstart'].forEach(ev => rail.addEventListener(ev, ()=>{ touched = true; }, { once:true, passive:true }));
+    const io = new IntersectionObserver(entries=>{
+      if(!entries[0].isIntersecting) return;
+      io.disconnect();
+      setTimeout(()=>{
+        if(touched || rail.scrollLeft > 4) return;
+        rail.style.scrollSnapType = 'none';
+        rail.scrollTo({ left: 56, behavior:'smooth' });
+        setTimeout(()=>{ if(!touched){ rail.scrollTo({ left: 0, behavior:'smooth' }); } setTimeout(()=>{ rail.style.scrollSnapType = ''; }, 700); }, 900);
+      }, 500);
+    }, { threshold: 0.6 });
+    io.observe(rail);
+  }
+  document.getElementById('catRail').addEventListener('scroll', updateCatArrows, { passive:true });
+  window.addEventListener('resize', updateCatArrows);
 
 
   // "Shop all sarees" band: a fan of up to three sarees that drift toward the
@@ -369,15 +375,6 @@
   renderCatRail();
   renderShopAll();
   loadReels();
-
-  // Trust-strip claim should match the admin's real Phase 7 shipping
-  // threshold, not a hardcoded number (the topbar already does this in
-  // components.js — this is the second, separate spot with the same claim).
-  apiFetch('/settings/shipping').then(({shipping})=>{
-    if(shipping && shipping.freeShippingThreshold != null){
-      document.getElementById('trustShippingLine').textContent = 'Above ' + money(shipping.freeShippingThreshold);
-    }
-  }).catch(()=>{});
 </script>
 </body>
 </html>
