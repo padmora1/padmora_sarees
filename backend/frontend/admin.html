@@ -1405,6 +1405,7 @@
           <div class="form-field"><label>Logo URL</label><input class="admin-input" style="width:100%;" id="stLogoUrl" value="${store.logoUrl||''}"></div>
           <div class="form-field"><label>Favicon URL</label><input class="admin-input" style="width:100%;" id="stFaviconUrl" value="${store.faviconUrl||''}"></div>
         </div>
+        <div class="form-field"><label>Shipper address (printed on packing slips)</label><textarea class="admin-input" style="width:100%;min-height:70px;" maxlength="400" id="stShipperAddress">${escHTML(store.shipperAddress||'')}</textarea></div>
         <button class="btn btn-primary btn-sm" id="saveStoreSettings">Save Store Info</button>`;
       document.getElementById('saveStoreSettings').addEventListener('click', async ()=>{
         try{
@@ -1416,7 +1417,8 @@
             instagram: document.getElementById('stInstagram').value,
             youtube: document.getElementById('stYoutube').value,
             logoUrl: document.getElementById('stLogoUrl').value,
-            faviconUrl: document.getElementById('stFaviconUrl').value
+            faviconUrl: document.getElementById('stFaviconUrl').value,
+            shipperAddress: document.getElementById('stShipperAddress').value
           })});
           toast('Store info saved');
         }catch(e){ toast(e.message, 'error'); }

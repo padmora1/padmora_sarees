@@ -629,6 +629,10 @@ async function shapeAdminOrder(o, { full } = {}) {
     await supabase.from('notifications_log').select('channel, recipient, status, detail, created_at').eq('order_id', o.id).order('created_at', { ascending: false }),
     'shapeAdminOrder:notifications'
   );
+  const productIds = [...new Set(items.map(li => li.product_id).filter(Boolean))];
+  const fabrics = productIds.length ? must(await supabase.from('products').select('id, fabric').in('id', productIds), 'shapeAdminOrder:fabrics') : [];
+  const fabricById = Object.fromEntries(fabrics.map(p => [p.id, p.fabric]));
+  base.items.forEach(li => { li.fabric = fabricById[li.productId] || ''; });
   return {
     ...base,
     customerPhone: o.address_phone,
@@ -1278,7 +1282,7 @@ router.get('/settings/store', asyncRoute(async (req, res) => {
 }));
 
 router.put('/settings/store', asyncRoute(async (req, res) => {
-  const { brandName, logoUrl, faviconUrl, contactEmail, contactPhone, whatsapp, instagram, youtube } = req.body || {};
+  const { brandName, logoUrl, faviconUrl, contactEmail, contactPhone, whatsapp, instagram, youtube, shipperAddress } = req.body || {};
   if (!brandName || !String(brandName).trim()) {
     return res.status(400).json({ message: 'Brand name is required.' });
   }
@@ -1290,7 +1294,8 @@ router.put('/settings/store', asyncRoute(async (req, res) => {
     brandName: String(brandName).trim(),
     logoUrl: logoUrl || '', faviconUrl: faviconUrl || '',
     contactEmail: contactEmail || '', contactPhone: contactPhone || '',
-    whatsapp: whatsapp || '', instagram: instagram || '', youtube: youtube || ''
+    whatsapp: whatsapp || '', instagram: instagram || '', youtube: youtube || '',
+    shipperAddress: String(shipperAddress || '').replace(/\r/g, '').trim().slice(0, 400)
   };
   await setSetting('store_info', next);
   await record(req, 'settings updated', 'store_info', null, before, next);
