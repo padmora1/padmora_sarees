@@ -14,6 +14,7 @@ const { upload } = require('../middleware/upload');
 const { saveUpload, removeUpload } = require('../utils/storage');
 const { toProductApiShape } = require('../utils/shape');
 const { DEFAULT_FOOTER, validateFooter } = require('../utils/footerConfig');
+const { sanitizeRich } = require('../utils/richText');
 const { runBackup, listBackups, BACKUP_DIR } = require('../utils/backup');
 const { RETURN_REASONS } = require('../utils/returns');
 const { sendEmail, sendOrderStatusEmail, emailConfigured, smsConfigured } = require('../utils/notify');
@@ -221,7 +222,7 @@ router.post('/products', asyncRoute(async (req, res) => {
   const id = (maxRow[0]?.id || 0) + 1;
   const rpc = await supabase.rpc('create_product_with_default_variant', {
     p_id: id, p_name: name, p_fabric: fabric, p_occasion: occasion, p_price: prices.price, p_mrp: prices.mrp,
-    p_badge: badge || null, p_swatch: cleanSwatch(swatch) || 'maroon', p_description: desc || '', p_stock: stock,
+    p_badge: badge || null, p_swatch: cleanSwatch(swatch) || 'maroon', p_description: sanitizeRich(desc), p_stock: stock,
     p_weaver_name: weaverName || '', p_weaver_region: weaverRegion || '', p_loom_type: loomType || 'Handloom',
     p_color_name: (cleanSwatch(swatch) || 'maroon').replace(/^\w/, c => c.toUpperCase()), p_sku: `PDM-${id}-DEF`
   });
@@ -240,10 +241,24 @@ router.put('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   if (name !== undefined && !cleanText(name, 120)) return res.status(400).json({ message: 'Name can\'t be blank (up to 120 characters).' });
   must(await supabase.from('products').update({
     name: name !== undefined ? name.trim() : existing.name, fabric: fabric ?? existing.fabric, occasion: occasion ?? existing.occasion,
-    badge: badge !== undefined ? badge : existing.badge, description: desc ?? existing.description,
+    badge: badge !== undefined ? badge : existing.badge, description: desc === undefined || desc === null ? existing.description : sanitizeRich(desc),
     weaver_name: weaverName ?? existing.weaver_name, weaver_region: weaverRegion ?? existing.weaver_region,
     loom_type: loomType ?? existing.loom_type, status: status ?? existing.status ?? 'active'
   }).eq('id', id), 'updateProduct:update');
+  // The storefront shows a colour's own description when it has one, and the first colour is created with a copy
+  // of the product description. So when the product description is edited, every colour that still carries the
+  // old copy (or none) follows the edit; a colour with its own different text keeps it.
+  if (desc !== undefined && desc !== null) {
+    const newDesc = sanitizeRich(desc);
+    if (newDesc !== (existing.description || '')) {
+      const vs = must(await supabase.from('product_variants').select('id, description').eq('product_id', id), 'updateProduct:descCopies');
+      for (const v of vs) {
+        if (!v.description || v.description === existing.description) {
+          must(await supabase.from('product_variants').update({ description: newDesc }).eq('id', v.id), 'updateProduct:descCopy');
+        }
+      }
+    }
+  }
   // Taking the Sale tag off ends the sale: each colour goes back to its actual (original) price.
   if (badge !== undefined && existing.badge === 'sale' && badge !== 'sale') {
     const vs = must(await supabase.from('product_variants').select('id, price, mrp').eq('product_id', id), 'updateProduct:endSale');
@@ -296,7 +311,8 @@ router.post('/products/:id(\\d{1,9})/variants', asyncRoute(async (req, res) => {
   const product = must(await supabase.from('products').select('id, badge').eq('id', productId).maybeSingle(), 'addVariant:product');
   if (!product) return res.status(404).json({ message: 'Product not found.' });
 
-  const { colorName: rawColor, swatch, sku, price, mrp, salePercent, stock: rawStock, description, lowStockThreshold: rawLow } = req.body;
+  const { colorName: rawColor, swatch, sku, price, mrp, salePercent, stock: rawStock, lowStockThreshold: rawLow } = req.body;
+  const description = req.body.description !== undefined ? req.body.description : req.body.desc;
   const colorName = cleanText(rawColor, 60);
   if (!colorName || price === undefined || price === null || price === '') {
     return res.status(400).json({ message: 'Colour name (up to 60 characters) and price are required.' });
@@ -312,7 +328,7 @@ router.post('/products/:id(\\d{1,9})/variants', asyncRoute(async (req, res) => {
   const inserted = must(await supabase.from('product_variants').insert({
     product_id: productId, color_name: colorName, swatch: cleanSwatch(swatch) || 'maroon', sku: sku || null,
     price: prices.price, mrp: prices.mrp, stock, low_stock_threshold: lowStockThreshold,
-    description: description || '', is_default: false, sort_order: sortOrder
+    description: sanitizeRich(description), is_default: false, sort_order: sortOrder
   }).select().single(), 'addVariant:insert');
 
   res.status(201).json({ variant: await getVariantById(inserted.id) });
@@ -323,7 +339,8 @@ router.put('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('product_variants').select('*').eq('id', id).maybeSingle(), 'updateVariant:lookup');
   if (!existing) return res.status(404).json({ message: 'Variant not found.' });
 
-  const { colorName, swatch, sku, price, mrp, salePercent, stock, description, lowStockThreshold, isDefault } = req.body;
+  const { colorName, swatch, sku, price, mrp, salePercent, stock, lowStockThreshold, isDefault } = req.body;
+  const description = req.body.description !== undefined ? req.body.description : req.body.desc;
   if (colorName !== undefined && !cleanText(colorName, 60)) return res.status(400).json({ message: 'Colour name can\'t be blank (up to 60 characters).' });
   const newStock = stock !== undefined ? wholeNumber(stock) : existing.stock;
   if (newStock === null) return res.status(400).json({ message: 'Stock must be a whole number, 0 or more.' });
@@ -351,7 +368,7 @@ router.put('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
     price: newPrice, mrp: newMrp,
     stock: newStock,
     low_stock_threshold: newLow,
-    description: description ?? existing.description,
+    description: description === undefined || description === null ? existing.description : sanitizeRich(description),
     is_default: isDefault !== undefined ? !!isDefault : existing.is_default
   }).eq('id', id), 'updateVariant:update');
 

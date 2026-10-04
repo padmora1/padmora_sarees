@@ -69,7 +69,7 @@
                 <div class="form-field"><label>Fabric</label><input type="text" id="npFabric"></div>
               </div>
               <div class="form-row-2">
-                <div class="form-field"><label>Occasion</label><input type="text" id="npOccasion" placeholder="Wedding / Festive / Party / Casual / Office"></div>
+                <div class="form-field"><label>Occasion</label><select class="admin-input" style="width:100%;" id="npOccasion"></select></div>
                 <div class="form-field"><label>Swatch key</label><input type="text" id="npSwatch" placeholder="maroon, teal, indigo..."></div>
               </div>
               <div class="form-row-2">
@@ -82,12 +82,12 @@
                   <select id="npBadge"><option value="">None</option><option value="new">New</option><option value="bestseller">Bestseller</option><option value="sale">Sale</option></select>
                 </div>
               </div>
-              <div class="form-field"><label>Description</label><textarea id="npDesc" rows="2"></textarea></div>
+              <div class="form-field"><label for="npDesc">Description</label><textarea id="npDesc" rows="2"></textarea></div>
               <div class="form-row-2">
                 <div class="form-field"><label>Weaver Name</label><input type="text" id="npWeaverName"></div>
-                <div class="form-field"><label>Weaver Region</label><input type="text" id="npWeaverRegion"></div>
+                <div class="form-field"><label>Weaver Region (state)</label><select class="admin-input" style="width:100%;" id="npWeaverRegion"></select></div>
               </div>
-              <div class="form-field"><label>Loom Type</label><input type="text" id="npLoomType" placeholder="Handloom / Powerloom / Handcrafted"></div>
+              <div class="form-field"><label>Loom Type</label><select class="admin-input" style="width:100%;" id="npLoomType"></select></div>
               <button class="btn btn-primary btn-sm" id="createProduct">Create Product</button>
             </div>
             <div id="archivedProductsToggle" style="display:none;margin-bottom:10px;font-size:12.5px;color:var(--ink-soft);"></div>
@@ -418,8 +418,133 @@
   let editorTab = 'general';
   let showArchivedProducts = false;
 
+  // ---- Product form helpers: formatted description + dropdowns ----
+  const LOOM_TYPES = ['Handloom', 'Powerloom', 'Handcrafted'];
+  let occasionNames = [];
+  async function loadOccasionOptions(){
+    try{
+      const { occasions } = await apiFetch('/occasions');
+      occasionNames = (occasions || []).map(o => o.name).filter(Boolean);
+    }catch(e){ /* keep whatever we had; the dropdown still offers the product's current value */ }
+  }
+  // <option> list for a dropdown. A value saved earlier that is not in the list (typed freely before these
+  // were dropdowns) stays selectable, so opening and saving a product never silently wipes it.
+  function optionsHTML(list, current, blankLabel){
+    const cur = String(current == null ? '' : current).trim();
+    const extra = cur && !list.includes(cur) ? `<option value="${escHTML(cur)}" selected>${escHTML(cur)} (current)</option>` : '';
+    return `<option value="">${escHTML(blankLabel)}</option>${extra}` +
+      list.map(v => `<option value="${escHTML(v)}"${v === cur ? ' selected' : ''}>${escHTML(v)}</option>`).join('');
+  }
+  const occasionOptionsHTML = cur => optionsHTML(occasionNames, cur, 'Select occasion');
+  const loomOptionsHTML = cur => optionsHTML(LOOM_TYPES, cur, 'Select loom type');
+  const regionOptionsHTML = cur => optionsHTML(INDIAN_STATES, cur, 'Select state');
+  function fillAddProductDropdowns(){
+    const set = (id, html) => { const el = document.getElementById(id); if(el) el.innerHTML = html; };
+    set('npOccasion', occasionOptionsHTML(''));
+    set('npLoomType', loomOptionsHTML(''));
+    set('npWeaverRegion', regionOptionsHTML(''));
+  }
+
+  // Turns a plain <textarea> into a small formatting editor (bold, italic, underline, heading, bullet and
+  // numbered lists, clear). The textarea stays in the page, hidden, and always holds the current HTML — so
+  // every existing "read the textarea's value" save path keeps working unchanged. The server rebuilds the HTML
+  // from an allow-list before saving, and the storefront shows only that cleaned version.
+  function enhanceRichText(ta){
+    if(!ta || ta._rich) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'rte';
+    wrap.innerHTML = `
+      <div class="rte-bar" role="toolbar" aria-label="Text formatting">
+        <button type="button" data-cmd="bold" title="Bold (Ctrl+B)" aria-label="Bold"><b>B</b></button>
+        <button type="button" data-cmd="italic" title="Italic (Ctrl+I)" aria-label="Italic"><i>I</i></button>
+        <button type="button" data-cmd="underline" title="Underline (Ctrl+U)" aria-label="Underline"><u>U</u></button>
+        <span class="rte-sep"></span>
+        <button type="button" data-cmd="heading" title="Heading" aria-label="Heading">Heading</button>
+        <button type="button" data-cmd="insertUnorderedList" title="Bullet list" aria-label="Bullet list">• List</button>
+        <button type="button" data-cmd="insertOrderedList" title="Numbered list" aria-label="Numbered list">1. List</button>
+        <span class="rte-sep"></span>
+        <button type="button" data-cmd="removeFormat" title="Remove formatting from the selection" aria-label="Clear formatting">Clear</button>
+      </div>
+      <div class="rte-area" contenteditable="true" role="textbox" aria-multiline="true"></div>`;
+    ta.style.display = 'none';
+    ta.parentNode.insertBefore(wrap, ta.nextSibling);
+    const area = wrap.querySelector('.rte-area');
+    if(ta.id) { const lab = document.querySelector(`label[for="${ta.id}"]`); if(lab) lab.addEventListener('click', () => area.focus()); }
+
+    const hasMarkup = v => /<\/?[a-z]/i.test(v);
+    const toEditor = v => hasMarkup(v) ? v : escHTML(v).replace(/\n/g, '<br>');
+    // Rebuilds the editor content as clean blocks: loose text/inline runs get their own <p>, and a <p> that
+    // the browser wrapped around a list is opened up again, so the saved HTML is always well-formed.
+    const BLOCK = /^(P|DIV|H[1-6]|UL|OL)$/;
+    const serialize = () => {
+      if(!area.textContent.trim() && !area.querySelector('li')) return '';
+      let out = '', inline = '';
+      const flush = () => { if(inline.replace(/<br>|&nbsp;|\s/g, '')) out += '<p>' + inline.trim() + '</p>'; inline = ''; };
+      const walk = nodes => nodes.forEach(n => {
+        if(n.nodeType === 3){ inline += escHTML(n.nodeValue); return; }
+        if(n.nodeType !== 1) return;
+        if(BLOCK.test(n.tagName)){
+          if((n.tagName === 'P' || n.tagName === 'DIV') && n.querySelector('ul,ol')){ flush(); walk(Array.from(n.childNodes)); flush(); return; }
+          flush(); out += n.outerHTML; return;
+        }
+        inline += n.outerHTML;
+      });
+      walk(Array.from(area.childNodes)); flush();
+      return out.replace(/&nbsp;/g, ' ');
+    };
+    const sync = () => { ta.value = serialize(); };
+    const refreshState = () => {
+      wrap.querySelectorAll('[data-cmd]').forEach(b => {
+        const c = b.dataset.cmd; let on = false;
+        try{
+          if(c === 'heading') on = /^h[1-6]$/i.test(document.queryCommandValue('formatBlock') || '');
+          else if(c !== 'removeFormat') on = document.queryCommandState(c);
+        }catch(e){}
+        b.classList.toggle('on', !!on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    };
+    wrap.querySelectorAll('[data-cmd]').forEach(b => {
+      b.addEventListener('mousedown', e => e.preventDefault()); // keep the text selection
+      b.addEventListener('click', () => {
+        area.focus();
+        document.execCommand('styleWithCSS', false, false);
+        const c = b.dataset.cmd;
+        // In an empty box there is no block to format yet: give it one and put the cursor inside.
+        if(!area.textContent.trim() && !area.querySelector('li')){
+          area.innerHTML = '<p><br></p>';
+          const r = document.createRange(); r.setStart(area.firstChild, 0); r.collapse(true);
+          const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+        }
+        if(c === 'heading'){
+          const isH = /^h[1-6]$/i.test(document.queryCommandValue('formatBlock') || '');
+          document.execCommand('formatBlock', false, isH ? 'p' : 'h3');
+        }else document.execCommand(c, false, null);
+        sync(); refreshState();
+      });
+    });
+    // Emptying the box also drops any leftover heading/list format, so the next thing typed starts as plain text.
+    area.addEventListener('input', e => { if(e.inputType && e.inputType.startsWith('delete') && !area.textContent.trim() && !area.querySelector('li')) area.innerHTML = ''; sync(); });
+    area.addEventListener('keyup', refreshState);
+    area.addEventListener('mouseup', refreshState);
+    area.addEventListener('focus', () => { try{ document.execCommand('defaultParagraphSeparator', false, 'p'); }catch(e){} });
+    // Pasting from a web page or Word brings along fonts, colours and junk; take just the text.
+    area.addEventListener('paste', e => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+      document.execCommand('insertText', false, text);
+    });
+    ta._rich = {
+      set(v){ area.innerHTML = toEditor(String(v == null ? '' : v)); sync(); },
+      get: serialize
+    };
+    ta._rich.set(ta.value);
+  }
+
   async function loadProducts(){
     try{
+      await loadOccasionOptions();
+      fillAddProductDropdowns();
       const {products} = await adminApiFetch('/admin/products');
       allProducts = products;
       const archivedCount = products.filter(p=>p.status==='archived').length;
@@ -493,7 +618,7 @@
         <div class="form-field"><label>Fabric</label><input type="text" id="egFabric" value="${escHTML(p.fabric)}"></div>
       </div>
       <div class="form-row-2">
-        <div class="form-field"><label>Occasion</label><input type="text" id="egOccasion" value="${escHTML(p.occasion)}"></div>
+        <div class="form-field"><label>Occasion</label><select class="admin-input" style="width:100%;" id="egOccasion">${occasionOptionsHTML(p.occasion)}</select></div>
         <div class="form-field"><label>Badge</label>
           <select id="egBadge">
             <option value="" ${!p.badge?'selected':''}>None</option>
@@ -504,13 +629,13 @@
           <span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:6px;">Sale shows the crossed-out original price, the sale price and “% off” (set the % per colour in the Variants tab). Taking Sale off puts each colour back to its actual price.</span>
         </div>
       </div>
-      <div class="form-field"><label>Description</label><textarea id="egDesc" rows="2">${escHTML(p.desc || '')}</textarea></div>
+      <div class="form-field"><label for="egDesc">Description</label><textarea id="egDesc" rows="2">${escHTML(p.desc || '')}</textarea></div>
       <div class="form-row-2">
         <div class="form-field"><label>Weaver Name</label><input type="text" id="egWeaverName" value="${escHTML(p.weaverName || '')}"></div>
-        <div class="form-field"><label>Weaver Region</label><input type="text" id="egWeaverRegion" value="${escHTML(p.weaverRegion || '')}"></div>
+        <div class="form-field"><label>Weaver Region (state)</label><select class="admin-input" style="width:100%;" id="egWeaverRegion">${regionOptionsHTML(p.weaverRegion)}</select></div>
       </div>
       <div class="form-row-2">
-        <div class="form-field"><label>Loom Type</label><input type="text" id="egLoomType" value="${p.loomType || ''}"></div>
+        <div class="form-field"><label>Loom Type</label><select class="admin-input" style="width:100%;" id="egLoomType">${loomOptionsHTML(p.loomType)}</select></div>
         <div class="form-field"><label>Status</label>
           <select id="egStatus">
             <option value="active" ${p.status!=='archived'?'selected':''}>Active</option>
@@ -520,6 +645,7 @@
       </div>
       <button class="btn btn-primary btn-sm" id="egSave">Save General Info</button>`;
 
+    enhanceRichText(document.getElementById('egDesc'));
     document.getElementById('egSave').addEventListener('click', async ()=>{
       try{
         await adminApiFetch('/admin/products/' + p.id, { method:'PUT', body: JSON.stringify({
@@ -599,6 +725,8 @@
         </div>
         <button class="btn btn-sm btn-outline" id="addVariantBtn">Add Variant</button>
       </div>`;
+
+    body.querySelectorAll('textarea[data-vf="desc"]').forEach(enhanceRichText);
 
     // Live "Sale price" as the admin types the actual price or the percentage.
     body.querySelectorAll('.variant-card').forEach(card=>{
@@ -714,6 +842,7 @@
   function resetAddProductForm(){
     ['npName','npFabric','npOccasion','npSwatch','npPrice','npSalePct','npDesc','npWeaverName','npWeaverRegion','npLoomType']
       .forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('npDesc')._rich.set('');
     document.getElementById('npStock').value = '20';
     document.getElementById('npBadge').value = '';
     refreshAddProductSaleFields();
@@ -735,6 +864,10 @@
   }
   ['npBadge','npPrice','npSalePct'].forEach(id => document.getElementById(id).addEventListener('input', refreshAddProductSaleFields));
   document.getElementById('npBadge').addEventListener('change', refreshAddProductSaleFields);
+
+  fillAddProductDropdowns();
+  enhanceRichText(document.getElementById('npDesc'));
+  loadOccasionOptions().then(fillAddProductDropdowns);
 
   document.getElementById('showAddProduct').addEventListener('click', ()=>{
     const form = document.getElementById('addProductForm');

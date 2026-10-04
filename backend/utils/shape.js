@@ -1,6 +1,7 @@
 // Shared row -> API-shape mapping, used by both the public /api/products
 // routes and the /api/admin/products routes so the two never drift apart
 // (the admin editor reads exactly the same field names the storefront does).
+const { sanitizeRich } = require('./richText');
 function toVariantApiShape(v) {
   return {
     id: v.id,
@@ -12,7 +13,7 @@ function toVariantApiShape(v) {
     mrp: v.mrp,
     stock: v.stock,
     lowStockThreshold: v.low_stock_threshold,
-    desc: v.description,
+    desc: sanitizeRich(v.description),
     isDefault: !!v.is_default,
     media: (v.media || []).map(m => ({ id: m.id, type: m.type, url: m.url, alt: m.alt_text, isPrimary: !!m.is_primary }))
   };
@@ -30,7 +31,7 @@ function toProductApiShape(row) {
     reviews: row.reviews_count,
     badge: row.badge,
     swatch: row.swatch,
-    desc: row.description,
+    desc: sanitizeRich(row.description),
     stock: row.stock,
     status: row.status || 'active',
     weaverName: row.weaver_name,
