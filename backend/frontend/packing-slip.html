@@ -15,7 +15,7 @@
   body{font-family:'Jost',Arial,Helvetica,sans-serif;color:#000;margin:0;padding:16px;background:#e9e6e3;}
   .slip{width:100mm;min-height:150mm;margin:0 auto 16px;padding:4mm;background:#fff;color:#000;box-shadow:0 1px 6px rgba(0,0,0,.2);}
   .slip-head{display:flex;justify-content:space-between;align-items:flex-start;gap:3mm;border-bottom:.6mm solid #000;padding-bottom:2.5mm;margin-bottom:3mm;}
-  .slip-head h1{font-family:'Marcellus',Georgia,serif;font-size:18pt;line-height:1;margin:0;font-weight:700;}
+  .slip-head h1{font-family:'Marcellus',Georgia,serif;font-size:16pt;line-height:1;margin:0;font-weight:700;}
   .slip-head .brand-sub{font-size:6.5pt;text-transform:uppercase;letter-spacing:.08em;margin-top:1mm;}
   .slip-head .order-meta{text-align:right;font-size:8pt;line-height:1.35;}
   .slip-head .order-meta strong{display:block;font-size:12pt;font-weight:700;}
@@ -23,7 +23,9 @@
   .block h4{font-size:7pt;text-transform:uppercase;letter-spacing:.08em;margin:0 0 1mm;font-weight:700;border-bottom:.2mm solid #000;padding-bottom:.6mm;}
   .block p{font-size:10pt;line-height:1.35;margin:0;word-break:break-word;}
   .block.ship p{font-size:11pt;font-weight:500;}
-  .block.cust p{font-size:8.5pt;}
+  .block.from p{font-size:8.5pt;}
+  .block.from{margin:3mm 0 0;border-top:.5mm dashed #000;padding-top:2mm;}
+  td .sub{display:block;font-size:7pt;margin-top:.5mm;}
   table{width:100%;border-collapse:collapse;margin:0 0 3mm;}
   th,td{text-align:left;padding:1.2mm .8mm;border-bottom:.2mm solid #000;font-size:8.5pt;vertical-align:top;word-break:break-word;}
   th{text-transform:uppercase;font-size:6.5pt;letter-spacing:.05em;border-bottom:.5mm solid #000;font-weight:700;}
@@ -84,7 +86,9 @@
         document.getElementById('slipRoot').innerHTML = '<div class="error">None of those orders could be found.</div>';
         return;
       }
-      document.getElementById('slipRoot').innerHTML = orders.map(slipHTML).join('');
+      let store = {};
+      try{ store = (await adminApiFetch('/admin/settings/store')).store || {}; }catch(e){ /* slip still prints with defaults */ }
+      document.getElementById('slipRoot').innerHTML = orders.map(o => slipHTML(o, store)).join('');
       document.getElementById('actionsBar').style.display = 'flex';
       document.getElementById('slipCount').textContent = orders.length > 1 ? `${orders.length} orders` : '';
       if(ids.length > orders.length){
@@ -97,51 +101,50 @@
 
   function money(n){ return '₹' + Number(n).toLocaleString('en-IN'); }
 
-  function slipHTML(o){
+  // Used only when Settings → Store has no shipper address yet (same address as the storefront Contact page).
+  const FALLBACK_SHIPPER = 'Padmora by Yashi Studio\nBandra West, Mumbai, Maharashtra 400050';
+
+  function slipHTML(o, store){
     const a = o.address || {};
+    const brand = (store && store.brandName) || 'Padmora';
+    const shipper = (store && store.shipperAddress) || FALLBACK_SHIPPER;
     return `
     <div class="slip">
       <div class="slip-head">
         <div>
-          <h1>Padmora</h1>
-          <div class="brand-sub">Handloom &amp; Heritage Sarees</div>
+          <h1>${escHTML(brand)}</h1>
         </div>
         <div class="order-meta">
           <strong>#${escHTML(o.id)}</strong>
-          ${new Date(o.placedAt).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'})}<br>
-          ${escHTML(o.payment || '')}
+          ${new Date(o.placedAt).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'})}
         </div>
       </div>
 
       <div class="block ship">
-        <h4>Ship To</h4>
+        <h4>Delivery Address</h4>
         <p><strong>${escHTML(a.name)}</strong><br>
         ${escHTML(a.line1)}<br>
-        ${escHTML(a.city)}, ${escHTML(a.state)} ${escHTML(a.pincode)}<br>
-        ${escHTML(a.phone || '')}</p>
-      </div>
-
-      <div class="block cust">
-        <h4>Customer</h4>
-        <p>${escHTML(o.customerName)}${o.customerPhone ? ' · ' + escHTML(o.customerPhone) : ''}${o.customerEmail ? '<br>' + escHTML(o.customerEmail) : ''}</p>
+        ${escHTML(a.city)}, ${escHTML(a.state)} ${escHTML(a.pincode)}</p>
       </div>
 
       <table>
-        <thead><tr><th>Item</th><th>Colour</th><th class="num">Qty</th><th class="num">Price</th></tr></thead>
+        <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th></tr></thead>
         <tbody>
-          ${o.items.map(i=>`<tr><td>${escHTML(i.name)}</td><td>${escHTML(i.color||'—')}</td><td class="num">${escHTML(i.qty)}</td><td class="num">${money(i.price)}</td></tr>`).join('')}
+          ${o.items.map(i=>`<tr><td>${escHTML(i.name)}<span class="sub">${[i.fabric, i.color ? 'Colour: ' + i.color : ''].filter(Boolean).map(escHTML).join(' · ')}</span></td><td class="num">${escHTML(i.qty)}</td><td class="num">${money(i.price)}</td></tr>`).join('')}
         </tbody>
       </table>
 
       <div class="totals">
-        <div><span>Subtotal</span><span>${money(o.subtotal)}</span></div>
-        ${o.discount ? `<div><span>Discount${o.couponCode?' ('+escHTML(o.couponCode)+')':''}</span><span>−${money(o.discount)}</span></div>` : ''}
-        ${o.shippingFee ? `<div><span>Shipping</span><span>${money(o.shippingFee)}</span></div>` : ''}
-        ${o.taxAmount ? `<div><span>Tax</span><span>${money(o.taxAmount)}</span></div>` : ''}
-        <div class="grand"><span>Total</span><span>${money(o.total)}</span></div>
+        <div><span>Total price</span><span>${money(o.subtotal)}</span></div>
+        <div class="grand"><span>Grand total</span><span>${money(o.total)}</span></div>
       </div>
 
       ${o.giftNote ? `<div class="gift-note">Gift note: "${escHTML(o.giftNote)}"</div>` : ''}
+
+      <div class="block from">
+        <h4>Shipper Address</h4>
+        <p>${escHTML(shipper).replace(/\n/g, '<br>')}</p>
+      </div>
     </div>`;
   }
 

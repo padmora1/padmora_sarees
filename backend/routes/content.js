@@ -60,7 +60,9 @@ router.get('/content/promo-band', async (req, res) => {
 // there's exactly one place an admin edits this, not four.
 router.get('/settings/store', async (req, res) => {
   try {
-    res.json({ store: await getSetting('store_info', {}) });
+    // shipperAddress is for the packing slip only (admin endpoint); it is not public storefront info.
+    const { shipperAddress, ...publicStore } = await getSetting('store_info', {});
+    res.json({ store: publicStore });
   } catch (err) {
     console.error('GET /settings/store failed:', err);
     res.status(500).json({ message: 'Something went wrong on the server.' });
