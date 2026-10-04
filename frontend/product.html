@@ -541,11 +541,12 @@
       <span class="price-now">${money(v.price)}</span>${priceExtrasHTML(currentProduct, v)}`;
     document.getElementById('pdDesc').innerHTML = descHTML(v.desc || currentProduct.desc);
     document.getElementById('pdShadeLabel').textContent = ' — ' + v.colorName;
-    const stockNote = document.getElementById('pdStockNote');
-    stockNote.className = 'stock-note ' + (v.stock <= 10 ? 'low' : 'ok');
-    stockNote.textContent = v.stock <= 0 ? 'Out of stock in this colour.'
-      : v.stock <= 10 ? `Only ${v.stock} left in ${v.colorName} — this piece is not mass-produced.`
-      : `In stock · ${v.stock} available`;
+    const noteEl = document.getElementById('pdStockNote');
+    // Stock is not shown on the page, except "only 2 / 3 left" and "out of stock" (see stockNote in api.js).
+    const note = stockNote(v.stock, v.colorName);
+    noteEl.className = 'stock-note ' + (note ? note.level : '');
+    noteEl.textContent = note ? note.text : '';
+    noteEl.hidden = !note;
     document.getElementById('pdStickyPrice').textContent = money(v.price);
     updateProductSEO(currentProduct, v);
   }

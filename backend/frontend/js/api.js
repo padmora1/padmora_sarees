@@ -7,6 +7,15 @@
 // exact product-card buttons this site ships (their arguments are ids and numbers we generate).
 // escHTML() is the other half: use it for any text dropped into a template.
 // ---------------------------------------------------------------------------------------------------------
+// How much stock to tell a shopper about. Nothing is shown while a saree is comfortably in stock; the note only
+// appears when exactly 2 or 3 are left, and "out of stock" is always said. Returns { text, level } or null.
+const STOCK_NOTE_FROM = 2, STOCK_NOTE_TO = 3;
+function stockNote(stock, colorName) {
+  const n = Number(stock);
+  if (n <= 0) return { text: 'Out of stock in this colour.', level: 'low' };
+  if (n >= STOCK_NOTE_FROM && n <= STOCK_NOTE_TO) return { text: 'Only ' + n + ' left' + (colorName ? ' in ' + colorName : '') + ' — this piece is not mass-produced.', level: 'low' };
+  return null;
+}
 function escHTML(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
