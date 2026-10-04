@@ -292,7 +292,7 @@
           <div class="order-timeline">
             ${o.timeline.map(t=>`<div class="tl-step ${t.done?'done':''}"><div class="tl-dot"></div><div class="tl-label">${t.status}</div></div>`).join('')}
           </div>` : ''}
-          ${o.giftNote ? `<p style="font-size:12.5px;color:var(--ink-soft);margin:10px 0;">🎁 Gift note: “${o.giftNote}”</p>` : ''}
+          ${o.giftNote ? `<p style="font-size:12.5px;color:var(--ink-soft);margin:10px 0;">🎁 Gift note: “${escHTML(o.giftNote)}”</p>` : ''}
           ${o.items.map(li=>`<div class="order-item-row"><span>${li.name} × ${li.qty}</span><span>${money(li.price*li.qty)}</span></div>`).join('')}
           ${o.discount > 0 ? `<div class="order-item-row"><span>Discount ${o.couponCode ? '('+o.couponCode+')' : ''}</span><span>−${money(o.discount)}</span></div>` : ''}
           <div class="order-item-row" style="font-weight:600;color:var(--ink);border-top:1px solid rgba(173,59,92,0.1);margin-top:8px;padding-top:8px;">
@@ -488,7 +488,7 @@
             <span>${r.status === 'Refunded' ? 'Refunded' : 'Estimated refund'}</span><span>${money(r.finalRefundAmount ?? r.computedRefundAmount)}</span>
           </div>
           ${r.status === 'Refunded' && r.couponCode ? `<p style="font-size:12.5px;color:var(--maroon);margin-top:8px;">Store credit code: <strong>${r.couponCode}</strong></p>` : ''}
-          ${r.adminNote ? `<p style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;background:rgba(173,59,92,0.05);padding:8px 10px;border-radius:6px;">Note from our team: ${r.adminNote}</p>` : ''}
+          ${r.adminNote ? `<p style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;background:rgba(173,59,92,0.05);padding:8px 10px;border-radius:6px;">Note from our team: ${escHTML(r.adminNote)}</p>` : ''}
         </div>`).join('');
     }catch(e){
       box.innerHTML = `<p style="color:var(--ink-soft);">Could not load return requests.</p>`;

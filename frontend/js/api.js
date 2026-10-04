@@ -1,3 +1,60 @@
+// ---------------------------------------------------------------------------------------------------------
+// Safe HTML. Pages build a lot of HTML from data — and some of that data is typed by customers (names,
+// addresses, reviews, messages) or by lower-privilege admins. Without this, a name like <img onerror=...> would
+// RUN inside an admin's browser (where the admin login token is stored). This file is the first script on every
+// page, so everything assigned through innerHTML / outerHTML / insertAdjacentHTML is cleaned first: scripts,
+// frames, event-handler attributes and javascript:/data: links are removed. The only inline handlers kept are the
+// exact product-card buttons this site ships (their arguments are ids and numbers we generate).
+// escHTML() is the other half: use it for any text dropped into a template.
+// ---------------------------------------------------------------------------------------------------------
+function escHTML(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+(function () {
+  if (window.__safeHtmlInstalled || typeof Element === 'undefined') return;
+  window.__safeHtmlInstalled = true;
+  const DROP = new Set(['SCRIPT', 'IFRAME', 'FRAME', 'FRAMESET', 'OBJECT', 'EMBED', 'APPLET', 'LINK', 'META', 'BASE', 'STYLE', 'NOSCRIPT', 'FOREIGNOBJECT', 'PORTAL']);
+  const URL_ATTRS = new Set(['href', 'src', 'srcset', 'action', 'formaction', 'xlink:href', 'data', 'poster', 'background', 'ping', 'cite', 'longdesc', 'manifest']);
+  const ARG = "(?:[-\\w]+|this|'(?:[^'\"\\\\<>\\r\\n]|\\\\')*')";
+  const OWN_HANDLER = new RegExp('^\\s*(?:event\\.preventDefault\\(\\);\\s*(?:quickWish|cardChangeQty|quickAddToCart|openQuickView|removeWish|moveToCart)\\(\\s*' + ARG + '(?:\\s*,\\s*' + ARG + ')*\\s*\\);?|window\\.print\\(\\);?)\\s*$');
+  const BAD_URL = /^(?:javascript|vbscript|data):/i;
+  const SAFE_IMG = /^data:image\/(?:png|jpe?g|gif|webp);/i;
+  function clean(root) {
+    for (const el of Array.from(root.querySelectorAll('*'))) {
+      if (DROP.has(el.localName.toUpperCase())) { el.remove(); continue; }
+      if (el.localName === 'use') { const h = el.getAttribute('href') || el.getAttribute('xlink:href') || ''; if (h[0] !== '#') { el.remove(); continue; } }
+      for (const a of Array.from(el.attributes)) {
+        const n = a.name.toLowerCase(), v = a.value;
+        if (n.startsWith('on')) { if (!(n === 'onclick' && OWN_HANDLER.test(v))) el.removeAttribute(a.name); }
+        else if (n === 'srcdoc' || n === 'formaction') el.removeAttribute(a.name);
+        else if (URL_ATTRS.has(n)) {
+          const flat = v.replace(/[\u0000-\u0020\u00a0\u1680\u180e\u2000-\u2029\u205f\u3000]/g, '');
+          if (BAD_URL.test(flat) && !(n === 'src' && el.localName === 'img' && SAFE_IMG.test(flat))) el.removeAttribute(a.name);
+        } else if (n === 'style' && /expression\s*\(|javascript:|behavior\s*:|-moz-binding/i.test(v)) el.removeAttribute(a.name);
+      }
+    }
+  }
+  const desc = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+  const outer = Object.getOwnPropertyDescriptor(Element.prototype, 'outerHTML');
+  function sanitize(html) {
+    const s = String(html);
+    if (s.indexOf('<') === -1) return s;
+    const t = document.createElement('template');
+    desc.set.call(t, s);
+    clean(t.content);
+    return desc.get.call(t);
+  }
+  Object.defineProperty(Element.prototype, 'innerHTML', {
+    configurable: true, enumerable: desc.enumerable, get: desc.get,
+    set(v) { const tag = this.localName; return desc.set.call(this, (tag === 'script' || tag === 'style' || tag === 'textarea' || tag === 'title') ? v : sanitize(v)); }
+  });
+  if (outer) Object.defineProperty(Element.prototype, 'outerHTML', { configurable: true, enumerable: outer.enumerable, get: outer.get, set(v) { return outer.set.call(this, sanitize(v)); } });
+  const adjacent = Element.prototype.insertAdjacentHTML;
+  Element.prototype.insertAdjacentHTML = function (position, html) { return adjacent.call(this, position, sanitize(html)); };
+  const fragment = Range.prototype.createContextualFragment;
+  Range.prototype.createContextualFragment = function (html) { return fragment.call(this, sanitize(html)); };
+})();
+
 // Small fetch wrapper shared by every page. Talks to the Express API
 // running on the same origin (see backend/server.js).
 const API_BASE = '/api';

@@ -54,6 +54,19 @@ function adminHostOnly(req, res, next) {
   return res.status(404).json({ message: 'Not found.' });
 }
 
+// Browser-hardening headers on every response. The admin panel (and its API) can never be shown inside another
+// site's frame (click-jacking); the storefront may only frame itself. HSTS tells browsers to stay on HTTPS.
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  const adminArea = isAdminHost(req) || /^\/(admin|admin-login|api\/admin)/.test(req.path);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Frame-Options', adminArea ? 'DENY' : 'SAMEORIGIN');
+  res.setHeader('Content-Security-Policy', adminArea ? "frame-ancestors 'none'" : "frame-ancestors 'self'");
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') res.setHeader('Strict-Transport-Security', 'max-age=15552000');
+  next();
+});
+
 app.use(cors());
 app.use(express.json());
 

@@ -81,6 +81,22 @@ function cleanSwatch(v) {
   return typeof v === 'string' ? v.trim().toLowerCase() : v;
 }
 
+// Whole-number check for every money / quantity field an admin can type. Returns the number, or null when it
+// isn't a whole number inside [min, max] (so "", "abc", 2.5, -3 and 99999999999 are all refused up front instead
+// of being saved as nonsense or crashing the database with a 500).
+const MAX_PRICE = 10000000;   // ₹1 crore
+const MAX_STOCK = 1000000;
+function wholeNumber(v, { min = 0, max = MAX_STOCK } = {}) {
+  if (v === '' || v === null || v === undefined || typeof v === 'boolean') return null;
+  const n = typeof v === 'number' ? v : (typeof v === 'string' && /^\s*-?\d+\s*$/.test(v) ? Number(v) : NaN);
+  return Number.isInteger(n) && n >= min && n <= max ? n : null;
+}
+// Trims a text field; null when it is blank or longer than `max`.
+function cleanText(v, max) {
+  const t = typeof v === 'string' ? v.trim() : '';
+  return t && t.length <= max ? t : null;
+}
+
 // Pricing rule: only Sale sarees carry an original price and a discount.
 //  - Normal saree: one price. `mrp` is kept equal to it, so nothing downstream can show a fake discount.
 //  - Sale saree: the admin enters the ACTUAL price and a sale %; the selling price is worked out here
@@ -88,8 +104,8 @@ function cleanSwatch(v) {
 // A request from an older admin page (explicit selling price + original price, no percentage) is still
 // honoured for sale sarees.
 function resolvePrices({ onSale, price, mrp, salePercent }) {
-  const actual = Number(price);
-  if (!Number.isFinite(actual) || actual <= 0) return { error: 'Enter a valid price.' };
+  const actual = wholeNumber(price, { min: 1, max: MAX_PRICE });
+  if (actual === null) return { error: 'Price must be a whole number of rupees, for example 2999 (up to 1,00,00,000).' };
   if (!onSale) return { price: actual, mrp: actual };
   if (salePercent !== undefined && salePercent !== null && salePercent !== '') {
     const pct = Number(salePercent);
@@ -190,17 +206,21 @@ router.get('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
 }));
 
 router.post('/products', asyncRoute(async (req, res) => {
-  const { name, fabric, occasion, price, mrp, salePercent, badge, swatch, desc, stock, weaverName, weaverRegion, loomType } = req.body;
-  if (!name || !fabric || !occasion || !price) {
-    return res.status(400).json({ message: 'Name, fabric, occasion and price are required.' });
+  const { name: rawName, fabric: rawFabric, occasion: rawOccasion, price, mrp, salePercent, badge, swatch, desc, stock: rawStock, weaverName, weaverRegion, loomType } = req.body;
+  const name = cleanText(rawName, 120), fabric = cleanText(rawFabric, 80), occasion = cleanText(rawOccasion, 80);
+  if (!name || !fabric || !occasion || price === undefined || price === null || price === '') {
+    return res.status(400).json({ message: 'Name, fabric, occasion and price are required (name up to 120 characters).' });
   }
+  // Stock left empty means "the usual 20"; a typed 0 is a real answer (sold out) and must be kept.
+  const stock = (rawStock === undefined || rawStock === null || rawStock === '') ? 20 : wholeNumber(rawStock);
+  if (stock === null) return res.status(400).json({ message: 'Stock must be a whole number, 0 or more.' });
   const prices = resolvePrices({ onSale: badge === 'sale', price, mrp, salePercent });
   if (prices.error) return res.status(400).json({ message: prices.error });
   const maxRow = must(await supabase.from('products').select('id').order('id', { ascending: false }).limit(1), 'createProduct:maxId');
   const id = (maxRow[0]?.id || 0) + 1;
   const rpc = await supabase.rpc('create_product_with_default_variant', {
     p_id: id, p_name: name, p_fabric: fabric, p_occasion: occasion, p_price: prices.price, p_mrp: prices.mrp,
-    p_badge: badge || null, p_swatch: cleanSwatch(swatch) || 'maroon', p_description: desc || '', p_stock: Number(stock) || 20,
+    p_badge: badge || null, p_swatch: cleanSwatch(swatch) || 'maroon', p_description: desc || '', p_stock: stock,
     p_weaver_name: weaverName || '', p_weaver_region: weaverRegion || '', p_loom_type: loomType || 'Handloom',
     p_color_name: (cleanSwatch(swatch) || 'maroon').replace(/^\w/, c => c.toUpperCase()), p_sku: `PDM-${id}-DEF`
   });
@@ -216,8 +236,9 @@ router.put('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   if (!existing) return res.status(404).json({ message: 'Product not found.' });
 
   const { name, fabric, occasion, badge, desc, weaverName, weaverRegion, loomType, status } = req.body;
+  if (name !== undefined && !cleanText(name, 120)) return res.status(400).json({ message: 'Name can\'t be blank (up to 120 characters).' });
   must(await supabase.from('products').update({
-    name: name ?? existing.name, fabric: fabric ?? existing.fabric, occasion: occasion ?? existing.occasion,
+    name: name !== undefined ? name.trim() : existing.name, fabric: fabric ?? existing.fabric, occasion: occasion ?? existing.occasion,
     badge: badge !== undefined ? badge : existing.badge, description: desc ?? existing.description,
     weaver_name: weaverName ?? existing.weaver_name, weaver_region: weaverRegion ?? existing.weaver_region,
     loom_type: loomType ?? existing.loom_type, status: status ?? existing.status ?? 'active'
@@ -274,17 +295,22 @@ router.post('/products/:id(\\d{1,9})/variants', asyncRoute(async (req, res) => {
   const product = must(await supabase.from('products').select('id, badge').eq('id', productId).maybeSingle(), 'addVariant:product');
   if (!product) return res.status(404).json({ message: 'Product not found.' });
 
-  const { colorName, swatch, sku, price, mrp, salePercent, stock, description, lowStockThreshold } = req.body;
-  if (!colorName || !price) {
-    return res.status(400).json({ message: 'Colour name and price are required.' });
+  const { colorName: rawColor, swatch, sku, price, mrp, salePercent, stock: rawStock, description, lowStockThreshold: rawLow } = req.body;
+  const colorName = cleanText(rawColor, 60);
+  if (!colorName || price === undefined || price === null || price === '') {
+    return res.status(400).json({ message: 'Colour name (up to 60 characters) and price are required.' });
   }
+  const stock = (rawStock === undefined || rawStock === null || rawStock === '') ? 0 : wholeNumber(rawStock);
+  if (stock === null) return res.status(400).json({ message: 'Stock must be a whole number, 0 or more.' });
+  const lowStockThreshold = (rawLow === undefined || rawLow === null || rawLow === '') ? 10 : wholeNumber(rawLow, { min: 0, max: 100000 });
+  if (lowStockThreshold === null) return res.status(400).json({ message: '"Low stock at" must be a whole number, 0 or more.' });
   const prices = resolvePrices({ onSale: product.badge === 'sale', price, mrp, salePercent });
   if (prices.error) return res.status(400).json({ message: prices.error });
   const maxSort = must(await supabase.from('product_variants').select('sort_order').eq('product_id', productId).order('sort_order', { ascending: false }).limit(1), 'addVariant:maxSort');
   const sortOrder = (maxSort[0]?.sort_order ?? -1) + 1;
   const inserted = must(await supabase.from('product_variants').insert({
     product_id: productId, color_name: colorName, swatch: cleanSwatch(swatch) || 'maroon', sku: sku || null,
-    price: prices.price, mrp: prices.mrp, stock: Number(stock) || 0, low_stock_threshold: Number(lowStockThreshold) || 10,
+    price: prices.price, mrp: prices.mrp, stock, low_stock_threshold: lowStockThreshold,
     description: description || '', is_default: false, sort_order: sortOrder
   }).select().single(), 'addVariant:insert');
 
@@ -297,6 +323,11 @@ router.put('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   if (!existing) return res.status(404).json({ message: 'Variant not found.' });
 
   const { colorName, swatch, sku, price, mrp, salePercent, stock, description, lowStockThreshold, isDefault } = req.body;
+  if (colorName !== undefined && !cleanText(colorName, 60)) return res.status(400).json({ message: 'Colour name can\'t be blank (up to 60 characters).' });
+  const newStock = stock !== undefined ? wholeNumber(stock) : existing.stock;
+  if (newStock === null) return res.status(400).json({ message: 'Stock must be a whole number, 0 or more.' });
+  const newLow = lowStockThreshold !== undefined ? wholeNumber(lowStockThreshold, { min: 0, max: 100000 }) : existing.low_stock_threshold;
+  if (newLow === null) return res.status(400).json({ message: '"Low stock at" must be a whole number, 0 or more.' });
 
   // Price fields follow the product's Sale tag (see resolvePrices).
   const owner = must(await supabase.from('products').select('badge').eq('id', existing.product_id).maybeSingle(), 'updateVariant:product');
@@ -314,11 +345,11 @@ router.put('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   }
 
   must(await supabase.from('product_variants').update({
-    color_name: colorName ?? existing.color_name, swatch: cleanSwatch(swatch) ?? existing.swatch,
+    color_name: colorName !== undefined ? colorName.trim() : existing.color_name, swatch: cleanSwatch(swatch) ?? existing.swatch,
     sku: sku !== undefined ? sku : existing.sku,
     price: newPrice, mrp: newMrp,
-    stock: stock !== undefined ? Number(stock) : existing.stock,
-    low_stock_threshold: lowStockThreshold !== undefined ? Number(lowStockThreshold) : existing.low_stock_threshold,
+    stock: newStock,
+    low_stock_threshold: newLow,
     description: description ?? existing.description,
     is_default: isDefault !== undefined ? !!isDefault : existing.is_default
   }).eq('id', id), 'updateVariant:update');
@@ -428,8 +459,8 @@ router.post('/inventory/adjust', asyncRoute(async (req, res) => {
   if (!Number.isInteger(id) || id <= 0 || id > 2147483647) return res.status(400).json({ message: 'Choose a valid variant.' });
   const variant = must(await supabase.from('product_variants').select('*').eq('id', id).maybeSingle(), 'adjustInventory:lookup');
   if (!variant) return res.status(404).json({ message: 'Variant not found.' });
-  const delta = Number(change);
-  if (!delta) return res.status(400).json({ message: 'Enter a non-zero quantity change.' });
+  const delta = wholeNumber(change, { min: -MAX_STOCK, max: MAX_STOCK });
+  if (!delta) return res.status(400).json({ message: 'Enter a non-zero whole number (use a minus sign to take stock out).' });
 
   const after = Math.max(0, variant.stock + delta);
   must(await supabase.from('product_variants').update({ stock: after }).eq('id', id), 'adjustInventory:update');
@@ -539,12 +570,12 @@ router.post('/variants/import', asyncRoute(async (req, res) => {
     const variant = variantId ? must(await supabase.from('product_variants').select('*').eq('id', variantId).maybeSingle(), 'importVariants:lookup') : null;
     if (!variant) { errors.push({ row: rowNum, reason: `No variant with id ${cols[idx.variantId]}` }); continue; }
 
-    const price = idx.price > -1 && cols[idx.price] !== '' ? Number(cols[idx.price]) : variant.price;
-    const mrp = idx.mrp > -1 && cols[idx.mrp] !== '' ? Number(cols[idx.mrp]) : variant.mrp;
-    const stock = idx.stock > -1 && cols[idx.stock] !== '' ? Number(cols[idx.stock]) : variant.stock;
-    if (!Number.isFinite(price) || price <= 0) { errors.push({ row: rowNum, reason: 'Invalid price' }); continue; }
-    if (!Number.isFinite(mrp) || mrp <= 0) { errors.push({ row: rowNum, reason: 'Invalid MRP' }); continue; }
-    if (!Number.isInteger(stock) || stock < 0) { errors.push({ row: rowNum, reason: 'Invalid stock' }); continue; }
+    const price = idx.price > -1 && cols[idx.price] !== '' ? wholeNumber(cols[idx.price], { min: 1, max: MAX_PRICE }) : variant.price;
+    const mrp = idx.mrp > -1 && cols[idx.mrp] !== '' ? wholeNumber(cols[idx.mrp], { min: 1, max: MAX_PRICE }) : variant.mrp;
+    const stock = idx.stock > -1 && cols[idx.stock] !== '' ? wholeNumber(cols[idx.stock]) : variant.stock;
+    if (price === null) { errors.push({ row: rowNum, reason: 'Invalid price (whole rupees, 1 or more)' }); continue; }
+    if (mrp === null) { errors.push({ row: rowNum, reason: 'Invalid MRP (whole rupees, 1 or more)' }); continue; }
+    if (stock === null) { errors.push({ row: rowNum, reason: 'Invalid stock (whole number, 0 or more)' }); continue; }
 
     must(await supabase.from('product_variants').update({ price, mrp, stock }).eq('id', variantId), 'importVariants:update');
     await syncProductMirrorFromDefaultVariant(variant.product_id);

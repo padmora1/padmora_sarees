@@ -88,7 +88,7 @@
         document.getElementById('slipCount').textContent += ` (${ids.length - orders.length} not found)`;
       }
     }catch(e){
-      document.getElementById('slipRoot').innerHTML = `<div class="error">${e.message}</div>`;
+      document.getElementById('slipRoot').innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
     }
   }
 
@@ -112,21 +112,21 @@
       <div class="two-col">
         <div class="block">
           <h4>Ship To</h4>
-          <p><strong>${o.address.name}</strong><br>
-          ${o.address.line1}<br>
-          ${o.address.city}, ${o.address.state} ${o.address.pincode}<br>
-          ${o.address.phone || ''}</p>
+          <p><strong>${escHTML(o.address.name)}</strong><br>
+          ${escHTML(o.address.line1)}<br>
+          ${escHTML(o.address.city)}, ${escHTML(o.address.state)} ${escHTML(o.address.pincode)}<br>
+          ${escHTML(o.address.phone || '')}</p>
         </div>
         <div class="block">
           <h4>Customer</h4>
-          <p>${o.customerName}<br>${o.customerEmail || ''}<br>${o.customerPhone || ''}</p>
+          <p>${escHTML(o.customerName)}<br>${escHTML(o.customerEmail || '')}<br>${escHTML(o.customerPhone || '')}</p>
         </div>
       </div>
 
       <table>
         <thead><tr><th>Item</th><th>Colour</th><th class="num">Qty</th><th class="num">Price</th></tr></thead>
         <tbody>
-          ${o.items.map(i=>`<tr><td>${i.name}</td><td>${i.color||'—'}</td><td class="num">${i.qty}</td><td class="num">${money(i.price)}</td></tr>`).join('')}
+          ${o.items.map(i=>`<tr><td>${escHTML(i.name)}</td><td>${i.color||'—'}</td><td class="num">${i.qty}</td><td class="num">${money(i.price)}</td></tr>`).join('')}
         </tbody>
       </table>
 
@@ -138,7 +138,7 @@
         <div class="grand"><span>Total</span><span>${money(o.total)}</span></div>
       </div>
 
-      ${o.giftNote ? `<div class="gift-note">🎁 Gift note: "${o.giftNote}"</div>` : ''}
+      ${o.giftNote ? `<div class="gift-note">🎁 Gift note: "${escHTML(o.giftNote)}"</div>` : ''}
     </div>`;
   }
 
