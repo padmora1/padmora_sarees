@@ -157,6 +157,7 @@
       dots[active] && dots[active].classList.remove('active');
       dots[target] && dots[target].classList.add('active');
       active = target;
+      wrap.dataset.active = target;
     }
 
     function startAutoplay(){
@@ -190,7 +191,180 @@
   function renderGallery(v){
     const wrap = document.getElementById('pdMedia');
     wrap.innerHTML = galleryHTML(v);
+    wrap.dataset.active = '0';
+    const hasPhotos = variantImages(v).length > 0;
+    wrap.classList.toggle('zoomable', hasPhotos);
+    if(hasPhotos){ wrap.setAttribute('role', 'button'); wrap.setAttribute('tabindex', '0'); wrap.setAttribute('aria-label', 'View photos full screen'); }
+    else { wrap.removeAttribute('role'); wrap.removeAttribute('tabindex'); wrap.removeAttribute('aria-label'); }
     wireGallery();
+  }
+
+  // ---- Full-screen photo viewer ----
+  // Clicking / tapping the product photo opens every photo of the selected colour in a dark overlay. Each photo
+  // is shown whole (fit to the screen), the photos scroll one after another, and they can be zoomed with the
+  // + / - buttons, a double click / double tap, Ctrl + mouse wheel, or a pinch. Zoomed photos pan by scrolling
+  // or by dragging with the mouse. Esc, the X button, the dark edge or the phone's Back button close it (a stray tap never does).
+  const IV_STEPS = [1, 1.5, 2, 3, 4];
+  let ivEl = null, ivZoom = 1, ivReturnFocus = null, ivHistory = false;
+
+  function openViewer(startIndex){
+    const images = variantImages(selectedVariant);
+    if(!images.length || ivEl) return;
+    ivReturnFocus = document.activeElement;
+    const alt = (currentProduct ? currentProduct.name : 'Saree') + (selectedVariant && selectedVariant.colorName ? ' — ' + selectedVariant.colorName : '');
+    ivEl = document.createElement('div');
+    ivEl.className = 'iv';
+    ivEl.setAttribute('role', 'dialog');
+    ivEl.setAttribute('aria-modal', 'true');
+    ivEl.setAttribute('aria-label', 'Photos of ' + alt);
+    ivEl.innerHTML = `
+      <div class="iv-bar">
+        <span class="iv-count" aria-live="polite"></span>
+        <div class="iv-tools">
+          <button type="button" class="iv-btn" data-iv="out" aria-label="Zoom out">&minus;</button>
+          <button type="button" class="iv-btn iv-level" data-iv="fit" aria-label="Fit photo to screen">Fit</button>
+          <button type="button" class="iv-btn" data-iv="in" aria-label="Zoom in">+</button>
+          <button type="button" class="iv-btn iv-close" data-iv="close" aria-label="Close photo viewer">&times;</button>
+        </div>
+      </div>
+      <div class="iv-scroll" tabindex="0">
+        ${images.map((m, i) => `<div class="iv-frame"><img src="${escHTML(m.url)}" alt="${escHTML(alt)} — photo ${i + 1} of ${images.length}" draggable="false" decoding="async"${i > startIndex + 1 ? ' loading="lazy"' : ''}></div>`).join('')}
+      </div>`;
+    document.body.appendChild(ivEl);
+    document.documentElement.classList.add('iv-open');
+    const scroller = ivEl.querySelector('.iv-scroll');
+    const frames = Array.from(ivEl.querySelectorAll('.iv-frame'));
+    const count = ivEl.querySelector('.iv-count');
+    const level = ivEl.querySelector('.iv-level');
+    ivZoom = 1;
+
+    const applyZoom = (z, cx, cy) => {
+      z = Math.min(IV_STEPS[IV_STEPS.length - 1], Math.max(1, z));
+      const box = scroller.getBoundingClientRect();
+      if(cx == null){ cx = box.left + box.width / 2; cy = box.top + box.height / 2; }
+      // keep the point under (cx, cy) where it is while the photos grow or shrink
+      const fx = (scroller.scrollLeft + cx - box.left) / scroller.scrollWidth;
+      const fy = (scroller.scrollTop + cy - box.top) / scroller.scrollHeight;
+      ivZoom = z;
+      scroller.style.setProperty('--z', z);
+      scroller.classList.toggle('zoomed', z > 1);
+      level.textContent = z === 1 ? 'Fit' : Math.round(z * 100) + '%';
+      scroller.scrollLeft = fx * scroller.scrollWidth - (cx - box.left);
+      scroller.scrollTop = fy * scroller.scrollHeight - (cy - box.top);
+    };
+    const step = dir => {
+      const i = IV_STEPS.findIndex(s => s >= ivZoom - 0.001);
+      const at = i === -1 ? IV_STEPS.length - 1 : i;
+      applyZoom(IV_STEPS[Math.min(IV_STEPS.length - 1, Math.max(0, at + dir))]);
+    };
+
+    const updateCount = () => {
+      const mid = scroller.scrollTop + scroller.clientHeight / 2;
+      let cur = 0;
+      frames.forEach((f, i) => { if(f.offsetTop <= mid) cur = i; });
+      count.textContent = (cur + 1) + ' / ' + frames.length;
+    };
+    scroller.addEventListener('scroll', updateCount, { passive: true });
+
+    ivEl.addEventListener('click', e => {
+      const b = e.target.closest('[data-iv]');
+      if(b){
+        const a = b.dataset.iv;
+        if(a === 'close') closeViewer();
+        else if(a === 'in') step(1);
+        else if(a === 'out') step(-1);
+        else if(a === 'fit') applyZoom(1);
+        return;
+      }
+    });
+    scroller.addEventListener('dblclick', e => {
+      e.preventDefault();
+      applyZoom(ivZoom > 1 ? 1 : 2, e.clientX, e.clientY);
+    });
+    // Ctrl + wheel (or a trackpad pinch, which browsers send the same way) zooms; a plain wheel scrolls.
+    scroller.addEventListener('wheel', e => {
+      if(!e.ctrlKey) return;
+      e.preventDefault();
+      applyZoom(ivZoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX, e.clientY);
+    }, { passive: false });
+    // Mouse: drag a zoomed photo around (touch screens already pan by swiping).
+    let drag = null;
+    scroller.addEventListener('pointerdown', e => {
+      if(e.pointerType !== 'mouse' || e.button !== 0 || ivZoom <= 1) return;
+      drag = { x: e.clientX, y: e.clientY, l: scroller.scrollLeft, t: scroller.scrollTop, on: false };
+    });
+    scroller.addEventListener('pointermove', e => {
+      if(!drag) return;
+      // only a real drag (not a click or double click) takes over the pointer
+      if(!drag.on){
+        if(Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) < 4) return;
+        drag.on = true; scroller.setPointerCapture(e.pointerId); scroller.classList.add('dragging');
+      }
+      scroller.scrollLeft = drag.l - (e.clientX - drag.x);
+      scroller.scrollTop = drag.t - (e.clientY - drag.y);
+    });
+    const endDrag = () => { drag = null; scroller.classList.remove('dragging'); };
+    scroller.addEventListener('pointerup', endDrag);
+    scroller.addEventListener('pointercancel', endDrag);
+
+    ivEl._key = e => {
+      if(e.key === 'Escape'){ e.preventDefault(); closeViewer(); }
+      else if(e.key === '+' || e.key === '='){ e.preventDefault(); step(1); }
+      else if(e.key === '-' || e.key === '_'){ e.preventDefault(); step(-1); }
+      else if(e.key === '0'){ e.preventDefault(); applyZoom(1); }
+      else if(e.key === 'Tab'){
+        // keep keyboard focus inside the viewer
+        const f = Array.from(ivEl.querySelectorAll('button, .iv-scroll'));
+        const first = f[0], last = f[f.length - 1];
+        if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+        else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', ivEl._key);
+
+    // The phone's Back button closes the viewer instead of leaving the product page.
+    try{ history.pushState({ pdViewer: true }, ''); ivHistory = true; }catch(e){ ivHistory = false; }
+    ivEl._pop = () => { ivHistory = false; closeViewer(); };
+    window.addEventListener('popstate', ivEl._pop);
+
+    // pause the gallery behind it
+    const wrap = document.getElementById('pdMedia');
+    if(wrap) wrap.dispatchEvent(new Event('mouseenter'));
+
+    ivEl.classList.add('open');
+    frames[Math.min(startIndex, frames.length - 1)].scrollIntoView({ block: 'center' });
+    updateCount();
+    ivEl.querySelector('.iv-close').focus({ preventScroll: true });
+  }
+
+  function closeViewer(){
+    if(!ivEl) return;
+    document.removeEventListener('keydown', ivEl._key);
+    window.removeEventListener('popstate', ivEl._pop);
+    ivEl.remove();
+    ivEl = null;
+    document.documentElement.classList.remove('iv-open');
+    if(ivHistory){ ivHistory = false; try{ history.back(); }catch(e){} }
+    const wrap = document.getElementById('pdMedia');
+    if(wrap) wrap.dispatchEvent(new Event('mouseleave')); // resume the gallery's autoplay
+    if(ivReturnFocus && ivReturnFocus.focus) try{ ivReturnFocus.focus({ preventScroll: true }); }catch(e){}
+  }
+
+  // One listener per rendered product page: tapping the photo (but not its arrows or dots) opens the viewer
+  // at the photo currently showing.
+  function bindViewer(){
+    const wrap = document.getElementById('pdMedia');
+    if(!wrap) return;
+    wrap.addEventListener('click', e => {
+      if(e.target.closest('.pd-media-arrow, .pd-media-dot')) return;
+      if(!variantImages(selectedVariant).length) return;
+      openViewer(Number(wrap.dataset.active) || 0);
+    });
+    wrap.addEventListener('keydown', e => {
+      if((e.key === 'Enter' || e.key === ' ') && e.target === wrap && variantImages(selectedVariant).length){
+        e.preventDefault(); openViewer(Number(wrap.dataset.active) || 0);
+      }
+    });
   }
 
   function productCardHTML(p){
@@ -319,6 +493,7 @@
       </div>`;
 
     renderGallery(selectedVariant);
+    bindViewer();
 
     document.getElementById('pdSwatches').innerHTML = variants.map(v=>`
       <span class="swatch-dot ${v.id===selectedVariant.id?'active':''}" data-variant="${v.id}" title="${v.colorName}" style="background:${swatchBg(v.swatch)};"></span>`).join('');
