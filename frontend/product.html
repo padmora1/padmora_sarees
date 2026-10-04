@@ -652,49 +652,11 @@
     }));
   }
 
-  let selectedStars = 0;
-
+  // Nobody writes a review from the product page: customers review a saree from Account → Order History once
+  // their order is delivered. This page only shows the reviews, plus a one-line note saying where they come from.
   function renderReviewForm(){
     const wrap = document.getElementById('reviewFormWrap');
-    if(!isLoggedIn()){
-      const redirectBack = encodeURIComponent(`/product?id=${productId}`);
-      wrap.innerHTML = `<p style="font-size:13px;color:var(--ink-soft);margin-bottom:20px;"><a href="/login?redirect=${redirectBack}" style="color:var(--maroon);text-decoration:underline;">Log in</a> to write a review.</p>`;
-      return;
-    }
-    wrap.innerHTML = `
-      <div class="review-form">
-        <h4 style="font-size:14px;margin-bottom:10px;">Write a Review</h4>
-        <div class="star-input" id="starInput">${[1,2,3,4,5].map(n=>`<button type="button" data-star="${n}">★</button>`).join('')}</div>
-        <div class="form-field"><input type="text" id="reviewTitle" placeholder="Title (optional)"></div>
-        <div class="form-field"><textarea id="reviewBody" rows="3" placeholder="Share how the drape, fabric and color felt in hand..."></textarea></div>
-        <div class="form-error" id="reviewError"></div>
-        <button class="btn btn-primary btn-sm" id="submitReview">Submit Review</button>
-      </div>`;
-    selectedStars = 0;
-    document.querySelectorAll('#starInput button').forEach(b=>b.addEventListener('click', ()=>{
-      selectedStars = Number(b.dataset.star);
-      document.querySelectorAll('#starInput button').forEach(x=>x.classList.toggle('active', Number(x.dataset.star)<=selectedStars));
-    }));
-    document.getElementById('submitReview').addEventListener('click', submitReview);
-  }
-
-  async function submitReview(){
-    const errBox = document.getElementById('reviewError');
-    errBox.classList.remove('show');
-    const body = document.getElementById('reviewBody').value.trim();
-    if(!selectedStars){ errBox.textContent = 'Please choose a star rating.'; errBox.classList.add('show'); return; }
-    if(!body){ errBox.textContent = 'Please write a short review.'; errBox.classList.add('show'); return; }
-    try{
-      await apiFetch(`/products/${productId}/reviews`, {
-        method:'POST',
-        body: JSON.stringify({ rating: selectedStars, title: document.getElementById('reviewTitle').value.trim(), body })
-      });
-      toast('Thanks for your review!');
-      renderReviewForm();
-      loadReviews();
-      const {product} = await apiFetch('/products/' + productId);
-      currentProduct.rating = product.rating; currentProduct.reviews = product.reviews;
-    }catch(e){ errBox.textContent = e.message; errBox.classList.add('show'); }
+    wrap.innerHTML = `<p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:20px;text-align:center;">Reviews are written by customers after their order has been delivered.</p>`;
   }
 
   async function loadReviews(){
@@ -705,7 +667,7 @@
         <div><span class="stars">★★★★★</span><br><span style="font-size:12.5px;color:var(--ink-soft);">${currentProduct.reviews} reviews</span></div>`;
       const list = document.getElementById('reviewsList');
       if(!reviews.length){
-        list.innerHTML = `<p style="font-size:13.5px;color:var(--ink-soft);">Be the first to review this saree.</p>`;
+        list.innerHTML = `<p style="font-size:13.5px;color:var(--ink-soft);">No reviews yet.</p>`;
         return;
       }
       list.innerHTML = reviews.map(r=>`

@@ -293,7 +293,7 @@
             ${o.timeline.map(t=>`<div class="tl-step ${t.done?'done':''}"><div class="tl-dot"></div><div class="tl-label">${t.status}</div></div>`).join('')}
           </div>` : ''}
           ${o.giftNote ? `<p style="font-size:12.5px;color:var(--ink-soft);margin:10px 0;">🎁 Gift note: “${escHTML(o.giftNote)}”</p>` : ''}
-          ${o.items.map(li=>`<div class="order-item-row"><span>${li.name} × ${li.qty}</span><span>${money(li.price*li.qty)}</span></div>`).join('')}
+          ${o.items.map(li=>`<div class="order-item-row"><span>${li.name} × ${li.qty}${li.canReview ? ` <button type="button" class="order-review-btn" data-review-order="${o.id}" data-review-item="${li.id}">Write a review</button>` : li.reviewed ? ' <span class="order-reviewed">✓ Reviewed</span>' : ''}</span><span>${money(li.price*li.qty)}</span></div><div id="reviewForm-${o.id}-${li.id}"></div>`).join('')}
           ${o.discount > 0 ? `<div class="order-item-row"><span>Discount ${o.couponCode ? '('+o.couponCode+')' : ''}</span><span>−${money(o.discount)}</span></div>` : ''}
           <div class="order-item-row" style="font-weight:600;color:var(--ink);border-top:1px solid rgba(173,59,92,0.1);margin-top:8px;padding-top:8px;">
             <span>Total</span><span>${money(o.total)}</span>
@@ -310,6 +310,7 @@
           <div id="cancelForm-${o.id}"></div>
         </div>`).join('');
       document.querySelectorAll('[data-cancel]').forEach(el=>el.addEventListener('click', ()=>openCancelForm(el.dataset.cancel)));
+      document.querySelectorAll('[data-review-item]').forEach(el=>el.addEventListener('click', ()=>openReviewForm(el.dataset.reviewOrder, el.dataset.reviewItem)));
       document.querySelectorAll('[data-return]').forEach(el=>el.addEventListener('click', ()=>openReturnForm(el.dataset.return)));
     }catch(e){
       box.innerHTML = `<p style="color:var(--ink-soft);">Could not load orders.</p>`;
@@ -417,6 +418,48 @@
       if(f) addRetPhoto(orderId, f);
     });
     renderRetPhotos(orderId);
+  }
+
+  // ---- Write a review (delivered orders only; shown under the item it is about) ----
+  function openReviewForm(orderId, itemId){
+    const mount = document.getElementById('reviewForm-' + orderId + '-' + itemId);
+    if(!mount) return;
+    if(mount.innerHTML){ mount.innerHTML = ''; return; } // toggle closed
+    const order = lastOrders.find(o => o.id === orderId);
+    const item = order && order.items.find(i => String(i.id) === String(itemId));
+    if(!item) return;
+    let stars = 0;
+    mount.innerHTML = `
+      <div class="review-form order-review-form">
+        <h4 style="font-size:14px;margin-bottom:10px;">Your review of ${escHTML(item.name)}</h4>
+        <div class="star-input">${[1,2,3,4,5].map(n=>`<button type="button" data-star="${n}" aria-label="${n} star${n>1?'s':''}">★</button>`).join('')}</div>
+        <div class="form-field"><input type="text" class="rv-title" maxlength="120" placeholder="Title (optional)"></div>
+        <div class="form-field"><textarea class="rv-body" rows="3" maxlength="2000" placeholder="Share how the drape, fabric and colour felt in hand..."></textarea></div>
+        <div class="form-error rv-error"></div>
+        <div style="display:flex;gap:10px;"><button type="button" class="btn btn-primary btn-sm rv-submit">Submit Review</button><button type="button" class="btn btn-sm rv-cancel">Cancel</button></div>
+      </div>`;
+    const err = mount.querySelector('.rv-error');
+    mount.querySelectorAll('.star-input button').forEach(b => b.addEventListener('click', () => {
+      stars = Number(b.dataset.star); err.classList.remove('show');
+      mount.querySelectorAll('.star-input button').forEach(x => x.classList.toggle('active', Number(x.dataset.star) <= stars));
+    }));
+    mount.querySelector('.rv-cancel').addEventListener('click', () => { mount.innerHTML = ''; });
+    const submit = mount.querySelector('.rv-submit');
+    submit.addEventListener('click', async () => {
+      err.classList.remove('show');
+      const body = mount.querySelector('.rv-body').value.trim();
+      if(!stars){ err.textContent = 'Please choose a star rating.'; err.classList.add('show'); return; }
+      if(!body){ err.textContent = 'Please write a short review.'; err.classList.add('show'); return; }
+      submit.disabled = true; submit.textContent = 'Sending…';
+      try{
+        await apiFetch('/products/' + item.productId + '/reviews', { method: 'POST', body: JSON.stringify({ rating: stars, title: mount.querySelector('.rv-title').value.trim(), body }) });
+        toast('Thanks for your review!');
+        loadOrders();
+      }catch(e){
+        err.textContent = e.message; err.classList.add('show');
+        submit.disabled = false; submit.textContent = 'Submit Review';
+      }
+    });
   }
 
   // ---- Return / Refund request (expands inline under the order card) ----

@@ -1,6 +1,7 @@
 const express = require('express');
 const { supabase, must, getProductById } = require('../utils/db');
 const { requireAuth } = require('../middleware/auth');
+const { computeStatus } = require('../utils/orderStatus');
 
 // Mounted at /api/products/:productId/reviews with mergeParams so req.params.productId is available.
 const router = express.Router({ mergeParams: true });
@@ -49,23 +50,30 @@ router.post('/', requireAuth, async (req, res) => {
 
     const user = must(await supabase.from('users').select('*').eq('id', req.userId).maybeSingle(), 'postReview:user');
 
-    // "Verified purchase" — did this user actually order this product on a
-    // non-cancelled order? order_items has no direct user_id, so this joins
-    // through orders in two steps (PostgREST has no server-side JOIN here).
-    const myOrders = must(await supabase.from('orders').select('id').eq('user_id', req.userId).is('cancelled_at', null), 'postReview:orders');
-    let purchased = false;
+    // Reviews come only from customers whose own order containing this saree has been DELIVERED.
+    // order_items has no direct user_id, so this goes through the customer's orders in two steps.
+    const myOrders = must(await supabase.from('orders').select('*').eq('user_id', req.userId).is('cancelled_at', null), 'postReview:orders');
+    let delivered = false;
     if (myOrders.length) {
-      const orderIds = myOrders.map(o => o.id);
-      const matchingItem = must(
-        await supabase.from('order_items').select('id').eq('product_id', productId).in('order_id', orderIds).limit(1),
+      const matching = must(
+        await supabase.from('order_items').select('order_id').eq('product_id', productId).in('order_id', myOrders.map(o => o.id)),
         'postReview:orderItems'
       );
-      purchased = matchingItem.length > 0;
+      const orderIds = new Set(matching.map(m => m.order_id));
+      for (const o of myOrders.filter(o => orderIds.has(o.id))) {
+        if ((await computeStatus(o)) === 'Delivered') { delivered = true; break; }
+      }
     }
+    if (!delivered) {
+      return res.status(403).json({ message: 'You can review a saree after your order with it has been delivered. Find it under Account → Order History.' });
+    }
+    // one review per customer per saree
+    const already = must(await supabase.from('reviews').select('id').eq('user_id', req.userId).eq('product_id', productId).limit(1), 'postReview:existing');
+    if (already.length) return res.status(409).json({ message: 'You have already reviewed this saree. Thank you!' });
 
     must(await supabase.from('reviews').insert({
-      product_id: productId, user_id: req.userId, user_name: user.name, rating, title: title || '',
-      body: body.trim(), verified: purchased, created_at: new Date().toISOString()
+      product_id: productId, user_id: req.userId, user_name: user.name, rating, title: (title || '').toString().trim().slice(0, 120),
+      body: body.trim().slice(0, 2000), verified: true, created_at: new Date().toISOString()
     }), 'postReview:insert');
 
     const updatedProduct = await getProductById(productId);

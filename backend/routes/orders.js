@@ -24,11 +24,20 @@ async function shapeOrder(order) {
   const cancellable = await isCancellable(order);
   const timeline = await buildTimeline(order);
   const withinReturnWindow = await isWithinReturnWindow(order);
+  // "Write a review" is offered only once the order is delivered, and only for sarees the customer has not reviewed yet.
+  const productIds = [...new Set(items.map(li => li.product_id).filter(Boolean))];
+  const reviewedIds = new Set(
+    productIds.length && order.user_id
+      ? must(await supabase.from('reviews').select('product_id').eq('user_id', order.user_id).in('product_id', productIds), 'shapeOrder:reviewed').map(r => r.product_id)
+      : []
+  );
   return {
     id: order.id,
     items: items.map(li => ({
       id: li.id, productId: li.product_id, variantId: li.variant_id, name: li.name, color: li.color, qty: li.qty, price: li.price,
-      imageUrl: imageByVariant[li.variant_id] || null
+      imageUrl: imageByVariant[li.variant_id] || null,
+      reviewed: reviewedIds.has(li.product_id),
+      canReview: status === 'Delivered' && !reviewedIds.has(li.product_id)
     })),
     subtotal: order.subtotal,
     discount: order.discount,
