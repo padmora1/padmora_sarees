@@ -221,8 +221,21 @@
   // fake generic description would be worse than none. JSON-LD Product
   // schema is genuinely populated from live API data (price, stock, rating),
   // never placeholder numbers, so it stays honest if Google actually reads it.
+  // Descriptions can carry simple formatting (bold, lists, headings) written in the admin editor; the server
+  // sends only the cleaned, allow-listed version. Older plain-text descriptions keep their line breaks.
+  function descHTML(d){
+    d = String(d == null ? '' : d);
+    return /<\/?[a-z]/i.test(d) ? d : escHTML(d).replace(/\n/g, '<br>');
+  }
+  function descPlain(d){
+    d = String(d == null ? '' : d);
+    if(!/<\/?[a-z]/i.test(d)) return d;
+    const t = document.createElement('div');
+    t.innerHTML = d.replace(/<\/(p|li|h3)>|<br>/gi, ' ');
+    return t.textContent.replace(/\s+/g, ' ').trim();
+  }
   function updateProductSEO(p, variant){
-    const desc = (variant.desc || p.desc || '').slice(0, 155);
+    const desc = descPlain(variant.desc || p.desc || '').slice(0, 155);
     document.getElementById('metaDescription').setAttribute('content', desc || `${p.name} — ${p.fabric} saree from Padmora by Yashi.`);
     document.getElementById('ogTitle').setAttribute('content', p.name + ' — Padmora Sarees by Yashi');
     document.getElementById('ogDescription').setAttribute('content', desc);
@@ -249,6 +262,9 @@
     });
   }
 
+  // "*Tax Included" under the price - only while the admin's tax setting is "GST included in the price"
+  // (the default). If the store switches to adding tax on top, the note disappears instead of misleading.
+  const taxIncludedPromise = apiFetch('/settings/tax').then(({ tax }) => !(tax && tax.inclusive === false)).catch(() => false);
   function renderProduct(p){
     currentProduct = p;
     const variants = (p.variants && p.variants.length) ? p.variants : [{
@@ -260,6 +276,7 @@
     document.title = p.name + ' — Padmora Sarees by Yashi';
     updateProductSEO(p, selectedVariant);
 
+    taxIncludedPromise.then(inc => { const el = document.getElementById('pdTaxNote'); if(el) el.hidden = !inc; });
     document.getElementById('pdWrap').innerHTML = `
       <div class="container">
         <div class="pd-grid">
@@ -269,7 +286,8 @@
             <h1>${p.name}</h1>
             <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews} reviews)</div>
             <div class="product-price" style="margin-top:10px;" id="pdPrice"></div>
-            <p class="pd-desc" id="pdDesc"></p>
+            <div class="pd-tax-note" id="pdTaxNote" hidden>*Tax Included</div>
+            <div class="pd-desc" id="pdDesc"></div>
             <p class="stock-note" id="pdStockNote"></p>
             <div>
               <label style="font-size:12px;color:var(--ink-soft);">Choose colour<span id="pdShadeLabel" style="color:var(--ink);font-weight:600;"></span></label>
@@ -346,7 +364,7 @@
     const v = selectedVariant;
     document.getElementById('pdPrice').innerHTML = `
       <span class="price-now">${money(v.price)}</span>${priceExtrasHTML(currentProduct, v)}`;
-    document.getElementById('pdDesc').textContent = v.desc || currentProduct.desc;
+    document.getElementById('pdDesc').innerHTML = descHTML(v.desc || currentProduct.desc);
     document.getElementById('pdShadeLabel').textContent = ' — ' + v.colorName;
     const stockNote = document.getElementById('pdStockNote');
     stockNote.className = 'stock-note ' + (v.stock <= 10 ? 'low' : 'ok');
