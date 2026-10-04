@@ -356,7 +356,7 @@
         <div class="stat-card"><strong>${stats.guestOrderCount}</strong><span>Guest Orders</span></div>
         <div class="stat-card ${stats.abandonedCarts > 0 ? 'stat-card-warn' : ''}"><strong>${stats.abandonedCarts}</strong><span>Abandoned Carts</span></div>`;
       document.getElementById('lowStockList').innerHTML = lowStock.length
-        ? lowStock.map(p=>`<div class="order-item-row"><span>${p.name}</span><span style="color:var(--maroon);font-weight:600;">${p.stock} left</span></div>`).join('')
+        ? lowStock.map(p=>`<div class="order-item-row"><span>${escHTML(p.name)}</span><span style="color:var(--maroon);font-weight:600;">${p.stock} left</span></div>`).join('')
         : `<p style="color:var(--ink-soft);font-size:13px;">Nothing low on stock right now.</p>`;
       const backupNote = document.getElementById('lastBackupNote');
       backupNote.textContent = stats.lastBackupAt
@@ -431,8 +431,8 @@
         <thead><tr><th>Name</th><th>Fabric</th><th>Variants</th><th>Total Stock</th><th>Badge</th><th>Status</th><th></th></tr></thead>
         <tbody>${visible.map(p=>`
           <tr data-id="${p.id}" ${p.status==='archived'?'style="opacity:.55;"':''}>
-            <td>${p.status==='archived'?`<s>${p.name}</s>`:p.name}</td>
-            <td>${p.fabric}</td>
+            <td>${p.status==='archived'?`<s>${escHTML(p.name)}</s>`:p.name}</td>
+            <td>${escHTML(p.fabric)}</td>
             <td>${p.variantCount}</td>
             <td style="${p.totalStock<=10?'color:var(--maroon);font-weight:600;':''}">${p.totalStock}</td>
             <td>${p.badge || '—'}</td>
@@ -485,11 +485,11 @@
   function renderGeneralTab(p){
     document.getElementById('editorTabBody').innerHTML = `
       <div class="form-row-2">
-        <div class="form-field"><label>Name</label><input type="text" id="egName" value="${p.name}"></div>
-        <div class="form-field"><label>Fabric</label><input type="text" id="egFabric" value="${p.fabric}"></div>
+        <div class="form-field"><label>Name</label><input type="text" id="egName" value="${escHTML(p.name)}"></div>
+        <div class="form-field"><label>Fabric</label><input type="text" id="egFabric" value="${escHTML(p.fabric)}"></div>
       </div>
       <div class="form-row-2">
-        <div class="form-field"><label>Occasion</label><input type="text" id="egOccasion" value="${p.occasion}"></div>
+        <div class="form-field"><label>Occasion</label><input type="text" id="egOccasion" value="${escHTML(p.occasion)}"></div>
         <div class="form-field"><label>Badge</label>
           <select id="egBadge">
             <option value="" ${!p.badge?'selected':''}>None</option>
@@ -500,10 +500,10 @@
           <span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:6px;">Sale shows the crossed-out original price, the sale price and “% off” (set the % per colour in the Variants tab). Taking Sale off puts each colour back to its actual price.</span>
         </div>
       </div>
-      <div class="form-field"><label>Description</label><textarea id="egDesc" rows="2">${p.desc || ''}</textarea></div>
+      <div class="form-field"><label>Description</label><textarea id="egDesc" rows="2">${escHTML(p.desc || '')}</textarea></div>
       <div class="form-row-2">
-        <div class="form-field"><label>Weaver Name</label><input type="text" id="egWeaverName" value="${p.weaverName || ''}"></div>
-        <div class="form-field"><label>Weaver Region</label><input type="text" id="egWeaverRegion" value="${p.weaverRegion || ''}"></div>
+        <div class="form-field"><label>Weaver Name</label><input type="text" id="egWeaverName" value="${escHTML(p.weaverName || '')}"></div>
+        <div class="form-field"><label>Weaver Region</label><input type="text" id="egWeaverRegion" value="${escHTML(p.weaverRegion || '')}"></div>
       </div>
       <div class="form-row-2">
         <div class="form-field"><label>Loom Type</label><input type="text" id="egLoomType" value="${p.loomType || ''}"></div>
@@ -552,14 +552,14 @@
       ${p.variants.map(v=>`
         <div class="variant-card" data-variant-id="${v.id}">
           <div class="variant-card-head">
-            <h4><span class="variant-swatch-dot" style="background:${swatchBg(v.swatch)};"></span>${v.colorName}${v.isDefault?'<span class="default-tag">Default</span>':''}</h4>
+            <h4><span class="variant-swatch-dot" style="background:${swatchBg(v.swatch)};"></span>${escHTML(v.colorName)}${v.isDefault?'<span class="default-tag">Default</span>':''}</h4>
             <div>
               ${!v.isDefault?`<button class="btn btn-sm btn-outline" data-set-default="${v.id}">Make Default</button>`:''}
               <button class="btn btn-sm" style="color:var(--maroon);" data-del-variant="${v.id}">Remove</button>
             </div>
           </div>
           <div class="variant-fields">
-            <div class="form-field"><label>Colour Name</label><input type="text" class="admin-input" style="width:100%;" data-vf="colorName" value="${v.colorName}"></div>
+            <div class="form-field"><label>Colour Name</label><input type="text" class="admin-input" style="width:100%;" data-vf="colorName" value="${escHTML(v.colorName)}"></div>
             <div class="form-field"><label>Swatch Key</label><input type="text" class="admin-input" style="width:100%;" data-vf="swatch" value="${v.swatch}" placeholder="maroon, emerald..."></div>
             <div class="form-field"><label>SKU</label><input type="text" class="admin-input" style="width:100%;" data-vf="sku" value="${v.sku || ''}"></div>
             <div class="form-field"><label>Low Stock At</label><input type="number" class="admin-input" style="width:100%;" data-vf="lowStockThreshold" value="${v.lowStockThreshold}"></div>
@@ -570,7 +570,7 @@
             : `<div class="form-field"><label>Price (₹)</label><input type="number" class="admin-input" style="width:100%;" data-vf="price" value="${v.price}"></div>`}
             <div class="form-field"><label>Stock</label><input type="number" class="admin-input" style="width:100%;${v.stock<=v.lowStockThreshold?'border-color:var(--maroon);color:var(--maroon);':''}" data-vf="stock" value="${v.stock}"></div>
           </div>
-          <div class="form-field"><label>Variant Description (optional override)</label><textarea class="admin-input" style="width:100%;" rows="2" data-vf="desc">${v.desc || ''}</textarea></div>
+          <div class="form-field"><label>Variant Description (optional override)</label><textarea class="admin-input" style="width:100%;" rows="2" data-vf="desc">${escHTML(v.desc || '')}</textarea></div>
           <button class="btn btn-sm btn-primary" data-save-variant="${v.id}">Save Variant</button>
 
           <div style="margin-top:16px;">
@@ -675,7 +675,7 @@
         }
         toast(done === 1 ? 'Photo uploaded' : `${done} photos uploaded`);
       }catch(err){
-        toast(done ? `${done} uploaded, then: ${err.message}` : err.message, 'error');
+        toast(done ? `${done} uploaded, then: ${escHTML(err.message)}` : err.message, 'error');
       }finally{
         label.firstChild.textContent = idleText;
         input.disabled = false;
@@ -890,8 +890,8 @@
           <tr>
             <td><input type="checkbox" class="order-select-box" data-select-order="${o.id}" ${selectedOrderIds.has(o.id)?'checked':''}></td>
             <td>#${o.id}<br><span style="font-size:11px;color:var(--ink-soft);">${new Date(o.placedAt).toLocaleDateString('en-IN')}</span></td>
-            <td>${o.customerName}<br><span style="font-size:11px;color:var(--ink-soft);">${o.customerEmail}</span></td>
-            <td style="font-size:12.5px;">${o.items.map(i=>`${i.name}${i.color?' ('+i.color+')':''} ×${i.qty}`).join('<br>')}</td>
+            <td>${escHTML(o.customerName)}<br><span style="font-size:11px;color:var(--ink-soft);">${escHTML(o.customerEmail)}</span></td>
+            <td style="font-size:12.5px;">${o.items.map(i=>`${escHTML(i.name)}${i.color?' ('+i.color+')':''} ×${i.qty}`).join('<br>')}</td>
             <td>${money(o.total)}</td>
             <td>
               ${o.status === 'Cancelled' ? '<span class="order-status cancelled">Cancelled</span>' : `
@@ -952,21 +952,21 @@
           <div class="detail-grid">
             <div class="detail-block">
               <h5>Customer</h5>
-              <p><strong>${o.customerName}</strong><br>${o.customerEmail}<br>${o.customerPhone || ''}</p>
+              <p><strong>${escHTML(o.customerName)}</strong><br>${escHTML(o.customerEmail)}<br>${escHTML(o.customerPhone || '')}</p>
             </div>
             <div class="detail-block">
               <h5>Delivery Address</h5>
-              <p>${o.address.name}<br>${o.address.line1}<br>${o.address.city}, ${o.address.state} ${o.address.pincode}<br>${o.address.phone}</p>
-              ${o.giftNote ? `<p style="margin-top:8px;"><em>Gift note: ${o.giftNote}</em></p>` : ''}
+              <p>${escHTML(o.address.name)}<br>${escHTML(o.address.line1)}<br>${escHTML(o.address.city)}, ${escHTML(o.address.state)} ${escHTML(o.address.pincode)}<br>${escHTML(o.address.phone)}</p>
+              ${o.giftNote ? `<p style="margin-top:8px;"><em>Gift note: ${escHTML(o.giftNote)}</em></p>` : ''}
             </div>
             <div class="detail-block">
               <h5>Items</h5>
               ${o.items.map(i=>`
                 <div class="order-line-item">
                   ${i.imageUrl
-                    ? `<a href="${i.imageUrl}" target="_blank" rel="noopener"><img src="${i.imageUrl}" alt="${i.name}" class="order-line-thumb"></a>`
+                    ? `<a href="${i.imageUrl}" target="_blank" rel="noopener"><img src="${i.imageUrl}" alt="${escHTML(i.name)}" class="order-line-thumb"></a>`
                     : `<span class="order-line-thumb order-line-thumb-empty">${LOTUS_GLYPH_SVG}</span>`}
-                  <span>${i.name}${i.color?' — '+i.color:''} × ${i.qty} — ${money(i.price*i.qty)}</span>
+                  <span>${escHTML(i.name)}${i.color?' — '+i.color:''} × ${i.qty} — ${money(i.price*i.qty)}</span>
                 </div>`).join('')}
             </div>
             <div class="detail-block">
@@ -1008,7 +1008,7 @@
           <div class="detail-block" style="border-color:var(--gold);">
             <h5>Cancellation Requested</h5>
             <p>Reason: <strong>${CANCEL_REASON_LABEL[o.cancelRequestReason] || o.cancelRequestReason}</strong></p>
-            ${o.cancelRequestDetail ? `<p style="margin-top:6px;"><em>"${o.cancelRequestDetail}"</em></p>` : ''}
+            ${o.cancelRequestDetail ? `<p style="margin-top:6px;"><em>"${escHTML(o.cancelRequestDetail)}"</em></p>` : ''}
             <div class="form-field" style="margin-top:10px;"><label>Note (required to reject, optional to approve — the customer sees this)</label>
               <textarea class="admin-input" id="cancelDecisionNote" rows="2"></textarea>
             </div>
@@ -1100,7 +1100,7 @@
           <tr>
             <td>#${r.id}<br><span style="font-size:11px;color:var(--ink-soft);">${new Date(r.requestedAt).toLocaleDateString('en-IN')}</span></td>
             <td>#${r.orderId}</td>
-            <td>${r.customerName}<br><span style="font-size:11px;color:var(--ink-soft);">${r.customerEmail}</span></td>
+            <td>${escHTML(r.customerName)}<br><span style="font-size:11px;color:var(--ink-soft);">${escHTML(r.customerEmail)}</span></td>
             <td style="font-size:12.5px;">${r.reasonLabel}</td>
             <td>${money(r.finalRefundAmount ?? r.computedRefundAmount)}</td>
             <td><span class="status-pill status-${r.status==='Rejected'?'cancelled':(r.status==='Refunded'?'confirmed':'pending')}">${r.status}</span></td>
@@ -1144,7 +1144,7 @@
             ${r.items.map(i=>`
               <label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0;">
                 <input type="checkbox" data-restock-item="${i.returnItemId}" ${r.reasonCategory==='customer_preference'?'checked':''}>
-                ${i.name}${i.color?' — '+i.color:''} × ${i.qty}
+                ${escHTML(i.name)}${i.color?' — '+i.color:''} × ${i.qty}
               </label>`).join('')}
             <button class="btn btn-primary btn-sm" id="retReceiveBtn" style="margin-top:8px;">Confirm Received</button>
           </div>`;
@@ -1162,7 +1162,7 @@
                 <input class="admin-input" type="number" id="retRefundAmount" value="${r.computedRefundAmount}">
               </div>
             </div>
-            ${r.refundAccountDetail ? `<p style="font-size:12.5px;color:var(--ink-soft);">Customer's bank/UPI details: <strong>${r.refundAccountDetail}</strong></p>` : ''}
+            ${r.refundAccountDetail ? `<p style="font-size:12.5px;color:var(--ink-soft);">Customer's bank/UPI details: <strong>${escHTML(r.refundAccountDetail)}</strong></p>` : ''}
             <button class="btn btn-primary btn-sm" id="retRefundBtn" style="margin-top:8px;">Process Refund</button>
           </div>`;
       }
@@ -1176,12 +1176,12 @@
           <div class="detail-grid">
             <div class="detail-block">
               <h5>Customer</h5>
-              <p><strong>${r.customerName}</strong><br>${r.customerEmail}<br>${r.customerPhone || ''}</p>
+              <p><strong>${escHTML(r.customerName)}</strong><br>${escHTML(r.customerEmail)}<br>${escHTML(r.customerPhone || '')}</p>
             </div>
             <div class="detail-block">
               <h5>Reason</h5>
               <p>${r.reasonLabel} <span style="font-size:11px;color:var(--ink-soft);">(${r.reasonCategory==='seller_fault'?'our fault':'customer preference'})</span></p>
-              ${r.reasonDetail ? `<p style="margin-top:6px;"><em>“${r.reasonDetail}”</em></p>` : ''}
+              ${r.reasonDetail ? `<p style="margin-top:6px;"><em>“${escHTML(r.reasonDetail)}”</em></p>` : ''}
             </div>
             <div class="detail-block">
               <h5>Customer's Photos</h5>
@@ -1190,7 +1190,7 @@
             </div>
             <div class="detail-block">
               <h5>Items being returned</h5>
-              ${r.items.map(i=>`<p>${i.name}${i.color?' — '+i.color:''} × ${i.qty} — ${money(i.price*i.qty)}</p>`).join('')}
+              ${r.items.map(i=>`<p>${escHTML(i.name)}${i.color?' — '+i.color:''} × ${i.qty} — ${money(i.price*i.qty)}</p>`).join('')}
               <p style="margin-top:6px;"><strong>Items value: ${money(itemsValue)}</strong></p>
             </div>
             <div class="detail-block">
@@ -1201,7 +1201,7 @@
               ${r.couponCode ? `<p>Store credit code: <strong>${r.couponCode}</strong></p>` : ''}
               ${r.restock !== null ? `<p>Restocked: <strong>${r.restock ? 'Yes' : 'No'}</strong></p>` : ''}
             </div>
-            ${r.adminNote ? `<div class="detail-block"><h5>Note to customer</h5><p>${r.adminNote}</p></div>` : ''}
+            ${r.adminNote ? `<div class="detail-block"><h5>Note to customer</h5><p>${escHTML(r.adminNote)}</p></div>` : ''}
           </div>
           ${actionHTML}
         </div>`;
@@ -1289,7 +1289,7 @@
         <tbody>${inventory.map(v=>`
           <tr>
             <td>${v.productName}</td>
-            <td>${v.colorName}</td>
+            <td>${escHTML(v.colorName)}</td>
             <td style="font-size:11.5px;color:var(--ink-soft);">${v.sku || '—'}</td>
             <td>${v.stock}</td>
             <td><span class="order-status ${v.status==='Out of Stock'?'cancelled':v.status==='Low Stock'?'low':'ok'}">${v.status}</span></td>
@@ -1313,7 +1313,7 @@
         <tbody>${groups.map((g,i)=>`
           <tr>
             <td>${g.productName}</td>
-            <td>${g.colorName}</td>
+            <td>${escHTML(g.colorName)}</td>
             <td>${g.requests.length}</td>
             <td>${g.stock > 0 ? '<span class="order-status ok">Back in stock</span>' : '<span class="order-status cancelled">Still out of stock</span>'}</td>
             <td style="white-space:nowrap;">
@@ -1323,7 +1323,7 @@
           </tr>
           <tr id="prebookDetail-${i}" style="display:none;"><td colspan="5">
             <div style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;">
-              ${g.requests.map(r=>`${r.email}${r.name?' ('+r.name+')':''} — ${new Date(r.createdAt).toLocaleDateString('en-IN')} ${r.notified?'<span class="status-pill status-confirmed">notified</span>':''}`).join('<br>')}
+              ${g.requests.map(r=>`${escHTML(r.email)}${r.name?' ('+r.name+')':''} — ${new Date(r.createdAt).toLocaleDateString('en-IN')} ${r.notified?'<span class="status-pill status-confirmed">notified</span>':''}`).join('<br>')}
             </div>
           </td></tr>`).join('')}</tbody>`;
       document.querySelectorAll('[data-prebook-toggle]').forEach(btn=>btn.addEventListener('click', ()=>{
@@ -1662,7 +1662,7 @@
           <thead><tr><th>Name</th><th>Region</th><th>Craft Type</th><th>Products</th><th>Active</th><th></th></tr></thead>
           <tbody>${fabrics.map(f=>`
             <tr>
-              <td>${f.name}</td>
+              <td>${escHTML(f.name)}</td>
               <td style="font-size:12px;color:var(--ink-soft);">${f.region}${f.state?', '+f.state:''}</td>
               <td>${f.craft_type}</td>
               <td>${f.productCount}</td>
@@ -1682,12 +1682,12 @@
         <div class="editor-card">
           <h4 style="font-family:var(--font-body);font-size:14px;margin-bottom:12px;">${isNew?'New Fabric':'Edit '+f.name}</h4>
           <div class="form-row-2">
-            <div class="form-field"><label>Name</label><input id="fName" value="${f.name}"></div>
+            <div class="form-field"><label>Name</label><input id="fName" value="${escHTML(f.name)}"></div>
             <div class="form-field"><label>Slug</label><input id="fSlug" value="${f.slug}"></div>
           </div>
           <div class="form-row-2">
             <div class="form-field"><label>Region</label><input id="fRegion" value="${f.region}"></div>
-            <div class="form-field"><label>State</label><input id="fState" value="${f.state}"></div>
+            <div class="form-field"><label>State</label><input id="fState" value="${escHTML(f.state)}"></div>
           </div>
           <div class="form-row-2">
             <div class="form-field"><label>Craft Type</label>
@@ -1763,7 +1763,7 @@
           <thead><tr><th>Name</th><th>Home Card Title</th><th>Featured</th><th>Products</th><th>Active</th><th></th></tr></thead>
           <tbody>${occasions.map(o=>`
             <tr>
-              <td>${o.name}</td>
+              <td>${escHTML(o.name)}</td>
               <td>${o.home_card_title || '—'}</td>
               <td>${o.featured_on_home ? 'Yes' : 'No'}</td>
               <td>${o.productCount}</td>
@@ -1783,7 +1783,7 @@
         <div class="editor-card">
           <h4 style="font-family:var(--font-body);font-size:14px;margin-bottom:12px;">${isNew?'New Occasion':'Edit '+o.name}</h4>
           <div class="form-row-2">
-            <div class="form-field"><label>Name</label><input id="oName" value="${o.name}"></div>
+            <div class="form-field"><label>Name</label><input id="oName" value="${escHTML(o.name)}"></div>
             <div class="form-field"><label>Slug</label><input id="oSlug" value="${o.slug}"></div>
           </div>
           <div class="form-field"><label>Description</label><input id="oDesc" value="${o.description||''}"></div>
@@ -1889,7 +1889,7 @@
           <thead><tr><th>Name</th><th>Products</th><th>Active</th><th></th></tr></thead>
           <tbody>${collections.map(c=>`
             <tr>
-              <td>${c.name}</td>
+              <td>${escHTML(c.name)}</td>
               <td>${c.productCount}</td>
               <td>${c.active ? 'Yes' : 'No'}</td>
               <td style="white-space:nowrap;"><button class="btn btn-sm btn-outline" data-coll-edit="${c.id}">Edit</button> <button class="btn btn-sm" style="color:var(--maroon);" data-coll-del="${c.id}">Delete</button></td>
@@ -1908,7 +1908,7 @@
         <div class="editor-card">
           <h4 style="font-family:var(--font-body);font-size:14px;margin-bottom:12px;">${isNew?'New Collection':'Edit '+c.name}</h4>
           <div class="form-row-2">
-            <div class="form-field"><label>Name</label><input id="cName" value="${c.name}"></div>
+            <div class="form-field"><label>Name</label><input id="cName" value="${escHTML(c.name)}"></div>
             <div class="form-field"><label>Slug (the page address)</label><input id="cSlug" value="${c.slug}"></div>
           </div>
           <div class="form-field"><label>Tagline (short line under the name)</label><input id="cTagline" value="${c.tagline||''}" placeholder="e.g. Many Weaves. One Heritage."></div>
@@ -1926,7 +1926,7 @@
               <button type="button" class="btn btn-sm btn-outline" id="cProdNone">Clear shown</button>
             </div>
             <div id="cProdList" style="max-height:260px;overflow-y:auto;border:1px solid rgba(173,59,92,0.15);border-radius:4px;padding:10px;">
-              ${taggable.map(p=>`<label class="cProdRow" data-name="${(p.name+' '+p.fabric).toLowerCase()}" style="display:block;font-size:12.5px;padding:4px 0;"><input type="checkbox" class="cProdCheck" value="${p.id}" ${tagged.has(p.id)?'checked':''}> ${p.name} <span style="color:var(--ink-soft);">· ${p.fabric}${p.badge==='sale'?' · on sale — shows only on the Sale page':''}</span></label>`).join('')}
+              ${taggable.map(p=>`<label class="cProdRow" data-name="${(p.name+' '+p.fabric).toLowerCase()}" style="display:block;font-size:12.5px;padding:4px 0;"><input type="checkbox" class="cProdCheck" value="${p.id}" ${tagged.has(p.id)?'checked':''}> ${escHTML(p.name)} <span style="color:var(--ink-soft);">· ${escHTML(p.fabric)}${p.badge==='sale'?' · on sale — shows only on the Sale page':''}</span></label>`).join('')}
             </div>
           </div>
           <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="cSave">${isNew?'Create Collection':'Save Changes'}</button> <button class="btn btn-sm" id="cCancel">Cancel</button></div>
@@ -2189,7 +2189,7 @@
           <div class="form-field"><label>Eyebrow</label><input id="pEyebrow" value="${b.eyebrow||''}"></div>
           <div class="form-field"><label>Heading</label><input id="pHeading" value="${b.heading||''}"></div>
         </div>
-        <div class="form-field"><label>Message (use {CODE} where the coupon code should appear)</label><input id="pMessage" value="${b.message||''}"></div>
+        <div class="form-field"><label>Message (use {CODE} where the coupon code should appear)</label><input id="pMessage" value="${escHTML(b.message||'')}"></div>
         <div class="form-row-2">
           <div class="form-field"><label>Coupon Code</label><input id="pCode" value="${b.couponCode||''}" style="text-transform:uppercase;"></div>
           <div class="form-field"><label>CTA Text / Link</label><input id="pCtaText" value="${b.ctaText||''}" style="margin-bottom:6px;"><input id="pCtaLink" value="${b.ctaLink||''}"></div>
@@ -2235,7 +2235,7 @@
                 <button class="btn btn-sm" data-reel-up="${r.id}" ${i===0?'disabled':''}>↑</button>
                 <button class="btn btn-sm" data-reel-down="${r.id}" ${i===reels.length-1?'disabled':''}>↓</button>
               </td>
-              <td>${r.name}</td>
+              <td>${escHTML(r.name)}</td>
               <td>${r.video_url ? `✅ uploaded <button class="btn btn-sm" style="color:var(--maroon);padding:2px 6px;" data-reel-video-clear="${r.id}" title="Remove this video">✕</button>` : '—'} <span class="reel-upload-status" data-reel-video-status="${r.id}"></span><input type="file" accept="video/mp4,video/webm,video/quicktime" data-reel-video="${r.id}" title="MP4, under 25MB, vertical, about 8–15 seconds" style="max-width:120px;font-size:11px;"></td>
               <td>${r.thumbnail_url ? `<img src="${r.thumbnail_url}" style="height:36px;border-radius:3px;vertical-align:middle;"> <button class="btn btn-sm" style="color:var(--maroon);padding:2px 6px;" data-reel-thumb-clear="${r.id}" title="Remove this thumbnail">✕</button>` : '—'} <span class="reel-upload-status" data-reel-thumb-status="${r.id}"></span><input type="file" accept="image/*" data-reel-thumb="${r.id}" style="max-width:120px;font-size:11px;"></td>
               <td><input type="checkbox" data-reel-active="${r.id}" ${r.active?'checked':''}></td>
@@ -2247,7 +2247,7 @@
         <div class="form-field"><label>Add a product to the carousel</label>
           <select id="addReelProduct" class="admin-input" style="width:100%;">
             <option value="">Choose a product…</option>
-            ${available.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}
+            ${available.map(p=>`<option value="${p.id}">${escHTML(p.name)}</option>`).join('')}
           </select>
         </div>
         <button class="btn btn-sm btn-outline" id="addReelBtn">+ Add to Sarees in Motion</button>
@@ -2331,8 +2331,8 @@
           <tbody>${upcomingSarees.map(s=>`
             <tr data-upcoming-id="${s.id}">
               <td>${s.imageUrl ? `<img src="${s.imageUrl}" style="height:44px;width:44px;object-fit:cover;border-radius:3px;">` : '—'} <input type="file" accept="image/*" data-upcoming-image="${s.id}" style="max-width:110px;font-size:11px;"></td>
-              <td><input class="admin-input" style="width:100%;" data-upcoming-field="name" value="${s.name}"></td>
-              <td><input class="admin-input" style="width:100%;" data-upcoming-field="fabric" value="${s.fabric||''}" placeholder="e.g. Paithani"></td>
+              <td><input class="admin-input" style="width:100%;" data-upcoming-field="name" value="${escHTML(s.name)}"></td>
+              <td><input class="admin-input" style="width:100%;" data-upcoming-field="fabric" value="${escHTML(s.fabric||'')}" placeholder="e.g. Paithani"></td>
               <td><input class="admin-input" style="width:100%;" data-upcoming-field="expectedLabel" value="${s.expectedLabel||''}" placeholder="e.g. Coming this Diwali"></td>
               <td><input type="checkbox" data-upcoming-active="${s.id}" ${s.active?'checked':''}></td>
               <td>
@@ -2347,7 +2347,7 @@
             <tr id="upcomingDetail-${s.id}" style="display:none;"><td colspan="7">
               <div style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;">
                 <div class="form-field" style="max-width:400px;margin-bottom:8px;"><label>Description (shown on the page)</label><textarea class="admin-input" rows="2" data-upcoming-field="description" data-upcoming-id-for="${s.id}">${s.description||''}</textarea></div>
-                ${s.requests.length ? s.requests.map(r=>`${r.email}${r.name?' ('+r.name+')':''} — ${new Date(r.createdAt).toLocaleDateString('en-IN')} ${r.notified?'<span class="status-pill status-confirmed">notified</span>':''}`).join('<br>') : 'No one has asked to be notified yet.'}
+                ${s.requests.length ? s.requests.map(r=>`${escHTML(r.email)}${r.name?' ('+r.name+')':''} — ${new Date(r.createdAt).toLocaleDateString('en-IN')} ${r.notified?'<span class="status-pill status-confirmed">notified</span>':''}`).join('<br>') : 'No one has asked to be notified yet.'}
               </div>
             </td></tr>`).join('')}</tbody>
         </table>
@@ -2473,8 +2473,8 @@
         <thead><tr><th>Name</th><th>Email</th><th>Orders</th><th>Total Spent</th><th>Last Order</th><th>Status</th><th></th></tr></thead>
         <tbody>${customers.length ? customers.map(c=>`
           <tr>
-            <td>${c.name} ${c.isGuest?'<span class="status-pill status-pending">GUEST</span>':''} ${c.flag==='vip'?'<span class="status-pill status-confirmed">VIP</span>':''} ${c.flag==='watch'?'<span class="status-pill status-cancelled">WATCH</span>':''}</td>
-            <td style="font-size:12px;">${c.email}</td>
+            <td>${escHTML(c.name)} ${c.isGuest?'<span class="status-pill status-pending">GUEST</span>':''} ${c.flag==='vip'?'<span class="status-pill status-confirmed">VIP</span>':''} ${c.flag==='watch'?'<span class="status-pill status-cancelled">WATCH</span>':''}</td>
+            <td style="font-size:12px;">${escHTML(c.email)}</td>
             <td>${c.orderCount}</td>
             <td>${money(c.totalSpent)}</td>
             <td style="font-size:12px;">${c.lastOrderAt ? new Date(c.lastOrderAt).toLocaleDateString('en-IN') : '—'}</td>
@@ -2499,13 +2499,13 @@
       wrap.innerHTML = `
         <div class="editor-card">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-            <h3 style="font-family:var(--font-body);font-size:16px;">${c.name} ${c.status==='blocked'?'<span class="manual-override-flag">BLOCKED</span>':''} ${c.isGuest?'<span class="status-pill status-pending">GUEST</span>':''}</h3>
+            <h3 style="font-family:var(--font-body);font-size:16px;">${escHTML(c.name)} ${c.status==='blocked'?'<span class="manual-override-flag">BLOCKED</span>':''} ${c.isGuest?'<span class="status-pill status-pending">GUEST</span>':''}</h3>
             <button class="btn btn-sm" id="closeCustDetail">Close ×</button>
           </div>
           <div class="detail-grid">
             <div class="detail-block">
               <h5>Profile</h5>
-              <p>${c.email}<br>${c.phone || 'No phone on file'}<br>Joined ${new Date(c.createdAt).toLocaleDateString('en-IN')}</p>
+              <p>${escHTML(c.email)}<br>${c.phone || 'No phone on file'}<br>Joined ${new Date(c.createdAt).toLocaleDateString('en-IN')}</p>
             </div>
             <div class="detail-block">
               <h5>Flag &amp; Notes</h5>
@@ -2514,12 +2514,12 @@
                 <option value="vip" ${c.flag==='vip'?'selected':''}>VIP</option>
                 <option value="watch" ${c.flag==='watch'?'selected':''}>Watch (e.g. repeated cancellations)</option>
               </select>
-              <textarea class="admin-input" id="custAdminNote" rows="3" style="width:100%;" placeholder="Internal note — not visible to the customer">${c.adminNote || ''}</textarea>
+              <textarea class="admin-input" id="custAdminNote" rows="3" style="width:100%;" placeholder="Internal note — not visible to the customer">${escHTML(c.adminNote || '')}</textarea>
               <button class="btn btn-sm btn-outline" id="saveCustFlag" style="margin-top:8px;">Save</button>
             </div>
             <div class="detail-block">
               <h5>Addresses (${addresses.length})</h5>
-              ${addresses.length ? addresses.map(a=>`<p>${a.line1}, ${a.city}, ${a.state} ${a.pincode}</p>`).join('') : '<p>No saved addresses.</p>'}
+              ${addresses.length ? addresses.map(a=>`<p>${escHTML(a.line1)}, ${escHTML(a.city)}, ${escHTML(a.state)} ${escHTML(a.pincode)}</p>`).join('') : '<p>No saved addresses.</p>'}
             </div>
             <div class="detail-block">
               <h5>Order History (${orders.length})</h5>
@@ -2584,11 +2584,11 @@
         <tbody>${reviews.length ? reviews.map(r=>`
           <tr>
             <td style="font-size:12.5px;">${r.productName}</td>
-            <td style="font-size:12.5px;">${r.userName}</td>
+            <td style="font-size:12.5px;">${escHTML(r.userName)}</td>
             <td>${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</td>
             <td style="font-size:12px;max-width:220px;">
-              ${r.title?`<strong>${r.title}</strong><br>`:''}${r.body}
-              ${r.adminReply ? `<div style="margin-top:6px;padding:6px 8px;background:var(--ivory-deep);border-radius:3px;"><strong style="font-size:10.5px;color:var(--maroon);text-transform:uppercase;">Your reply</strong><br>${r.adminReply}</div>`
+              ${r.title?`<strong>${escHTML(r.title)}</strong><br>`:''}${escHTML(r.body)}
+              ${r.adminReply ? `<div style="margin-top:6px;padding:6px 8px;background:var(--ivory-deep);border-radius:3px;"><strong style="font-size:10.5px;color:var(--maroon);text-transform:uppercase;">Your reply</strong><br>${escHTML(r.adminReply)}</div>`
                 : `<div style="margin-top:6px;"><textarea class="admin-input" id="revReply-${r.id}" rows="2" style="width:100%;font-size:12px;" placeholder="Reply to this review…"></textarea><button class="btn btn-sm btn-outline" data-rev-reply="${r.id}" style="margin-top:4px;">Send Reply</button></div>`}
             </td>
             <td>${r.verified?'Yes':'No'}</td>
@@ -2764,7 +2764,7 @@
     body.innerHTML = `
       <div class="detail-block">
         <h5>Sales by Fabric</h5>
-        <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">${topFabric ? `${topFabric.fabric} is your top earner — ${Math.round(topFabric.revenue/(totalRevenue||1)*100)}% of all revenue (${money(topFabric.revenue)}).` : 'No sales recorded yet.'}</p>
+        <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">${topFabric ? `${escHTML(topFabric.fabric)} is your top earner — ${Math.round(topFabric.revenue/(totalRevenue||1)*100)}% of all revenue (${money(topFabric.revenue)}).` : 'No sales recorded yet.'}</p>
         ${fabrics.length ? donutChart(fabrics.map(f=>({label:f.fabric, value:f.revenue, display:money(f.revenue)}))) : '<p style="font-size:13px;color:var(--ink-soft);">No sales recorded yet.</p>'}
       </div>
       <div class="detail-block" style="margin-top:16px;">
@@ -2775,7 +2775,7 @@
       <div class="detail-block" style="margin-top:16px;">
         <h5>Slow Movers</h5>
         <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">${slowMovers.length ? `${slowMovers.length} product${slowMovers.length===1?'':'s'} with stock on hand haven't sold in 30 days — worth a discount push or a re-photograph.` : "Everything with stock has sold in the last 30 days — nothing sitting idle."}</p>
-        ${hbarList(slowMovers, {labelFn:p=>`${p.name} (${p.fabric})`, valueFn:p=>p.stock, sublabelFn:p=>`${p.stock} in stock`, emptyText:'Nothing idle right now.'})}
+        ${hbarList(slowMovers, {labelFn:p=>`${escHTML(p.name)} (${escHTML(p.fabric)})`, valueFn:p=>p.stock, sublabelFn:p=>`${p.stock} in stock`, emptyText:'Nothing idle right now.'})}
       </div>`;
   }
 
@@ -2883,8 +2883,8 @@
           <thead><tr><th>Product</th><th>Fabric</th><th>Wishlist Adds</th><th>Purchases by Wishlisters</th><th>Conversion</th></tr></thead>
           <tbody>${products.length ? products.map(p=>`
             <tr>
-              <td>${p.name}</td>
-              <td>${p.fabric}</td>
+              <td>${escHTML(p.name)}</td>
+              <td>${escHTML(p.fabric)}</td>
               <td>${p.wishlistCount}</td>
               <td>${p.purchaseCount}</td>
               <td>${p.wishlistCount ? Math.round(p.purchaseCount/p.wishlistCount*100) : 0}%</td>
@@ -2903,11 +2903,11 @@
       <div class="detail-grid">
         <div>
           <h5 style="font-size:11px;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px;">Top Searches</h5>
-          ${topSearches.length ? topSearches.map(s=>`<div class="order-item-row"><span>${s.query}</span><span>${s.searches}</span></div>`).join('') : '<p style="font-size:13px;color:var(--ink-soft);">No searches logged yet.</p>'}
+          ${topSearches.length ? topSearches.map(s=>`<div class="order-item-row"><span>${escHTML(s.query)}</span><span>${s.searches}</span></div>`).join('') : '<p style="font-size:13px;color:var(--ink-soft);">No searches logged yet.</p>'}
         </div>
         <div>
           <h5 style="font-size:11px;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px;">Searches With No Results</h5>
-          ${noResults.length ? noResults.map(s=>`<div class="order-item-row"><span>${s.query}</span><span>${s.searches}</span></div>`).join('') : '<p style="font-size:13px;color:var(--ink-soft);">None — every search has found something.</p>'}
+          ${noResults.length ? noResults.map(s=>`<div class="order-item-row"><span>${escHTML(s.query)}</span><span>${s.searches}</span></div>`).join('') : '<p style="font-size:13px;color:var(--ink-soft);">None — every search has found something.</p>'}
         </div>
       </div>`;
   }
@@ -2920,8 +2920,8 @@
         <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
         <tbody>${adminUsers.map(a=>`
           <tr>
-            <td>${a.name}</td>
-            <td style="font-size:12px;">${a.email}</td>
+            <td>${escHTML(a.name)}</td>
+            <td style="font-size:12px;">${escHTML(a.email)}</td>
             <td>
               <select class="admin-input" data-role-select="${a.id}">
                 ${roles.map(r=>`<option value="${r}" ${a.role===r?'selected':''}>${r}</option>`).join('')}
@@ -2997,7 +2997,7 @@
       document.getElementById('activityLogList').innerHTML = log.length ? log.map(entry=>`
         <div class="order-item-row" style="align-items:flex-start;">
           <span>
-            <strong>${entry.adminName}</strong> ${entry.action} <strong>${entry.entity}</strong>${entry.entityId?' #'+entry.entityId:''}
+            <strong>${escHTML(entry.adminName)}</strong> ${escHTML(entry.action)} <strong>${escHTML(entry.entity)}</strong>${entry.entityId?' #'+entry.entityId:''}
             ${entry.before || entry.after ? `<br><span style="font-size:11px;color:var(--ink-soft);">${entry.before?'from '+JSON.stringify(entry.before):''} ${entry.after?'to '+JSON.stringify(entry.after):''}</span>` : ''}
           </span>
           <span style="font-size:11px;color:var(--ink-soft);white-space:nowrap;">${new Date(entry.createdAt).toLocaleString('en-IN')}</span>
@@ -3011,13 +3011,13 @@
       document.getElementById('messagesList').innerHTML = messages.length ? messages.map(m=>`
         <div class="order-card" style="${!m.read?'border-color:var(--maroon);':''}">
           <div class="order-card-head">
-            <span><strong>${m.name}</strong> · ${m.email}</span>
+            <span><strong>${escHTML(m.name)}</strong> · ${escHTML(m.email)}</span>
             <span style="font-size:11px;">${new Date(m.created_at).toLocaleDateString('en-IN')}</span>
           </div>
-          <p style="font-size:12.5px;color:var(--gold);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">${m.subject}</p>
-          <p style="font-size:13.5px;color:var(--ink-soft);">${m.message}</p>
+          <p style="font-size:12.5px;color:var(--gold);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">${escHTML(m.subject)}</p>
+          <p style="font-size:13.5px;color:var(--ink-soft);">${escHTML(m.message)}</p>
           ${!m.read ? `<div class="cancel-order-btn" data-read="${m.id}" style="color:var(--teal);">Mark as read</div>` : ''}
-          ${m.admin_reply ? `<div class="detail-block" style="margin-top:10px;"><h5>Your reply${m.replied_at?' — '+new Date(m.replied_at).toLocaleString('en-IN'):''}</h5><p style="font-size:13px;">${m.admin_reply}</p></div>` : `
+          ${m.admin_reply ? `<div class="detail-block" style="margin-top:10px;"><h5>Your reply${m.replied_at?' — '+new Date(m.replied_at).toLocaleString('en-IN'):''}</h5><p style="font-size:13px;">${escHTML(m.admin_reply)}</p></div>` : `
           <div style="margin-top:10px;">
             <textarea class="admin-input" id="replyText-${m.id}" rows="2" style="width:100%;" placeholder="Write a reply…"></textarea>
             <button class="btn btn-sm btn-primary" data-reply-send="${m.id}" style="margin-top:6px;">Send Reply</button>
@@ -3065,7 +3065,7 @@
   function renderIdentityBar(admin){
     document.getElementById('adminIdentityBar').innerHTML = `
       <div style="font-size:13px;color:var(--ink-soft);">Signed in as</div>
-      <div style="font-weight:600;color:var(--maroon-deep);">${admin.name}</div>
+      <div style="font-weight:600;color:var(--maroon-deep);">${escHTML(admin.name)}</div>
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--gold);margin-bottom:8px;">${admin.role}</div>
       <button class="btn btn-sm btn-outline" id="adminLogoutBtn">Log Out</button>`;
     document.getElementById('adminLogoutBtn').addEventListener('click', adminLogout);
