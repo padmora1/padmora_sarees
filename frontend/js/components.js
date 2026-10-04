@@ -109,7 +109,7 @@ function initHeader(activeHref) {
   }
 
   mount.innerHTML = `
-    <div class="topbar" id="siteTopbar">Free shipping above ₹1,999 · Easy 7-day returns · Secure payments via Razorpay</div>
+    <div class="topbar" id="siteTopbar"></div>
     <header class="site-header">
       <div class="header-inner">
         <button class="hamburger" id="hamburgerBtn" aria-label="Open menu">
@@ -185,14 +185,38 @@ function initHeader(activeHref) {
   refreshBadgeCounts();
   startLogoLanguageCycle();
 
-  // Keep the topbar's free-shipping claim honest against the admin's actual
-  // Phase 7 shipping settings, not a hardcoded number that can drift out of
-  // sync the moment an admin changes the threshold.
-  apiFetch('/settings/shipping').then(({ shipping }) => {
-    if (!shipping || !shipping.freeShippingThreshold) return;
-    const bar = document.getElementById('siteTopbar');
-    if (bar) bar.textContent = `Free shipping above ${money(shipping.freeShippingThreshold)} · Easy 7-day returns · Secure payments via Razorpay`;
-  }).catch(() => {});
+  // The announcement bar at the very top is edited in Admin → Storefront → Top Banner. The last known version is
+  // remembered on this device so the bar is drawn correctly straight away (no flash of old text); the live
+  // version then replaces it. {freeShipping} in the text is filled with the real free-shipping amount.
+  let cachedBar = null;
+  try { cachedBar = JSON.parse(localStorage.getItem(ANNOUNCEMENT_CACHE_KEY) || 'null'); } catch (e) { /* private mode */ }
+  renderAnnouncementBar(cachedBar || { cfg: ANNOUNCEMENT_DEFAULT, threshold: 1999 });
+  Promise.all([
+    apiFetch('/content/announcement').catch(() => null),
+    apiFetch('/settings/shipping').catch(() => null)
+  ]).then(([ann, ship]) => {
+    const cfg = ann && ann.announcement ? ann.announcement : (cachedBar ? cachedBar.cfg : ANNOUNCEMENT_DEFAULT);
+    const threshold = ship && ship.shipping && ship.shipping.freeShippingThreshold ? ship.shipping.freeShippingThreshold : (cachedBar ? cachedBar.threshold : 1999);
+    const state = { cfg, threshold };
+    renderAnnouncementBar(state);
+    try { localStorage.setItem(ANNOUNCEMENT_CACHE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
+  });
+}
+
+const ANNOUNCEMENT_CACHE_KEY = 'padmora_announcement';
+const ANNOUNCEMENT_DEFAULT = { enabled: true, text: 'Free shipping above {freeShipping} · Easy 7-day returns · Secure payments via Razorpay', link: '' };
+function renderAnnouncementBar({ cfg, threshold }) {
+  const bar = document.getElementById('siteTopbar');
+  if (!bar) return;
+  if (!cfg || cfg.enabled === false) { bar.style.display = 'none'; bar.textContent = ''; return; }
+  bar.style.display = '';
+  const text = String(cfg.text || ANNOUNCEMENT_DEFAULT.text).replace(/\{freeShipping\}/g, threshold ? money(threshold) : 'the minimum order value');
+  const link = /^(\/(?!\/)|https?:\/\/)/i.test(cfg.link || '') ? cfg.link : '';
+  if (link) {
+    bar.innerHTML = `<a href="${escHTML(link)}"${/^https?:/i.test(link) ? ' target="_blank" rel="noopener noreferrer"' : ''}>${escHTML(text)}</a>`;
+  } else {
+    bar.textContent = text;
+  }
 }
 
 // The header wordmark cycles English -> Marathi -> English every 8s, on every

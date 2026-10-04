@@ -195,6 +195,8 @@ body::after{right:0;transform:scaleX(-1);}
 
 /* Topbar */
 .topbar{background:var(--maroon-deep);color:var(--ivory-deep);font-size:12.5px;padding:8px 0;text-align:center;}
+.topbar a{color:inherit;text-decoration:none;}
+.topbar a:hover{text-decoration:underline;}
 
 /* Header */
 .site-header{position:sticky;top:0;z-index:60;background:rgba(250,245,236,0.96);backdrop-filter:blur(6px);border-bottom:1px solid rgba(173,59,92,0.12);}
@@ -361,6 +363,8 @@ body::after{right:0;transform:scaleX(-1);}
 .section{padding:48px 0;}
 .section-head{text-align:center;max-width:560px;margin:0 auto 36px;}
 .section-head h2{font-size:30px;margin-top:8px;}
+.section-sub{max-width:520px;margin:10px auto 0;color:var(--ink-soft);font-size:14px;line-height:1.6;}
+.section-sub[hidden],.section-head .eyebrow[hidden]{display:none;}
 
 /* Product grid & card (shop / home / product pages) */
 .toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;}

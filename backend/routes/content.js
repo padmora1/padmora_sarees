@@ -2,6 +2,7 @@ const express = require('express');
 const { getSetting, getFaqItems, getProducts, getProductById } = require('../utils/db');
 const { toProductApiShape } = require('../utils/shape');
 const { DEFAULT_FOOTER } = require('../utils/footerConfig');
+const { DEFAULT_ANNOUNCEMENT, DEFAULT_WEAVE_SECTION } = require('../utils/homeSections');
 
 const router = express.Router();
 
@@ -37,6 +38,24 @@ router.get('/content/shop-all', async (req, res) => {
     res.json({ products });
   } catch (err) {
     console.error('GET /content/shop-all failed:', err);
+    res.status(500).json({ message: 'Something went wrong on the server.' });
+  }
+});
+
+router.get('/content/announcement', async (req, res) => {
+  try {
+    res.json({ announcement: await getSetting('announcement_bar', DEFAULT_ANNOUNCEMENT) });
+  } catch (err) {
+    console.error('GET /content/announcement failed:', err);
+    res.status(500).json({ message: 'Something went wrong on the server.' });
+  }
+});
+
+router.get('/content/weave-section', async (req, res) => {
+  try {
+    res.json({ section: await getSetting('weave_section', DEFAULT_WEAVE_SECTION) });
+  } catch (err) {
+    console.error('GET /content/weave-section failed:', err);
     res.status(500).json({ message: 'Something went wrong on the server.' });
   }
 });

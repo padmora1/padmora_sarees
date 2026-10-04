@@ -15,6 +15,7 @@ const { saveUpload, removeUpload } = require('../utils/storage');
 const { toProductApiShape } = require('../utils/shape');
 const { DEFAULT_FOOTER, validateFooter } = require('../utils/footerConfig');
 const { sanitizeRich } = require('../utils/richText');
+const { DEFAULT_ANNOUNCEMENT, DEFAULT_WEAVE_SECTION, validateAnnouncement, validateWeaveSection } = require('../utils/homeSections');
 const { runBackup, listBackups, BACKUP_DIR } = require('../utils/backup');
 const { RETURN_REASONS } = require('../utils/returns');
 const { sendEmail, sendOrderStatusEmail, emailConfigured, smsConfigured } = require('../utils/notify');
@@ -1764,6 +1765,33 @@ router.put('/content/shop-all', asyncRoute(async (req, res) => {
   }
   await setSetting('shop_all_showcase', { productIds: productIds.slice(0, 3) });
   res.json({ productIds: productIds.slice(0, 3) });
+}));
+
+// ---- Storefront content: announcement bar (top of every page) and the "Shop by Weave" section ----
+router.get('/content/announcement', asyncRoute(async (req, res) => {
+  res.json({ announcement: await getSetting('announcement_bar', DEFAULT_ANNOUNCEMENT), defaults: DEFAULT_ANNOUNCEMENT });
+}));
+
+router.put('/content/announcement', asyncRoute(async (req, res) => {
+  const { value, error } = validateAnnouncement(req.body);
+  if (error) return res.status(400).json({ message: error });
+  const before = await getSetting('announcement_bar', DEFAULT_ANNOUNCEMENT);
+  await setSetting('announcement_bar', value);
+  await record(req, 'settings updated', 'announcement_bar', null, before, value);
+  res.json({ announcement: value });
+}));
+
+router.get('/content/weave-section', asyncRoute(async (req, res) => {
+  res.json({ section: await getSetting('weave_section', DEFAULT_WEAVE_SECTION), defaults: DEFAULT_WEAVE_SECTION });
+}));
+
+router.put('/content/weave-section', asyncRoute(async (req, res) => {
+  const { value, error } = validateWeaveSection(req.body);
+  if (error) return res.status(400).json({ message: error });
+  const before = await getSetting('weave_section', DEFAULT_WEAVE_SECTION);
+  await setSetting('weave_section', value);
+  await record(req, 'settings updated', 'weave_section', null, before, value);
+  res.json({ section: value });
 }));
 
 // ---- Storefront content: Promo band ----

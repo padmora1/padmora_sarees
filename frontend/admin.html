@@ -112,6 +112,8 @@
             <h2>Storefront</h2>
             <div class="editor-tabs" id="storefrontTabs">
               <button data-stab="hero" class="active">Hero</button>
+              <button data-stab="announce">Top Banner</button>
+              <button data-stab="weaves">Shop by Weave</button>
               <button data-stab="promo">Promo Band</button>
               <button data-stab="shopall">Shop-all Band</button>
               <button data-stab="reels">Sarees in Motion</button>
@@ -2309,6 +2311,8 @@
 
   function renderStorefrontTab(){
     if(storefrontTab==='hero') renderHeroAdmin();
+    else if(storefrontTab==='announce') renderAnnouncementAdmin();
+    else if(storefrontTab==='weaves') renderWeaveSectionAdmin();
     else if(storefrontTab==='promo') renderPromoAdmin();
     else if(storefrontTab==='shopall') renderShopAllAdmin();
     else if(storefrontTab==='reels') renderReelsAdmin();
@@ -2439,6 +2443,106 @@
         })});
         toast('Promo band saved');
         renderPromoAdmin();
+      }catch(e){ toast(e.message, 'error'); }
+    });
+  }
+
+  // ---- Top announcement bar (the thin line at the very top of every page) ----
+  async function renderAnnouncementAdmin(){
+    const body = document.getElementById('storefrontTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const { announcement: a, defaults } = await adminApiFetch('/admin/content/announcement');
+    body.innerHTML = `
+      <div class="editor-card">
+        <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">The line at the very top of every storefront page. Write <strong>{freeShipping}</strong> wherever the free-shipping amount should appear — it is filled in from Settings → Shipping, so it always matches checkout.</p>
+        <label style="font-size:12.5px;display:block;margin-bottom:12px;"><input type="checkbox" id="anShow" ${a.enabled !== false ? 'checked' : ''}> Show the announcement bar</label>
+        <div class="form-field"><label>Text</label><input class="admin-input" style="width:100%;" id="anText" maxlength="200" value="${escHTML(a.text || '')}"></div>
+        <div class="form-field"><label>Link (optional — makes the whole bar clickable; a page like /sale, or a full https:// address)</label><input class="admin-input" style="width:100%;" id="anLink" maxlength="300" placeholder="/sale" value="${escHTML(a.link || '')}"></div>
+        <div style="margin:6px 0 14px;">
+          <div style="font-size:11.5px;color:var(--ink-soft);margin-bottom:4px;">Preview</div>
+          <div id="anPreview" style="background:#7A2740;color:#FFF0E6;text-align:center;font-size:12.5px;padding:9px 12px;border-radius:3px;"></div>
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-primary btn-sm" type="button" id="anSave">Save</button>
+          <button class="btn btn-outline btn-sm" type="button" id="anReset">Reset to standard text</button>
+        </div>
+      </div>`;
+    const preview = () => {
+      const show = document.getElementById('anShow').checked;
+      const el = document.getElementById('anPreview');
+      el.style.opacity = show ? '1' : '.35';
+      el.textContent = (document.getElementById('anText').value || '').replace('{freeShipping}', '₹1,999') + (show ? '' : '   (bar is switched off)');
+    };
+    ['anShow', 'anText'].forEach(id => document.getElementById(id).addEventListener('input', preview));
+    preview();
+    document.getElementById('anReset').addEventListener('click', () => {
+      document.getElementById('anText').value = defaults.text; document.getElementById('anLink').value = ''; document.getElementById('anShow').checked = true; preview();
+    });
+    document.getElementById('anSave').addEventListener('click', async () => {
+      try{
+        await adminApiFetch('/admin/content/announcement', { method: 'PUT', body: JSON.stringify({
+          enabled: document.getElementById('anShow').checked, text: document.getElementById('anText').value, link: document.getElementById('anLink').value
+        })});
+        toast('Announcement bar saved');
+        renderAnnouncementAdmin();
+      }catch(e){ toast(e.message, 'error'); }
+    });
+  }
+
+  // ---- "Shop by Weave" section under the hero ----
+  async function renderWeaveSectionAdmin(){
+    const body = document.getElementById('storefrontTabBody');
+    body.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading…</div>`;
+    const [{ section: s, defaults }, { fabrics }] = await Promise.all([adminApiFetch('/admin/content/weave-section'), adminApiFetch('/admin/fabrics')]);
+    // rows in the order the homepage uses: the saved order first, anything not listed after it (default order)
+    const byId = new Map(fabrics.map(f => [f.id, f]));
+    const rows = [...(s.order || []).map(id => byId.get(id)).filter(Boolean), ...fabrics.filter(f => !(s.order || []).includes(f.id))]
+      .map(f => ({ id: f.id, name: f.name, thumb: f.thumbnail || f.hero_image || f.heroImage || '', count: f.productCount, shown: !(s.hiddenFabricIds || []).includes(f.id) }));
+    const draw = () => {
+      document.getElementById('wvRows').innerHTML = rows.map((r, i) => `
+        <div class="wv-row" style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #f0e4dc;">
+          <input type="checkbox" data-wv-show="${i}" ${r.shown ? 'checked' : ''} aria-label="Show ${escHTML(r.name)}">
+          <span style="width:38px;height:38px;border-radius:50%;background:#f3e6dd ${r.thumb ? `url('${escHTML(r.thumb)}') center/cover` : ''};flex-shrink:0;"></span>
+          <span style="flex:1;font-size:13.5px;">${escHTML(r.name)}${r.count === 0 ? ' <span style="font-size:11.5px;color:var(--ink-soft);">(no sarees yet — hidden automatically)</span>' : ''}</span>
+          <button type="button" class="btn btn-outline btn-sm" data-wv-up="${i}" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
+          <button type="button" class="btn btn-outline btn-sm" data-wv-down="${i}" ${i === rows.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
+        </div>`).join('') || '<p style="font-size:13px;color:var(--ink-soft);">No weaves yet — add them under Catalog → Weaves.</p>';
+      document.querySelectorAll('[data-wv-show]').forEach(c => c.addEventListener('change', () => { rows[Number(c.dataset.wvShow)].shown = c.checked; }));
+      const swap = (i, j) => { if(j < 0 || j >= rows.length) return; [rows[i], rows[j]] = [rows[j], rows[i]]; draw(); };
+      document.querySelectorAll('[data-wv-up]').forEach(b => b.addEventListener('click', () => swap(Number(b.dataset.wvUp), Number(b.dataset.wvUp) - 1)));
+      document.querySelectorAll('[data-wv-down]').forEach(b => b.addEventListener('click', () => swap(Number(b.dataset.wvDown), Number(b.dataset.wvDown) + 1)));
+    };
+    body.innerHTML = `
+      <div class="editor-card">
+        <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">The round weave pictures right under the hero. Change the wording, hide the section, and choose which weaves show and in what order. The circle picture of each weave is changed under Catalog → Weaves.</p>
+        <label style="font-size:12.5px;display:block;margin-bottom:12px;"><input type="checkbox" id="wvShow" ${s.enabled !== false ? 'checked' : ''}> Show this section on the homepage</label>
+        <div class="form-row-2">
+          <div class="form-field"><label>Small label above the heading (optional)</label><input class="admin-input" style="width:100%;" id="wvEyebrow" maxlength="60" placeholder="e.g. Curated Weaves" value="${escHTML(s.eyebrow || '')}"></div>
+          <div class="form-field"><label>Heading</label><input class="admin-input" style="width:100%;" id="wvTitle" maxlength="80" value="${escHTML(s.title || '')}"></div>
+        </div>
+        <div class="form-field"><label>Line under the heading (optional)</label><input class="admin-input" style="width:100%;" id="wvSub" maxlength="200" value="${escHTML(s.subtitle || '')}"></div>
+        <h4 style="font-size:13px;margin:16px 0 4px;">Weaves shown (tick to show, arrows to reorder)</h4>
+        <div id="wvRows"></div>
+        <div style="display:flex;gap:10px;margin-top:16px;">
+          <button class="btn btn-primary btn-sm" type="button" id="wvSave">Save</button>
+          <button class="btn btn-outline btn-sm" type="button" id="wvReset">Reset to standard</button>
+        </div>
+      </div>`;
+    draw();
+    document.getElementById('wvReset').addEventListener('click', async () => {
+      if(!confirm('Put the Shop by Weave section back to its standard wording, all weaves, default order? Nothing changes on the store until you click Save.')) return;
+      document.getElementById('wvShow').checked = true; document.getElementById('wvEyebrow').value = defaults.eyebrow; document.getElementById('wvTitle').value = defaults.title; document.getElementById('wvSub').value = defaults.subtitle;
+      rows.sort((a, b) => fabrics.findIndex(f => f.id === a.id) - fabrics.findIndex(f => f.id === b.id)); rows.forEach(r => { r.shown = true; }); draw();
+    });
+    document.getElementById('wvSave').addEventListener('click', async () => {
+      try{
+        await adminApiFetch('/admin/content/weave-section', { method: 'PUT', body: JSON.stringify({
+          enabled: document.getElementById('wvShow').checked, eyebrow: document.getElementById('wvEyebrow').value,
+          title: document.getElementById('wvTitle').value, subtitle: document.getElementById('wvSub').value,
+          order: rows.map(r => r.id), hiddenFabricIds: rows.filter(r => !r.shown).map(r => r.id)
+        })});
+        toast('Shop by Weave saved');
+        renderWeaveSectionAdmin();
       }catch(e){ toast(e.message, 'error'); }
     });
   }
