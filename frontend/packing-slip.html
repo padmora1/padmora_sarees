@@ -10,37 +10,41 @@
 <title>Packing Slip — Padmora</title>
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root{ --maroon:#AD3B5C; --maroon-deep:#7A2740; --gold:#B87F55; --ink:#3D2229; --ink-soft:#8C5A63; }
+  /* Thermal label: 100mm x 150mm, black on white only (thermal printers have no colour or greys). */
   *{box-sizing:border-box;}
-  body{font-family:'Jost',sans-serif;color:var(--ink);max-width:720px;margin:0 auto;padding:24px 32px 40px;background:#fff;}
-  h1{font-family:'Marcellus',serif;font-size:24px;color:var(--maroon-deep);margin:0;}
-  .slip{padding-top:16px;}
-  .slip + .slip{margin-top:8px;border-top:2px dashed #e5dcd6;}
-  .slip-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid var(--maroon);padding-bottom:16px;margin-bottom:24px;}
-  .slip-head .brand-sub{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--gold);margin-top:2px;}
-  .slip-head .order-meta{text-align:right;font-size:13px;color:var(--ink-soft);}
-  .slip-head .order-meta strong{display:block;font-size:16px;color:var(--ink);}
-  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;}
-  .block h4{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--maroon);margin:0 0 8px;}
-  .block p{font-size:13.5px;line-height:1.6;margin:0;}
-  table{width:100%;border-collapse:collapse;margin-bottom:20px;}
-  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid #e5dcd6;font-size:13px;}
-  th{text-transform:uppercase;font-size:10.5px;letter-spacing:.05em;color:var(--ink-soft);border-bottom:2px solid var(--maroon);}
-  td.num, th.num{text-align:right;}
-  .totals{margin-left:auto;width:260px;font-size:13.5px;}
-  .totals div{display:flex;justify-content:space-between;padding:4px 0;}
-  .totals .grand{font-weight:700;font-size:15px;border-top:2px solid var(--maroon);padding-top:8px;margin-top:4px;}
-  .gift-note{margin-top:20px;padding:12px 14px;background:#faf3ee;border-left:3px solid var(--gold);font-size:13px;font-style:italic;}
-  .actions{position:sticky;top:0;background:#fff;padding:14px 0;margin-bottom:8px;display:flex;gap:12px;align-items:center;border-bottom:1px solid #e5dcd6;z-index:1;}
-  .actions button, .actions a{font-family:inherit;font-size:13px;padding:10px 20px;border-radius:2px;border:1px solid var(--maroon);background:#fff;color:var(--maroon);cursor:pointer;text-decoration:none;}
-  .actions button.primary{background:var(--maroon);color:#fff;}
-  .actions span{font-size:12px;color:var(--ink-soft);}
-  .loading, .error{padding:60px 0;text-align:center;color:var(--ink-soft);}
+  body{font-family:'Jost',Arial,Helvetica,sans-serif;color:#000;margin:0;padding:16px;background:#e9e6e3;}
+  .slip{width:100mm;min-height:150mm;margin:0 auto 16px;padding:4mm;background:#fff;color:#000;box-shadow:0 1px 6px rgba(0,0,0,.2);}
+  .slip-head{display:flex;justify-content:space-between;align-items:flex-start;gap:3mm;border-bottom:.6mm solid #000;padding-bottom:2.5mm;margin-bottom:3mm;}
+  .slip-head h1{font-family:'Marcellus',Georgia,serif;font-size:18pt;line-height:1;margin:0;font-weight:700;}
+  .slip-head .brand-sub{font-size:6.5pt;text-transform:uppercase;letter-spacing:.08em;margin-top:1mm;}
+  .slip-head .order-meta{text-align:right;font-size:8pt;line-height:1.35;}
+  .slip-head .order-meta strong{display:block;font-size:12pt;font-weight:700;}
+  .block{margin-bottom:3mm;}
+  .block h4{font-size:7pt;text-transform:uppercase;letter-spacing:.08em;margin:0 0 1mm;font-weight:700;border-bottom:.2mm solid #000;padding-bottom:.6mm;}
+  .block p{font-size:10pt;line-height:1.35;margin:0;word-break:break-word;}
+  .block.ship p{font-size:11pt;font-weight:500;}
+  .block.cust p{font-size:8.5pt;}
+  table{width:100%;border-collapse:collapse;margin:0 0 3mm;}
+  th,td{text-align:left;padding:1.2mm .8mm;border-bottom:.2mm solid #000;font-size:8.5pt;vertical-align:top;word-break:break-word;}
+  th{text-transform:uppercase;font-size:6.5pt;letter-spacing:.05em;border-bottom:.5mm solid #000;font-weight:700;}
+  td.num, th.num{text-align:right;white-space:nowrap;}
+  .totals{margin-left:auto;width:62mm;font-size:8.5pt;}
+  .totals div{display:flex;justify-content:space-between;padding:.6mm 0;}
+  .totals .grand{font-weight:700;font-size:11pt;border-top:.5mm solid #000;padding-top:1.5mm;margin-top:1mm;}
+  .gift-note{margin-top:3mm;padding:2mm;border:.3mm solid #000;font-size:8.5pt;font-style:italic;}
+  .actions{position:sticky;top:0;background:#fff;padding:12px 16px;margin:-16px -16px 16px;display:flex;gap:12px;align-items:center;border-bottom:1px solid #ddd;z-index:1;}
+  .actions button, .actions a{font-family:inherit;font-size:13px;padding:10px 20px;border-radius:2px;border:1px solid #AD3B5C;background:#fff;color:#AD3B5C;cursor:pointer;text-decoration:none;}
+  .actions button.primary{background:#AD3B5C;color:#fff;}
+  .actions span{font-size:12px;color:#666;}
+  .loading, .error{padding:60px 0;text-align:center;color:#666;}
+  @page{size:100mm 150mm;margin:0;}
   @media print{
-    body{padding:0;max-width:none;}
-    .actions{display:none;}
-    .slip{page-break-after:always;padding-top:0;}
-    .slip:last-child{page-break-after:auto;}
+    html,body{width:100mm;margin:0;padding:0;background:#fff;}
+    /* !important: the bar is shown by an inline style once the order loads, which would otherwise beat this rule */
+    .actions, #padmora-cursor-lotus, #padmora-cursor-bloom, .loading{display:none !important;}
+    .slip{width:100mm;min-height:0;margin:0;box-shadow:none;page-break-after:always;break-after:page;}
+    .slip:last-child{page-break-after:auto;break-after:auto;}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   }
 </style>
 </head>
@@ -55,7 +59,6 @@
 
 <script src="js/api.js"></script>
 <script src="js/admin-api.js"></script>
-<script src="js/cursor.js"></script>
 <script>
   const params = new URLSearchParams(window.location.search);
   const singleId = params.get('id');
@@ -95,6 +98,7 @@
   function money(n){ return '₹' + Number(n).toLocaleString('en-IN'); }
 
   function slipHTML(o){
+    const a = o.address || {};
     return `
     <div class="slip">
       <div class="slip-head">
@@ -103,42 +107,41 @@
           <div class="brand-sub">Handloom &amp; Heritage Sarees</div>
         </div>
         <div class="order-meta">
-          <strong>#${o.id}</strong>
-          Placed ${new Date(o.placedAt).toLocaleDateString('en-IN', {day:'numeric', month:'long', year:'numeric'})}<br>
-          Payment: ${o.payment}
+          <strong>#${escHTML(o.id)}</strong>
+          ${new Date(o.placedAt).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'})}<br>
+          ${escHTML(o.payment || '')}
         </div>
       </div>
 
-      <div class="two-col">
-        <div class="block">
-          <h4>Ship To</h4>
-          <p><strong>${escHTML(o.address.name)}</strong><br>
-          ${escHTML(o.address.line1)}<br>
-          ${escHTML(o.address.city)}, ${escHTML(o.address.state)} ${escHTML(o.address.pincode)}<br>
-          ${escHTML(o.address.phone || '')}</p>
-        </div>
-        <div class="block">
-          <h4>Customer</h4>
-          <p>${escHTML(o.customerName)}<br>${escHTML(o.customerEmail || '')}<br>${escHTML(o.customerPhone || '')}</p>
-        </div>
+      <div class="block ship">
+        <h4>Ship To</h4>
+        <p><strong>${escHTML(a.name)}</strong><br>
+        ${escHTML(a.line1)}<br>
+        ${escHTML(a.city)}, ${escHTML(a.state)} ${escHTML(a.pincode)}<br>
+        ${escHTML(a.phone || '')}</p>
+      </div>
+
+      <div class="block cust">
+        <h4>Customer</h4>
+        <p>${escHTML(o.customerName)}${o.customerPhone ? ' · ' + escHTML(o.customerPhone) : ''}${o.customerEmail ? '<br>' + escHTML(o.customerEmail) : ''}</p>
       </div>
 
       <table>
         <thead><tr><th>Item</th><th>Colour</th><th class="num">Qty</th><th class="num">Price</th></tr></thead>
         <tbody>
-          ${o.items.map(i=>`<tr><td>${escHTML(i.name)}</td><td>${i.color||'—'}</td><td class="num">${i.qty}</td><td class="num">${money(i.price)}</td></tr>`).join('')}
+          ${o.items.map(i=>`<tr><td>${escHTML(i.name)}</td><td>${escHTML(i.color||'—')}</td><td class="num">${escHTML(i.qty)}</td><td class="num">${money(i.price)}</td></tr>`).join('')}
         </tbody>
       </table>
 
       <div class="totals">
         <div><span>Subtotal</span><span>${money(o.subtotal)}</span></div>
-        ${o.discount ? `<div><span>Discount${o.couponCode?' ('+o.couponCode+')':''}</span><span>−${money(o.discount)}</span></div>` : ''}
+        ${o.discount ? `<div><span>Discount${o.couponCode?' ('+escHTML(o.couponCode)+')':''}</span><span>−${money(o.discount)}</span></div>` : ''}
         ${o.shippingFee ? `<div><span>Shipping</span><span>${money(o.shippingFee)}</span></div>` : ''}
         ${o.taxAmount ? `<div><span>Tax</span><span>${money(o.taxAmount)}</span></div>` : ''}
         <div class="grand"><span>Total</span><span>${money(o.total)}</span></div>
       </div>
 
-      ${o.giftNote ? `<div class="gift-note">🎁 Gift note: "${escHTML(o.giftNote)}"</div>` : ''}
+      ${o.giftNote ? `<div class="gift-note">Gift note: "${escHTML(o.giftNote)}"</div>` : ''}
     </div>`;
   }
 
