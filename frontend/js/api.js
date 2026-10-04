@@ -419,24 +419,95 @@ async function returnEligibility(orderId) {
 async function returnsGet() {
   return apiFetch('/returns');
 }
-async function returnCreate(payload) {
-  return apiFetch('/returns', { method: 'POST', body: JSON.stringify(payload) });
+async function returnCreate(payload, signal) {
+  return apiFetch('/returns', { method: 'POST', body: JSON.stringify(payload), signal });
 }
-// Multipart, not JSON — bypasses apiFetch's JSON.stringify/Content-Type
-// handling since the browser needs to set its own multipart boundary.
-async function returnUploadPhotos(files) {
-  const form = new FormData();
-  Array.from(files).forEach(f => form.append('photos', f));
-  const token = getToken();
-  const headers = {};
-  if (token) headers['Authorization'] = 'Bearer ' + token;
+// Customer photos (return requests). Phone cameras produce 3-12 MB pictures; sending those over a mobile
+// connection is slow, can hit the 8 MB limit, and used to leave the page waiting forever. So every photo is
+// first shrunk on the phone (longest side 1600px, JPEG) to a few hundred KB, then uploaded one at a time with
+// a progress callback and a hard timeout, so the customer always sees progress or a clear error.
+function _withTimeout(promise, ms, message) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+}
+
+function _loadImageElement(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode')); };
+    img.src = url;
+  });
+}
+
+// Returns a smaller JPEG File made from a camera picture (or canvas). Throws a customer-readable Error.
+async function shrinkPhoto(file, maxSide, quality) {
+  maxSide = maxSide || 1600; quality = quality || 0.82;
+  const cantRead = 'We could not read that photo. Please try taking it again.';
+  try {
+    let source;
+    try {
+      source = await _withTimeout(createImageBitmap(file, { imageOrientation: 'from-image' }), 20000, cantRead);
+    } catch (e) {
+      source = await _withTimeout(_loadImageElement(file), 20000, cantRead);
+    }
+    const sw = source.width || source.naturalWidth, sh = source.height || source.naturalHeight;
+    if (!sw || !sh) throw new Error(cantRead);
+    const scale = Math.min(1, maxSide / Math.max(sw, sh));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(sw * scale); canvas.height = Math.round(sh * scale);
+    canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height);
+    if (source.close) source.close();
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (!blob) throw new Error(cantRead);
+    return new File([blob], 'photo-' + Date.now() + '.jpg', { type: 'image/jpeg' });
+  } catch (e) {
+    throw new Error(e && e.message && e.message !== 'decode' ? e.message : cantRead);
+  }
+}
+
+// One photo -> the server, with upload progress (0-100) and a 60 second limit.
+function _postReturnPhoto(file, onPercent) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', API_BASE + '/returns/photos');
+    const token = getToken();
+    if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+    xhr.timeout = 60000;
+    xhr.upload.onprogress = e => { if (e.lengthComputable && onPercent) onPercent(Math.round(e.loaded / e.total * 100)); };
+    xhr.onload = () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch (e) { /* no body */ }
+      if (xhr.status >= 200 && xhr.status < 300 && data.urls && data.urls[0]) return resolve(data.urls[0]);
+      if (xhr.status === 401) return reject(new Error('Your session has expired. Please log in again.'));
+      reject(new Error(data.message || 'The photo could not be uploaded. Please try again.'));
+    };
+    xhr.onerror = () => reject(new Error('Network problem while uploading. Check your connection and try again.'));
+    xhr.ontimeout = () => reject(new Error('The upload is taking too long. Check your connection and try again.'));
+    xhr.onabort = () => reject(new Error('The upload was cancelled.'));
+    const form = new FormData();
+    form.append('photos', file, file.name || 'photo.jpg');
+    xhr.send(form);
+  });
+}
+
+// Uploads every photo that is not on the server yet and returns { urls } in order. A photo that already
+// uploaded is remembered on the File (_url), so pressing Submit again after a failure only re-sends the rest.
+// onProgress(doneCount, total, percentOfCurrent)
+async function returnUploadPhotos(files, onProgress) {
+  const list = Array.from(files);
   _startLoading();
   try {
-    const res = await fetch(API_BASE + '/returns/photos', { method: 'POST', headers, body: form });
-    let data = {};
-    try { data = await res.json(); } catch { /* no body */ }
-    if (!res.ok) throw new Error(data.message || 'Photo upload failed. Please try again.');
-    return data;
+    for (let i = 0; i < list.length; i++) {
+      if (list[i]._url) continue;
+      if (onProgress) onProgress(i, list.length, 0);
+      list[i]._url = await _postReturnPhoto(list[i], pct => onProgress && onProgress(i, list.length, pct));
+    }
+    if (onProgress) onProgress(list.length, list.length, 100);
+    return { urls: list.map(f => f._url) };
   } finally {
     _endLoading();
   }
