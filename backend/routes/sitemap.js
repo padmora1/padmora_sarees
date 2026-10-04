@@ -13,7 +13,7 @@ const STATIC_PAGES = [
   { path: '/our-weaves', priority: '0.6' },
   { path: '/contact', priority: '0.4' },
   { path: '/faq', priority: '0.4' },
-  { path: '/shipping-returns', priority: '0.4' }
+  { path: '/policies', priority: '0.4' }
 ];
 
 router.get('/sitemap.xml', async (req, res) => {

@@ -13,6 +13,7 @@ const { readOrderIds, buildTemplateXlsx, buildTemplateCsv, normalizeOrderId, MAX
 const { upload } = require('../middleware/upload');
 const { saveUpload, removeUpload } = require('../utils/storage');
 const { toProductApiShape } = require('../utils/shape');
+const { DEFAULT_FOOTER, validateFooter } = require('../utils/footerConfig');
 const { runBackup, listBackups, BACKUP_DIR } = require('../utils/backup');
 const { RETURN_REASONS } = require('../utils/returns');
 const { sendEmail, sendOrderStatusEmail, emailConfigured, smsConfigured } = require('../utils/notify');
@@ -1300,6 +1301,19 @@ router.put('/settings/store', asyncRoute(async (req, res) => {
   await setSetting('store_info', next);
   await record(req, 'settings updated', 'store_info', null, before, next);
   res.json({ store: next });
+}));
+
+router.get('/settings/footer', asyncRoute(async (req, res) => {
+  res.json({ footer: await getSetting('footer_config', DEFAULT_FOOTER), defaults: DEFAULT_FOOTER });
+}));
+
+router.put('/settings/footer', asyncRoute(async (req, res) => {
+  const { value, error } = validateFooter(req.body);
+  if (error) return res.status(400).json({ message: error });
+  const before = await getSetting('footer_config', DEFAULT_FOOTER);
+  await setSetting('footer_config', value);
+  await record(req, 'settings updated', 'footer_config', null, before, value);
+  res.json({ footer: value });
 }));
 
 router.get('/settings/shipping', asyncRoute(async (req, res) => {

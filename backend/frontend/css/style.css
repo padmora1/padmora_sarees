@@ -757,7 +757,7 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 @media (max-width:900px){ .footer-lotus-bg .fl-i,.footer-lotus-bg .fl-j,.footer-lotus-bg .fl-k,.footer-lotus-bg .fl-l,.footer-lotus-bg .fl-m,.footer-lotus-bg .fl-n,.footer-lotus-bg .fl-o,.footer-lotus-bg .fl-p{display:none;} }
 @media (max-width:900px){ .footer-lotus-bg .fl-c,.footer-lotus-bg .fl-d,.footer-lotus-bg .fl-e,.footer-lotus-bg .fl-f,.footer-lotus-bg .fl-g,.footer-lotus-bg .fl-h{display:none;} }
 .footer .container,.footer-bottom{position:relative;z-index:1;}
-.footer-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:40px;padding-bottom:36px;}
+.footer-grid{display:grid;grid-template-columns:1.6fr repeat(var(--footer-cols,2),minmax(0,1fr));gap:40px;padding-bottom:36px;}
 .footer-grid h5{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--gold-soft);margin-bottom:16px;}
 .footer-grid ul li{margin-bottom:9px;font-size:13.5px;color:rgba(250,245,236,0.75);}
 .footer-logo{font-family:var(--font-display);font-size:22px;color:var(--ivory);margin-bottom:12px;}
@@ -923,7 +923,13 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 .cat-item strong{font-size:13px;font-weight:500;}
 .cat-rail-wrap .reel-scroll-btn{display:none;}
 .cat-rail-wrap.has-overflow .reel-scroll-btn{display:flex;}
-@media (max-width:760px){ .cat-rail-wrap .reel-scroll-btn{display:none !important;} }
+/* Small, quiet arrows on phones as well (they only show when there is more to scroll to, and each hides at its own end). */
+.cat-rail-wrap .reel-scroll-btn.at-end{opacity:0;pointer-events:none;}
+@media (max-width:760px){
+  .cat-rail-wrap .reel-scroll-btn{width:30px;height:30px;font-size:20px;top:calc(25vw - 28px);opacity:.92;box-shadow:0 2px 8px rgba(80,30,40,.22);}
+  .cat-rail-wrap .reel-scroll-btn.at-end{opacity:0;}
+  .cat-rail-wrap .reel-scroll-btn.left{left:6px;} .cat-rail-wrap .reel-scroll-btn.right{right:6px;}
+}
 @media (max-width:980px){ .cat-item{flex:0 0 calc(50% - 11px);} }
 
 
@@ -938,7 +944,8 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 .collection-hero h1{color:var(--ivory);font-size:clamp(30px,5vw,54px);margin:6px 0 10px;}
 .collection-hero .breadcrumb,.collection-hero .breadcrumb a{color:rgba(250,245,236,.85);}
 .collection-hero-tagline{color:var(--gold-soft);font-size:13px;letter-spacing:.14em;text-transform:uppercase;}
-.collection-meaning-wrap{padding:34px 20px 0;}
+.collection-meaning-wrap{padding:0;}
+.section.in-collection{padding-top:20px !important;}
 @media (max-width:760px){ .collection-hero{min-height:230px;} .collection-hero-inner{padding-top:40px;padding-bottom:40px;} }
 
 /* Mobile/tablet: the filter column becomes a slide-in drawer behind a
@@ -1004,7 +1011,15 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
   .cart-layout{grid-template-columns:1fr;}
   .summary-card{position:static;}
   .account-layout{grid-template-columns:1fr;}
-  .footer-grid{grid-template-columns:1fr 1fr;}
+  .footer-grid{grid-template-columns:1.5fr 1fr;gap:36px 24px;}
+  /* Two columns on tablet/phone: the brand block on the left and the last link column (Company) beside it,
+     with the other columns on the next row. */
+  .footer-cols > div{order:2;}
+  .footer-cols > div:last-child{order:1;}
+  .footer-grid .footer-mail{overflow-wrap:anywhere;}
+}
+@media (max-width:480px){
+  .footer-grid .footer-mail{font-size:12px;gap:6px;}
 }
 /* Phone widths only — desktop's 3:4 portrait image is fine since the
    details sit beside it, but stacked full-width on a phone that same

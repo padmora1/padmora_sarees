@@ -247,6 +247,10 @@
             <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Brand identity and contact details used across the storefront footer and header.</p>
             <div class="admin-form" id="storeSettingsForm"></div>
 
+            <h3 style="font-size:15px;margin:28px 0 6px;">Footer</h3>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">The text and link columns at the bottom of every storefront page. The contact email and Instagram / YouTube icons come from Store Info above.</p>
+            <div class="admin-form" id="footerSettingsForm"></div>
+
             <h3 style="font-size:15px;margin:28px 0 6px;">Shipping</h3>
             <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Flat shipping fee, the order value that waives it, delivery regions and estimated delivery time.</p>
             <div class="admin-form" id="shippingSettingsForm"></div>
@@ -325,7 +329,7 @@
     if(tab==='reviews') loadReviews();
     if(tab==='analytics') renderAnalyticsTab();
     if(tab==='messages') loadMessages();
-    if(tab==='settings'){ loadStoreSettings(); loadShippingSettings(); loadTaxSettings(); loadReturnPolicySettings(); loadSettings(); loadNotificationsLog(); loadBackups(); }
+    if(tab==='settings'){ loadStoreSettings(); loadFooterSettings(); loadShippingSettings(); loadTaxSettings(); loadReturnPolicySettings(); loadSettings(); loadNotificationsLog(); loadBackups(); }
     if(tab==='adminusers') loadAdminUsers();
     if(tab==='activitylog') loadActivityLog();
   }
@@ -1424,6 +1428,92 @@
         }catch(e){ toast(e.message, 'error'); }
       });
     }catch(e){ toast(e.message, 'error'); }
+  }
+
+  // ---- Footer (text + link columns shown on every storefront page) ----
+  let footerDraft = null, footerDefaults = null;
+  async function loadFooterSettings(){
+    try{
+      const res = await adminApiFetch('/admin/settings/footer');
+      footerDraft = JSON.parse(JSON.stringify(res.footer));
+      footerDefaults = res.defaults;
+      renderFooterForm();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+  // Keep what has been typed so far in the draft before every re-draw (add / remove / move rows).
+  function syncFooterDraft(){
+    const root = document.getElementById('footerSettingsForm');
+    if(!root || !footerDraft) return;
+    footerDraft.tagline = root.querySelector('#ftTagline').value;
+    footerDraft.bottomLeft = root.querySelector('#ftBottomLeft').value;
+    footerDraft.bottomRight = root.querySelector('#ftBottomRight').value;
+    footerDraft.columns = Array.from(root.querySelectorAll('.ft-col')).map(col => ({
+      title: col.querySelector('.ft-col-title').value,
+      links: Array.from(col.querySelectorAll('.ft-link')).map(r => ({ label: r.querySelector('.ft-link-label').value, url: r.querySelector('.ft-link-url').value }))
+    }));
+  }
+  function renderFooterForm(){
+    const f = footerDraft;
+    document.getElementById('footerSettingsForm').innerHTML = `
+      <div class="form-field"><label>Tagline (under the logo)</label><textarea class="admin-input" style="width:100%;min-height:60px;" maxlength="240" id="ftTagline">${escHTML(f.tagline)}</textarea></div>
+      ${f.columns.map((c, ci) => `
+        <div class="ft-col" style="border:1px solid #e5dcd6;border-radius:8px;padding:14px;margin-bottom:14px;">
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
+            <input class="admin-input ft-col-title" style="flex:1;font-weight:600;" maxlength="40" placeholder="Column heading" value="${escHTML(c.title)}">
+            <button type="button" class="btn btn-outline btn-sm" data-ft="col-up" data-ci="${ci}" ${ci===0?'disabled':''} aria-label="Move column left">←</button>
+            <button type="button" class="btn btn-outline btn-sm" data-ft="col-down" data-ci="${ci}" ${ci===f.columns.length-1?'disabled':''} aria-label="Move column right">→</button>
+            <button type="button" class="btn btn-outline btn-sm" data-ft="col-del" data-ci="${ci}">Remove column</button>
+          </div>
+          ${c.links.map((l, li) => `
+            <div class="ft-link" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+              <input class="admin-input ft-link-label" style="flex:1;min-width:0;" maxlength="40" placeholder="Link name" value="${escHTML(l.label)}">
+              <input class="admin-input ft-link-url" style="flex:1.4;min-width:0;" maxlength="300" placeholder="/policies or https://…" value="${escHTML(l.url)}">
+              <button type="button" class="btn btn-outline btn-sm" data-ft="link-up" data-ci="${ci}" data-li="${li}" ${li===0?'disabled':''} aria-label="Move link up">↑</button>
+              <button type="button" class="btn btn-outline btn-sm" data-ft="link-down" data-ci="${ci}" data-li="${li}" ${li===c.links.length-1?'disabled':''} aria-label="Move link down">↓</button>
+              <button type="button" class="btn btn-outline btn-sm" data-ft="link-del" data-ci="${ci}" data-li="${li}" aria-label="Remove link">✕</button>
+            </div>`).join('')}
+          <button type="button" class="btn btn-outline btn-sm" data-ft="link-add" data-ci="${ci}" ${c.links.length>=10?'disabled':''}>+ Add link</button>
+        </div>`).join('')}
+      <div style="margin-bottom:16px;"><button type="button" class="btn btn-outline btn-sm" data-ft="col-add" ${f.columns.length>=4?'disabled':''}>+ Add column</button> <span style="font-size:12px;color:var(--ink-soft);margin-left:8px;">Up to 4 columns, 10 links each. Link a page on this site with / (for example /policies), or any web address.</span></div>
+      <div class="form-row-2">
+        <div class="form-field"><label>Bottom line — left</label><input class="admin-input" style="width:100%;" maxlength="120" id="ftBottomLeft" value="${escHTML(f.bottomLeft)}"></div>
+        <div class="form-field"><label>Bottom line — right</label><input class="admin-input" style="width:100%;" maxlength="120" id="ftBottomRight" value="${escHTML(f.bottomRight)}"></div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-primary btn-sm" type="button" id="saveFooterSettings">Save Footer</button>
+        <button class="btn btn-outline btn-sm" type="button" id="resetFooterSettings">Reset to standard footer</button>
+      </div>`;
+    const root = document.getElementById('footerSettingsForm');
+    root.querySelectorAll('[data-ft]').forEach(btn => btn.addEventListener('click', () => {
+      syncFooterDraft();
+      const ci = Number(btn.dataset.ci), li = Number(btn.dataset.li), cols = footerDraft.columns;
+      const swap = (arr, a, b) => { if(b < 0 || b >= arr.length) return; [arr[a], arr[b]] = [arr[b], arr[a]]; };
+      switch(btn.dataset.ft){
+        case 'col-add': cols.push({ title: '', links: [{ label: '', url: '' }] }); break;
+        case 'col-del': cols.splice(ci, 1); break;
+        case 'col-up': swap(cols, ci, ci - 1); break;
+        case 'col-down': swap(cols, ci, ci + 1); break;
+        case 'link-add': cols[ci].links.push({ label: '', url: '' }); break;
+        case 'link-del': cols[ci].links.splice(li, 1); break;
+        case 'link-up': swap(cols[ci].links, li, li - 1); break;
+        case 'link-down': swap(cols[ci].links, li, li + 1); break;
+      }
+      renderFooterForm();
+    }));
+    document.getElementById('saveFooterSettings').addEventListener('click', async ()=>{
+      syncFooterDraft();
+      try{
+        const { footer } = await adminApiFetch('/admin/settings/footer', { method:'PUT', body: JSON.stringify(footerDraft) });
+        footerDraft = JSON.parse(JSON.stringify(footer));
+        renderFooterForm();
+        toast('Footer saved');
+      }catch(e){ toast(e.message, 'error'); }
+    });
+    document.getElementById('resetFooterSettings').addEventListener('click', ()=>{
+      if(!confirm('Replace the footer text and links with the standard footer? Nothing changes on the store until you click Save Footer.')) return;
+      footerDraft = JSON.parse(JSON.stringify(footerDefaults));
+      renderFooterForm();
+    });
   }
 
   async function loadShippingSettings(){

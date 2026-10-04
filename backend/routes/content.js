@@ -1,6 +1,7 @@
 const express = require('express');
 const { getSetting, getFaqItems, getProducts, getProductById } = require('../utils/db');
 const { toProductApiShape } = require('../utils/shape');
+const { DEFAULT_FOOTER } = require('../utils/footerConfig');
 
 const router = express.Router();
 
@@ -65,6 +66,15 @@ router.get('/settings/store', async (req, res) => {
     res.json({ store: publicStore });
   } catch (err) {
     console.error('GET /settings/store failed:', err);
+    res.status(500).json({ message: 'Something went wrong on the server.' });
+  }
+});
+
+router.get('/settings/footer', async (req, res) => {
+  try {
+    res.json({ footer: await getSetting('footer_config', DEFAULT_FOOTER) });
+  } catch (err) {
+    console.error('GET /settings/footer failed:', err);
     res.status(500).json({ message: 'Something went wrong on the server.' });
   }
 });
