@@ -2,13 +2,17 @@
 // list on every request rather than a static file that goes stale the
 // moment a product is added or archived.
 const express = require('express');
-const { getProducts, getFabrics } = require('../utils/db');
+const { getProducts, getFabrics, getCollections } = require('../utils/db');
 
 const router = express.Router();
 
 const STATIC_PAGES = [
   { path: '/', priority: '1.0' },
   { path: '/shop', priority: '0.9' },
+  { path: '/collections', priority: '0.8' },
+  { path: '/sale', priority: '0.7' },
+  { path: '/trousseau', priority: '0.5' },
+  { path: '/upcoming-sarees', priority: '0.5' },
   { path: '/about', priority: '0.6' },
   { path: '/our-weaves', priority: '0.6' },
   { path: '/contact', priority: '0.4' },
@@ -18,12 +22,13 @@ const STATIC_PAGES = [
 
 router.get('/sitemap.xml', async (req, res) => {
   try {
-    const base = `${req.protocol}://${req.get('host')}`;
-    const [products, fabrics] = await Promise.all([getProducts(), getFabrics()]);
+    const base = process.env.SITE_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+    const [products, fabrics, collections] = await Promise.all([getProducts(), getFabrics(), getCollections({ activeOnly: true }).catch(() => [])]);
     const urls = [
       ...STATIC_PAGES.map(p => ({ loc: base + p.path, priority: p.priority })),
       ...products.filter(p => p.status !== 'archived').map(p => ({ loc: `${base}/product?id=${p.id}`, priority: '0.8' })),
-      ...fabrics.map(f => ({ loc: `${base}/shop?fabric=${encodeURIComponent(f.name)}`, priority: '0.5' }))
+      ...fabrics.map(f => ({ loc: `${base}/shop?fabric=${encodeURIComponent(f.name)}`, priority: '0.5' })),
+      ...collections.map(c => ({ loc: `${base}/collection?slug=${encodeURIComponent(c.slug)}`, priority: '0.6' }))
     ];
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n` +
@@ -40,7 +45,7 @@ router.get('/sitemap.xml', async (req, res) => {
 });
 
 router.get('/robots.txt', (req, res) => {
-  const base = `${req.protocol}://${req.get('host')}`;
+  const base = process.env.SITE_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
   res.type('text/plain').send(
     `User-agent: *\n` +
     `Allow: /\n` +
@@ -48,7 +53,13 @@ router.get('/robots.txt', (req, res) => {
     `Disallow: /admin-login\n` +
     `Disallow: /account\n` +
     `Disallow: /checkout\n` +
-    `Disallow: /cart\n\n` +
+    `Disallow: /cart\n` +
+    `Disallow: /wishlist\n` +
+    `Disallow: /login\n` +
+    `Disallow: /register\n` +
+    `Disallow: /forgot-password\n` +
+    `Disallow: /track-order\n` +
+    `Disallow: /packing-slip\n\n` +
     `Sitemap: ${base}/sitemap.xml\n`
   );
 });

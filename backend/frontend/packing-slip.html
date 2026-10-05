@@ -8,6 +8,8 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/images/favicon-192.png">
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
 <title>Packing Slip — Padmora</title>
+<meta name="description" content="Packing slip.">
+<meta name="robots" content="noindex, nofollow">
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   /* Thermal label: 100mm x 150mm, black on white only (thermal printers have no colour or greys). */
@@ -33,7 +35,6 @@
   .totals{margin-left:auto;width:62mm;font-size:8.5pt;}
   .totals div{display:flex;justify-content:space-between;padding:.6mm 0;}
   .totals .grand{font-weight:700;font-size:11pt;border-top:.5mm solid #000;padding-top:1.5mm;margin-top:1mm;}
-  .gift-note{margin-top:3mm;padding:2mm;border:.3mm solid #000;font-size:8.5pt;font-style:italic;}
   .actions{position:sticky;top:0;background:#fff;padding:12px 16px;margin:-16px -16px 16px;display:flex;gap:12px;align-items:center;border-bottom:1px solid #ddd;z-index:1;}
   .actions button, .actions a{font-family:inherit;font-size:13px;padding:10px 20px;border-radius:2px;border:1px solid #AD3B5C;background:#fff;color:#AD3B5C;cursor:pointer;text-decoration:none;}
   .actions button.primary{background:#AD3B5C;color:#fff;}
@@ -90,6 +91,7 @@
       try{ store = (await adminApiFetch('/admin/settings/store')).store || {}; }catch(e){ /* slip still prints with defaults */ }
       document.getElementById('slipRoot').innerHTML = orders.map(o => slipHTML(o, store)).join('');
       document.getElementById('actionsBar').style.display = 'flex';
+      fitSlips();
       document.getElementById('slipCount').textContent = orders.length > 1 ? `${orders.length} orders` : '';
       if(ids.length > orders.length){
         document.getElementById('slipCount').textContent += ` (${ids.length - orders.length} not found)`;
@@ -98,6 +100,22 @@
       document.getElementById('slipRoot').innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
     }
   }
+
+  // One order = one label. A label is 150mm tall; when an order has many sarees the slip would run onto a second
+  // label, so the whole slip is scaled down just enough to fit (never below 55%, so it stays readable). A normal
+  // order is not touched.
+  function fitSlips(){
+    const maxPx = 147 / 25.4 * 96;
+    document.querySelectorAll('.slip').forEach(s => {
+      s.style.zoom = '';
+      const keep = s.style.minHeight; s.style.minHeight = '0';
+      const h = s.getBoundingClientRect().height;
+      s.style.minHeight = keep;
+      if(h > maxPx) s.style.zoom = Math.max(0.55, maxPx / h).toFixed(3);
+    });
+  }
+  window.addEventListener('beforeprint', fitSlips);
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(fitSlips);
 
   function money(n){ return '₹' + Number(n).toLocaleString('en-IN'); }
 
@@ -139,7 +157,6 @@
         <div class="grand"><span>Grand total</span><span>${money(o.total)}</span></div>
       </div>
 
-      ${o.giftNote ? `<div class="gift-note">Gift note: "${escHTML(o.giftNote)}"</div>` : ''}
 
       <div class="block from">
         <h4>Shipper Address</h4>

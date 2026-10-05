@@ -303,9 +303,9 @@ function initFooter() {
           <div>
             <div class="footer-logo">Padmora</div>
             <p id="footerTagline"></p>
-            <a class="footer-mail" id="footerMailLink" href="mailto:hello@padmora.example">
+            <a class="footer-mail" id="footerMailLink" href="mailto:hello@padmorasarees.com">
               <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
-              <span id="footerMailText">hello@padmora.example</span>
+              <span id="footerMailText">hello@padmorasarees.com</span>
             </a>
             <div class="footer-social">
               <a href="https://instagram.com/padmorabyyashi" id="footerInstagramLink" target="_blank" rel="noopener noreferrer" class="social-btn" aria-label="Padmora on Instagram">
@@ -432,7 +432,7 @@ function drawMiniCart() {
   const subtotal = items.reduce((sum, i) => sum + i.product.price * i.qty, 0);
   body.innerHTML = items.map(item => `
     <div class="mini-cart-line">
-      <div class="mini-cart-thumb" style="background:${photoBg(item.imageUrl, item.color)};"></div>
+      <div class="mini-cart-thumb" style="background:${photoBg(item.imageUrl, item.color, 90)};"></div>
       <div class="mini-cart-line-info">
         <strong>${item.product.name}</strong>
         <span>${money(item.product.price)}</span>
@@ -643,7 +643,7 @@ async function runInstantSearch(query) {
       <div class="search-result-list">
         ${top.map(p => `
           <a class="search-result-item" href="/product?id=${p.id}">
-            <div class="search-result-media" style="background:${productBg(p)};"></div>
+            <div class="search-result-media" style="background:${productBg(p, 120)};"></div>
             <div class="search-result-info"><strong>${p.name}</strong><span>${p.fabric} · ${money(p.price)}</span></div>
           </a>`).join('')}
       </div>
@@ -855,7 +855,7 @@ async function renderFinderResults() {
       <div class="finder-results">
         ${top.map(p => `
           <a class="finder-result-card" href="/product?id=${p.id}">
-            <div class="finder-result-media" style="background:${productBg(p)};"></div>
+            <div class="finder-result-media" style="background:${productBg(p, 120)};"></div>
             <div class="finder-result-text"><strong>${escHTML(p.name)}</strong><small>${escHTML(p.fabric)}${p.occasion ? ' · ' + escHTML(p.occasion) : ''}</small><span>${money(p.price)}${p.rating ? ` <em>★ ${p.rating}</em>` : ''}</span></div>
           </a>`).join('')}
       </div>

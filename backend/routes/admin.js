@@ -20,6 +20,7 @@ const { DEFAULT_ANNOUNCEMENT, DEFAULT_WEAVE_SECTION, validateAnnouncement, valid
 const { runBackup, listBackups, BACKUP_DIR } = require('../utils/backup');
 const { RETURN_REASONS } = require('../utils/returns');
 const { sendEmail, sendOrderStatusEmail, emailConfigured, smsConfigured } = require('../utils/notify');
+const reviewReminders = require('../utils/reviewReminders');
 const razorpayUtil = require('../utils/razorpay');
 const { checkWishlistAlerts } = require('../utils/wishlistAlerts');
 const { checkAbandonedCarts } = require('../utils/abandonedCart');
@@ -483,7 +484,7 @@ router.post('/variants/:id(\\d{1,9})/media', uploadSingle, asyncRoute(async (req
   const sortOrder = (maxSort[0]?.sort_order ?? -1) + 1;
 
   const inserted = must(await supabase.from('variant_media').insert({
-    variant_id: variantId, type, url, alt_text: req.body.alt || '', is_primary: !hasAny, sort_order: sortOrder
+    variant_id: variantId, type, url, alt_text: cleanText(req.body.alt, 200) || '', is_primary: !hasAny, sort_order: sortOrder
   }).select().single(), 'addMedia:insert');
 
   res.status(201).json({ media: inserted });
@@ -503,6 +504,18 @@ router.delete('/media/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   await removeUpload(media.url);
 
   res.json({ message: 'Media removed.' });
+}));
+
+// Alt text: the short description of a photo that screen readers read out and search engines use for image search.
+router.put('/media/:id(\\d{1,9})/alt', asyncRoute(async (req, res) => {
+  const media = must(await supabase.from('variant_media').select('id, alt_text').eq('id', Number(req.params.id)).maybeSingle(), 'altMedia:lookup');
+  if (!media) return res.status(404).json({ message: 'Photo not found.' });
+  const raw = req.body && req.body.alt;
+  const alt = typeof raw === 'string' ? raw.trim() : '';
+  if (alt.length > 200) return res.status(400).json({ message: 'Keep the description under 200 characters.' });
+  must(await supabase.from('variant_media').update({ alt_text: alt }).eq('id', media.id), 'altMedia:update');
+  await record(req, 'updated alt text', 'photo', media.id, { alt: media.alt_text }, { alt });
+  res.json({ message: 'Alt text saved.', alt });
 }));
 
 router.put('/media/:id(\\d{1,9})/primary', asyncRoute(async (req, res) => {
@@ -735,7 +748,6 @@ async function shapeAdminOrder(o, { full } = {}) {
       name: o.address_name, line1: o.address_line1, city: o.address_city,
       state: o.address_state, pincode: o.address_pincode, phone: o.address_phone
     },
-    giftNote: o.gift_note,
     payment: o.payment,
     cancelledAt: o.cancelled_at,
     razorpayPaymentId: o.razorpay_payment_id || null,
@@ -1443,6 +1455,37 @@ router.put('/settings/shipping', asyncRoute(async (req, res) => {
   await setSetting('shipping_settings', next);
   await record(req, 'settings updated', 'shipping_settings', null, before, next);
   res.json({ shipping: next });
+}));
+
+// ---- "Please review your saree" e-mail (sent a few days after delivery) ----
+router.get('/settings/review-reminder', asyncRoute(async (req, res) => {
+  const cfg = await reviewReminders.getConfig();
+  res.json({ reminder: { enabled: cfg.enabled, days: cfg.days }, emailConfigured: emailConfigured() });
+}));
+
+router.put('/settings/review-reminder', asyncRoute(async (req, res) => {
+  const days = Number(req.body && req.body.days);
+  if (!Number.isInteger(days) || days < 1 || days > 30) return res.status(400).json({ message: 'Choose a number of days between 1 and 30.' });
+  const before = await reviewReminders.getConfig();
+  const next = { enabled: !!(req.body && req.body.enabled), days, since: before.since || undefined };
+  await setSetting('review_reminder', next);
+  await record(req, 'settings updated', 'review_reminder', null, { enabled: before.enabled, days: before.days }, { enabled: next.enabled, days: next.days });
+  res.json({ reminder: { enabled: next.enabled, days: next.days } });
+}));
+
+// Sends the reminder to an address you type, using a recent real order's sarees, so you can see exactly what customers get.
+router.post('/settings/review-reminder/test', asyncRoute(async (req, res) => {
+  const to = String((req.body && req.body.to) || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).json({ message: 'Enter a valid e-mail address to send the preview to.' });
+  if (!emailConfigured()) return res.status(400).json({ message: 'E-mail is not set up yet (SMTP settings), so nothing can be sent.' });
+  const lastOrder = must(await supabase.from('orders').select('id').order('placed_at', { ascending: false }).limit(1), 'reminderTest:order')[0];
+  const lines = lastOrder ? must(await supabase.from('order_items').select('id, name, color, variant_id').eq('order_id', lastOrder.id).limit(2), 'reminderTest:items') : [];
+  if (!lines.length) return res.status(400).json({ message: 'There is no order yet to build a preview from.' });
+  const images = await getPrimaryImagesByVariantIds(lines.map(l => l.variant_id).filter(Boolean));
+  const mail = reviewReminders.buildReviewReminderEmail({ name: 'there', orderId: lastOrder.id, items: lines.map(l => ({ id: l.id, name: l.name, color: l.color, imageUrl: images[l.variant_id] || '' })) });
+  const r = await sendEmail({ to, subject: '[Preview] ' + mail.subject, html: mail.html, text: mail.text });
+  if (r.status !== 'sent') return res.status(502).json({ message: 'The preview could not be sent (' + (r.error || r.status) + ').' });
+  res.json({ message: 'Preview sent to ' + to + '.' });
 }));
 
 router.get('/settings/return-policy', asyncRoute(async (req, res) => {
@@ -2538,7 +2581,16 @@ router.put('/admin-users/:id', asyncRoute(async (req, res) => {
 
 // ---- Activity Log (read-only, visible to every admin role) ----
 router.get('/activity-log', asyncRoute(async (req, res) => {
-  const rows = must(await supabase.from('admin_activity_log').select('*').order('created_at', { ascending: false }).limit(200), 'activityLog');
+  // Newest first. The page asks for up to 3000 so older days (for example last month) can be searched and filtered too.
+  const limit = Math.min(3000, Math.max(1, Number(req.query.limit) || 200));
+  // The database hands back at most 1000 rows per request, so a long log is fetched in pages.
+  const rows = [];
+  for (let from = 0; from < limit; from += 1000) {
+    const to = Math.min(from + 999, limit - 1);
+    const chunk = must(await supabase.from('admin_activity_log').select('*').order('created_at', { ascending: false }).range(from, to), 'activityLog');
+    rows.push(...chunk);
+    if (chunk.length < to - from + 1) break;
+  }
   res.json({
     log: rows.map(r => ({
       id: r.id, adminName: r.admin_name, action: r.action, entity: r.entity, entityId: r.entity_id,

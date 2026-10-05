@@ -49,7 +49,6 @@ async function shapeOrder(order) {
       name: order.address_name, line1: order.address_line1, city: order.address_city,
       state: order.address_state, pincode: order.address_pincode, phone: order.address_phone
     },
-    giftNote: order.gift_note,
     payment: order.payment,
     status,
     cancellable,
@@ -103,7 +102,7 @@ async function resolvePricedLineItems(rawItems) {
 // happen inside the place_order() Postgres function (see the
 // product_view_and_order_functions migration), so it's genuinely atomic —
 // the Postgres equivalent of better-sqlite3's db.transaction(fn).
-async function placeOrderTx({ userId, lineItems, subtotal, couponCode: requestedCoupon, address, payment, giftNote, afterInsertWithinTx }) {
+async function placeOrderTx({ userId, lineItems, subtotal, couponCode: requestedCoupon, address, payment, afterInsertWithinTx }) {
   const { code: couponCode, discount } = await resolveCoupon(requestedCoupon, subtotal, userId);
   const { shippingFee, taxAmount, total } = await computeOrderTotals(subtotal, discount);
 
@@ -114,7 +113,7 @@ async function placeOrderTx({ userId, lineItems, subtotal, couponCode: requested
     p_shipping_fee: shippingFee, p_tax_amount: taxAmount, p_total: total, p_coupon_code: couponCode,
     p_address_name: address.name || '', p_address_line1: address.line1, p_address_city: address.city,
     p_address_state: address.state || '', p_address_pincode: address.pincode, p_address_phone: address.phone || '',
-    p_gift_note: giftNote || null, p_payment: payment || 'UPI', p_line_items: lineItems
+    p_gift_note: null, p_payment: payment || 'UPI', p_line_items: lineItems
   });
   if (rpc.error) {
     // A RAISE EXCEPTION inside place_order() (the stock>=qty guard) surfaces

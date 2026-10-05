@@ -29,19 +29,19 @@ function validateAddress(address, { requirePhone } = {}) {
   return null;
 }
 
-async function insertPendingCheckout({ id, userId, isGuest, email, lineItems, subtotal, couponCode, address, giftNote, amount, direct }) {
+async function insertPendingCheckout({ id, userId, isGuest, email, lineItems, subtotal, couponCode, address, amount, direct }) {
   must(await supabase.from('pending_checkouts').insert({
     id, user_id: userId || null, is_guest: !!isGuest, email: email || null,
     // a "Buy Now" checkout is stored as { direct: true, items } so that paying for it leaves the customer's bag alone
     line_items: JSON.stringify(direct ? { direct: true, items: lineItems } : lineItems),
-    subtotal, coupon_code: couponCode || null, address: JSON.stringify(address), gift_note: giftNote || null,
+    subtotal, coupon_code: couponCode || null, address: JSON.stringify(address), gift_note: null,
     amount, status: 'created', created_at: new Date().toISOString()
   }), 'insertPendingCheckout');
 }
 
 // ---- Authenticated: price the logged-in cart (or, for Buy Now, just the posted item) and open a Razorpay order ----
 router.post('/razorpay/order', requireAuth, async (req, res) => {
-  const { address, giftNote, couponCode, items } = req.body || {};
+  const { address, couponCode, items } = req.body || {};
   const addrError = validateAddress(address);
   if (addrError) return res.status(400).json({ message: addrError });
 
@@ -65,7 +65,7 @@ router.post('/razorpay/order', requireAuth, async (req, res) => {
     const { total } = await computeOrderTotals(subtotal, discount);
 
     const rzpOrder = await razorpay.createOrder(total, 'chk_' + Date.now().toString(36));
-    await insertPendingCheckout({ id: rzpOrder.id, userId: req.userId, isGuest: false, lineItems, subtotal, couponCode: resolvedCoupon, address, giftNote, amount: total, direct });
+    await insertPendingCheckout({ id: rzpOrder.id, userId: req.userId, isGuest: false, lineItems, subtotal, couponCode: resolvedCoupon, address, amount: total, direct });
 
     res.json({ razorpayOrderId: rzpOrder.id, amount: total, currency: 'INR', keyId: razorpay.KEY_ID });
   } catch (err) {
@@ -77,7 +77,7 @@ router.post('/razorpay/order', requireAuth, async (req, res) => {
 
 // ---- Guest: price posted items and open a Razorpay order ----
 router.post('/razorpay/guest-order', async (req, res) => {
-  const { address, giftNote, couponCode, items, email } = req.body || {};
+  const { address, couponCode, items, email } = req.body || {};
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ message: 'A valid email is required so we can send your order confirmation.' });
   }
@@ -97,7 +97,7 @@ router.post('/razorpay/guest-order', async (req, res) => {
     const { total } = await computeOrderTotals(subtotal, discount);
 
     const rzpOrder = await razorpay.createOrder(total, 'chk_' + Date.now().toString(36));
-    await insertPendingCheckout({ id: rzpOrder.id, isGuest: true, email, lineItems, subtotal, couponCode: resolvedCoupon, address, giftNote, amount: total });
+    await insertPendingCheckout({ id: rzpOrder.id, isGuest: true, email, lineItems, subtotal, couponCode: resolvedCoupon, address, amount: total });
 
     res.json({ razorpayOrderId: rzpOrder.id, amount: total, currency: 'INR', keyId: razorpay.KEY_ID });
   } catch (err) {
@@ -153,7 +153,7 @@ router.post('/razorpay/verify', async (req, res) => {
 
     const shaped = await placeOrderTx({
       userId, lineItems, subtotal: pending.subtotal, couponCode: pending.coupon_code,
-      address, payment: 'Razorpay', giftNote: pending.gift_note, afterInsertWithinTx
+      address, payment: 'Razorpay', afterInsertWithinTx
     });
     must(await supabase.from('orders').update({ razorpay_order_id, razorpay_payment_id }).eq('id', shaped.id), 'verify:stampPaymentIds');
     must(await supabase.from('pending_checkouts').update({ status: 'verified' }).eq('id', razorpay_order_id), 'verify:markConsumed');

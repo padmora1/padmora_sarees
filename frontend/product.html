@@ -102,8 +102,14 @@
     if (!images.length) {
       return `<div class="pd-media-flip"><div class="pd-flip-slide active" style="background:${swatchBg(v ? v.swatch : 'maroon')};"></div></div>`;
     }
+    // Real <img> tags (not CSS backgrounds) so every photo has alt text - the one set in Admin, or the saree's name and
+    // colour - and so only the first photo is fetched straight away; the rest load as they are needed. A smaller copy is
+    // fetched for the screen width.
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const shown = Math.min(1200, (window.innerWidth <= 760 ? window.innerWidth : 640) * dpr);
+    const base = (currentProduct ? currentProduct.name : 'Saree') + (v && v.colorName ? ' — ' + v.colorName : '');
     const slides = images.map((m, i) =>
-      `<div class="pd-flip-slide${i===0?' active':''}" style="background-image:url('${m.url}');"></div>`
+      `<div class="pd-flip-slide${i===0?' active':''}"><img src="${escHTML(sizedPhoto(m.url, shown, 78))}" alt="${escHTML(m.alt || (base + (images.length > 1 ? ' — photo ' + (i + 1) : '')))}" ${i===0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" draggable="false"></div>`
     ).join('');
     if (images.length === 1) return `<div class="pd-media-flip">${slides}</div>`;
     const dots = images.map((_, i) => `<span class="pd-media-dot${i===0?' active':''}" data-index="${i}"></span>`).join('');
@@ -229,7 +235,7 @@
         </div>
       </div>
       <div class="iv-scroll" tabindex="0">
-        ${images.map((m, i) => `<div class="iv-frame"><img src="${escHTML(m.url)}" alt="${escHTML(alt)} — photo ${i + 1} of ${images.length}" draggable="false" decoding="async"${i > startIndex + 1 ? ' loading="lazy"' : ''}></div>`).join('')}
+        ${images.map((m, i) => `<div class="iv-frame"><img src="${escHTML(m.url)}" alt="${escHTML(m.alt || (alt + ' — photo ' + (i + 1) + ' of ' + images.length))}" draggable="false" decoding="async"${i > startIndex + 1 ? ' loading="lazy"' : ''}></div>`).join('')}
       </div>`;
     document.body.appendChild(ivEl);
     document.documentElement.classList.add('iv-open');

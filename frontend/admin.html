@@ -8,6 +8,8 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/images/favicon-192.png">
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
 <title>Store Dashboard — Padmora Admin</title>
+<meta name="description" content="Padmora store dashboard.">
+<meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
@@ -280,6 +282,10 @@
             <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">How many days after delivery a customer can request a return. This is the one place that number lives — the Shipping &amp; Returns page and every eligibility check read it from here.</p>
             <div class="admin-form" id="returnPolicyForm"></div>
 
+            <h3 style="font-size:15px;margin:28px 0 6px;">Review reminder e-mail</h3>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">A few days after an order is delivered, the customer gets one friendly e-mail with the picture of each saree they bought and a “Write a review” button that opens the review form for that saree. It is sent once per order, never for guest checkouts, sarees already reviewed, or orders with a return request, and only for orders delivered after it was switched on.</p>
+            <div class="admin-form" id="reviewReminderForm"></div>
+
             <h3 style="font-size:15px;margin:28px 0 6px;">Order Tracking</h3>
             <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Hours after an order is placed before its automatic status advances to each stage. An admin's manual override on an individual order always takes priority over this.</p>
             <div class="admin-form" id="trackingSettingsForm"></div>
@@ -311,7 +317,8 @@
 
           <div id="panel-activitylog" style="display:none;">
             <h2>Activity Log</h2>
-            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">The last 200 admin actions across the whole team, most recent first.</p>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">What the team changed in the admin, newest first. Times are shown in your own time zone (<span id="activityTz"></span>). Use the dates and search to find an older day.</p>
+            <div id="activityTools"></div>
             <div id="activityLogList"></div>
           </div>
         </div>
@@ -361,7 +368,7 @@
     if(tab==='reviews') loadReviews();
     if(tab==='analytics') renderAnalyticsTab();
     if(tab==='messages') loadMessages();
-    if(tab==='settings'){ loadStoreSettings(); loadFooterSettings(); loadShippingSettings(); loadReturnPolicySettings(); loadSettings(); loadNotificationsLog(); loadBackups(); }
+    if(tab==='settings'){ loadStoreSettings(); loadFooterSettings(); loadShippingSettings(); loadReturnPolicySettings(); loadReviewReminderSettings(); loadSettings(); loadNotificationsLog(); loadBackups(); }
     if(tab==='adminusers') loadAdminUsers();
     if(tab==='activitylog') loadActivityLog();
   }
@@ -651,7 +658,7 @@
   function exportProductsCsv(){
     const rows = visibleProducts();
     if(!rows.length){ toast('Nothing to export for this search and filters.', 'error'); return; }
-    AdminLists.downloadCsv('padmora-products-' + new Date().toISOString().slice(0,10) + '.csv',
+    AdminLists.downloadCsv('padmora-products-' + AdminLists.today() + '.csv',
       ['ID','Name','Fabric','Occasion','Price','Colours','Total stock','Stock level','Badge','Status'],
       rows.map(p => [p.id, p.name, p.fabric, p.occasion || '', p.price, p.variantCount, p.totalStock, { in: 'In stock', low: 'Low stock', out: 'Out of stock' }[stockStateOf(p)], p.badge || '', p.status || 'active']));
     toast(rows.length + ' product' + (rows.length === 1 ? '' : 's') + ' exported');
@@ -882,6 +889,16 @@
               ${v.media.map(mediaThumbHTML).join('')}
               <label class="upload-label">+<input type="file" accept="image/*,video/*" multiple style="display:none;" data-upload-media="${v.id}"></label>
             </div>
+            ${v.media.some(m => m.type === 'image') ? `
+            <div class="alt-list">
+              <p class="alt-title">Photo descriptions (alt text) ${AdminColours.tip('A short description of what the photo shows, for example “Mustard Maheshwari saree with zari border, front view”. Screen readers read it out and Google uses it for image search. Leave it empty and the saree’s name and colour are used.')}</p>
+              ${v.media.filter(m => m.type === 'image').map((m, i) => `
+              <div class="alt-row">
+                <img src="${escHTML(sizedPhoto(m.url, 96, 60))}" alt="" class="alt-thumb">
+                <input type="text" class="admin-input" maxlength="200" data-alt-media="${m.id}" value="${escHTML(m.alt || '')}" placeholder="Describe photo ${i + 1}…" aria-label="Alt text for photo ${i + 1}">
+                <button type="button" class="btn btn-sm btn-outline" data-save-alt="${m.id}">Save</button>
+              </div>`).join('')}
+            </div>` : ''}
           </div>
         </div>`).join('')}
 
@@ -935,6 +952,18 @@
         await adminApiFetch('/admin/media/' + btn.dataset.delMedia, { method:'DELETE' });
         await refreshProduct(p.id);
       }catch(e){ toast(e.message, 'error'); }
+    }));
+    body.querySelectorAll('[data-save-alt]').forEach(btn=>btn.addEventListener('click', async ()=>{
+      const input = body.querySelector(`[data-alt-media="${btn.dataset.saveAlt}"]`);
+      btn.disabled = true;
+      try{
+        const r = await adminApiFetch('/admin/media/' + btn.dataset.saveAlt + '/alt', { method:'PUT', body: JSON.stringify({ alt: input.value }) });
+        input.value = r.alt;
+        // keep the copy in memory current, so the editor shows it without reloading
+        p.variants.forEach(v => (v.media || []).forEach(m => { if(String(m.id) === btn.dataset.saveAlt) m.alt = r.alt; }));
+        toast('Description saved');
+      }catch(e){ toast(e.message, 'error'); }
+      btn.disabled = false;
     }));
     body.querySelectorAll('[data-primary-media]').forEach(btn=>btn.addEventListener('click', async ()=>{
       try{
@@ -1272,7 +1301,7 @@
   function exportOrdersCsv(){
     const rows = visibleOrders();
     if(!rows.length){ toast('Nothing to export for this search and date range.', 'error'); return; }
-    AdminLists.downloadCsv('padmora-orders-' + new Date().toISOString().slice(0,10) + '.csv',
+    AdminLists.downloadCsv('padmora-orders-' + AdminLists.today() + '.csv',
       ['Order ID','Placed at','Customer','E-mail','Status','Payment','Items (colour, SKU, qty)','Units','Subtotal','Discount','Shipping','Total','Coupon','City','State','Pincode'],
       rows.map(o => [o.id, new Date(o.placedAt).toLocaleString('en-IN'), o.customerName, o.customerEmail, o.status, o.payment || '',
         o.items.map(i => `${i.name}${i.color ? ' (' + i.color + ')' : ''}${i.sku ? ' [' + i.sku + ']' : ''} x${i.qty}`).join('; '), o.items.reduce((n, i) => n + i.qty, 0),
@@ -1410,7 +1439,6 @@
             <div class="detail-block">
               <h5>Delivery Address</h5>
               <p>${escHTML(o.address.name)}<br>${escHTML(o.address.line1)}<br>${escHTML(o.address.city)}, ${escHTML(o.address.state)} ${escHTML(o.address.pincode)}<br>${escHTML(o.address.phone)}</p>
-              ${o.giftNote ? `<p style="margin-top:8px;"><em>Gift note: ${escHTML(o.giftNote)}</em></p>` : ''}
             </div>
             <div class="detail-block">
               <h5>Items</h5>
@@ -1572,7 +1600,7 @@
   function exportReturnsCsv(){
     const rows = visibleReturns();
     if(!rows.length){ toast('Nothing to export for this search and date range.', 'error'); return; }
-    AdminLists.downloadCsv('padmora-returns-' + new Date().toISOString().slice(0,10) + '.csv',
+    AdminLists.downloadCsv('padmora-returns-' + AdminLists.today() + '.csv',
       ['Return #','Requested at','Order ID','Customer','E-mail','Phone','Reason','Items','Refund method','Refund amount','Status'],
       rows.map(r => [r.id, new Date(r.requestedAt).toLocaleString('en-IN'), r.orderId, r.customerName, r.customerEmail, r.customerPhone || '', r.reasonLabel,
         (r.items || []).map(i => `${i.name} x${i.qty}`).join('; '), r.refundMethod || '', returnAmount(r), r.status]));
@@ -2044,6 +2072,35 @@
     }catch(e){ toast(e.message, 'error'); }
   }
 
+  async function loadReviewReminderSettings(){
+    try{
+      const {reminder, emailConfigured} = await adminApiFetch('/admin/settings/review-reminder');
+      document.getElementById('reviewReminderForm').innerHTML = `
+        <label class="filter-option" style="margin-bottom:16px;"><input type="checkbox" id="rrEnabled" ${reminder.enabled?'checked':''}> Send review reminder e-mails</label>
+        <div class="form-field" style="max-width:260px;"><label>Send after (days from delivery) ${AdminColours.tip('How many days after an order is marked Delivered the e-mail goes out. 3 to 5 is a good gap: long enough to have worn the saree, short enough to remember it.')}</label><input type="number" min="1" max="30" class="admin-input" style="width:100%;" id="rrDays" value="${reminder.days}"></div>
+        <button class="btn btn-primary btn-sm" id="saveReviewReminder">Save</button>
+        <div style="margin-top:18px;padding-top:14px;border-top:1px dashed rgba(173,59,92,0.25);">
+          <label style="font-size:12px;color:var(--ink-soft);display:block;margin-bottom:6px;">See exactly what customers get — send a preview to:</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;"><input type="email" class="admin-input" id="rrTestTo" placeholder="you@example.com" style="flex:1;min-width:200px;"><button class="btn btn-outline btn-sm" id="rrTestSend">Send preview</button></div>
+          ${emailConfigured ? '' : '<p style="font-size:12px;color:var(--maroon);margin-top:8px;">E-mail sending is not set up on the server yet (SMTP), so reminders and previews cannot be sent until it is.</p>'}
+        </div>`;
+      document.getElementById('saveReviewReminder').addEventListener('click', async ()=>{
+        try{
+          await adminApiFetch('/admin/settings/review-reminder', {method:'PUT', body: JSON.stringify({ enabled: document.getElementById('rrEnabled').checked, days: Number(document.getElementById('rrDays').value) })});
+          toast('Review reminder settings saved');
+        }catch(e){ toast(e.message, 'error'); }
+      });
+      document.getElementById('rrTestSend').addEventListener('click', async ()=>{
+        const btn = document.getElementById('rrTestSend'); btn.disabled = true; btn.textContent = 'Sending…';
+        try{
+          const r = await adminApiFetch('/admin/settings/review-reminder/test', {method:'POST', body: JSON.stringify({ to: document.getElementById('rrTestTo').value })});
+          toast(r.message);
+        }catch(e){ toast(e.message, 'error'); }
+        btn.disabled = false; btn.textContent = 'Send preview';
+      });
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
   async function loadReturnPolicySettings(){
     try{
       const {returnPolicy} = await adminApiFetch('/admin/settings/return-policy');
@@ -2187,21 +2244,27 @@
   // isn't left serving a 20MB image to every visitor. GIFs/videos and images
   // that are already small pass through untouched. createImageBitmap applies
   // the photo's EXIF rotation, so portraits don't come out sideways.
-  async function prepareImageForUpload(file, maxDim = 2000, quality = 0.85){
+  // Every photo is shrunk in the browser before it is uploaded: at most 1600px on the long side (plenty for a phone or
+  // a laptop), saved as WebP where the browser can (about a third smaller than JPEG at the same look), otherwise as a
+  // lighter JPEG. A small picture that is already light is sent as it is. Result: faster pages for shoppers and a much
+  // quicker upload for you.
+  const supportsWebp = (() => { try { return document.createElement('canvas').toDataURL('image/webp').startsWith('data:image/webp'); } catch(_){ return false; } })();
+  async function prepareImageForUpload(file, maxDim = 1600, quality = 0.8){
     if(!/^image\/(jpeg|png|webp)$/.test(file.type)) return file;
     let bitmap;
     try{ bitmap = await createImageBitmap(file); }catch(_){ return file; }
     const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
-    if(scale === 1 && file.size <= 800 * 1024){ bitmap.close(); return file; }
+    if(scale === 1 && file.size <= 200 * 1024){ bitmap.close(); return file; }
     const w = Math.round(bitmap.width * scale), h = Math.round(bitmap.height * scale);
     const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
     const g = canvas.getContext('2d');
-    g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
+    if(!supportsWebp){ g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); }   // JPEG has no transparency; WebP keeps it
     g.drawImage(bitmap, 0, 0, w, h);
     bitmap.close();
-    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', quality));
+    const type = supportsWebp ? 'image/webp' : 'image/jpeg';
+    const blob = await new Promise(r => canvas.toBlob(r, type, quality));
     if(!blob || blob.size >= file.size) return file;
-    return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
+    return new File([blob], file.name.replace(/\.\w+$/, '') + (supportsWebp ? '.webp' : '.jpg'), { type });
   }
 
   async function uploadEntityImage(url, fieldName, file, extra){
@@ -3282,7 +3345,7 @@
   function exportReviewsCsv(){
     const rows = visibleReviews();
     if(!rows.length){ toast('Nothing to export for this search and date range.', 'error'); return; }
-    AdminLists.downloadCsv('padmora-reviews-' + new Date().toISOString().slice(0,10) + '.csv',
+    AdminLists.downloadCsv('padmora-reviews-' + AdminLists.today() + '.csv',
       ['Date','Saree','Customer','Rating','Title','Review','Verified purchase','Status','Featured','Your reply'],
       rows.map(r => [new Date(r.createdAt).toLocaleString('en-IN'), r.productName, r.userName, r.rating, r.title || '', r.body, r.verified ? 'Yes' : 'No', r.status, r.featured ? 'Yes' : 'No', r.adminReply || '']));
     toast(rows.length + ' review' + (rows.length === 1 ? '' : 's') + ' exported');
@@ -3722,17 +3785,59 @@
   });
 
   // ==== Activity Log ====
-  async function loadActivityLog(){
-    try{
-      const {log} = await adminApiFetch('/admin/activity-log');
-      document.getElementById('activityLogList').innerHTML = log.length ? log.map(entry=>`
+  let activityCache = [], activityTools = null;
+  function ensureActivityTools(){
+    if(activityTools) return;
+    activityTools = AdminLists.createTools(document.getElementById('activityTools'), {
+      searchId: 'activitySearchBox', noun: 'actions',
+      placeholder: 'Search who, what or which item…',
+      sorts: [{value:'new',label:'Newest first'},{value:'old',label:'Oldest first'}],
+      onChange: renderActivityLog, exportCsv: exportActivityCsv
+    });
+    document.getElementById('activityTz').textContent = (Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time');
+  }
+  const activityText = e => [e.adminName, e.action, e.entity, e.entityId, e.before ? JSON.stringify(e.before) : '', e.after ? JSON.stringify(e.after) : ''].join(' ');
+  function visibleActivity(){
+    const t = activityTools, groups = t.groups();
+    const rows = activityCache.filter(e => AdminLists.inRange(e.createdAt, t.state.from, t.state.to) && AdminLists.matches(groups, activityText(e)));
+    return rows.sort((x, y) => t.state.sort === 'old' ? new Date(x.createdAt) - new Date(y.createdAt) : new Date(y.createdAt) - new Date(x.createdAt));
+  }
+  function exportActivityCsv(){
+    const rows = visibleActivity();
+    if(!rows.length){ toast('Nothing to export for this search and date range.', 'error'); return; }
+    AdminLists.downloadCsv('padmora-activity-' + AdminLists.today() + '.csv', ['When','Who','Did','On','Item','Before','After'],
+      rows.map(e => [AdminLists.fmtDateTime(e.createdAt), e.adminName, e.action, e.entity, e.entityId || '', e.before ? JSON.stringify(e.before) : '', e.after ? JSON.stringify(e.after) : '']));
+    toast(rows.length + ' action' + (rows.length === 1 ? '' : 's') + ' exported');
+  }
+  const DAY_LABEL = iso => new Date(iso).toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  function renderActivityLog(){
+    ensureActivityTools();
+    const rows = visibleActivity(), groups = activityTools.groups();
+    const hl = text => AdminLists.highlight(text, groups);
+    activityTools.setCount(rows.length, activityCache.length);
+    const shown = rows.slice(0, 600);   // keep the page light; narrow by date or search to reach the rest
+    let html = '', lastDay = '';
+    shown.forEach(entry => {
+      const day = new Date(entry.createdAt).toDateString();
+      if(day !== lastDay){ lastDay = day; html += `<h4 class="activity-day">${DAY_LABEL(entry.createdAt)}</h4>`; }
+      html += `
         <div class="order-item-row" style="align-items:flex-start;">
           <span>
-            <strong>${escHTML(entry.adminName)}</strong> ${escHTML(entry.action)} <strong>${escHTML(entry.entity)}</strong>${entry.entityId?' #'+entry.entityId:''}
-            ${entry.before || entry.after ? `<br><span style="font-size:11px;color:var(--ink-soft);">${entry.before?'from '+JSON.stringify(entry.before):''} ${entry.after?'to '+JSON.stringify(entry.after):''}</span>` : ''}
+            <strong>${hl(entry.adminName)}</strong> ${hl(entry.action)} <strong>${hl(entry.entity)}</strong>${entry.entityId?' #'+escHTML(entry.entityId):''}
+            ${entry.before || entry.after ? `<br><span style="font-size:11px;color:var(--ink-soft);">${entry.before?'from '+escHTML(JSON.stringify(entry.before)):''} ${entry.after?'to '+escHTML(JSON.stringify(entry.after)):''}</span>` : ''}
           </span>
-          <span style="font-size:11px;color:var(--ink-soft);white-space:nowrap;">${new Date(entry.createdAt).toLocaleString('en-IN')}</span>
-        </div>`).join('') : `<p style="color:var(--ink-soft);">No admin activity recorded yet.</p>`;
+          <span style="font-size:11.5px;color:var(--ink-soft);white-space:nowrap;" title="${escHTML(new Date(entry.createdAt).toString())}">${new Date(entry.createdAt).toLocaleTimeString('en-IN', {hour:'numeric', minute:'2-digit'})}</span>
+        </div>`;
+    });
+    if(rows.length > shown.length) html += `<p style="color:var(--ink-soft);font-size:12.5px;margin-top:12px;">Showing the first ${shown.length} of ${rows.length}. Pick a date range or search to narrow it down.</p>`;
+    document.getElementById('activityLogList').innerHTML = html || `<p style="color:var(--ink-soft);">${activityCache.length ? 'No activity matches this search and date range.' : 'No admin activity recorded yet.'}</p>`;
+  }
+  async function loadActivityLog(){
+    ensureActivityTools();
+    try{
+      const {log} = await adminApiFetch('/admin/activity-log?limit=3000');
+      activityCache = log;
+      renderActivityLog();
     }catch(e){ toast(e.message, 'error'); }
   }
 
@@ -3763,7 +3868,7 @@
   function exportMessagesCsv(){
     const rows = visibleMessages();
     if(!rows.length){ toast('Nothing to export for this search and date range.', 'error'); return; }
-    AdminLists.downloadCsv('padmora-messages-' + new Date().toISOString().slice(0,10) + '.csv',
+    AdminLists.downloadCsv('padmora-messages-' + AdminLists.today() + '.csv',
       ['Date','Name','E-mail','Subject','Message','Read','Your reply','Replied at'],
       rows.map(m => [new Date(m.created_at).toLocaleString('en-IN'), m.name, m.email, m.subject, m.message, m.read ? 'Yes' : 'No', m.admin_reply || '', m.replied_at ? new Date(m.replied_at).toLocaleString('en-IN') : '']));
     toast(rows.length + ' message' + (rows.length === 1 ? '' : 's') + ' exported');
