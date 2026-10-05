@@ -244,7 +244,7 @@ function setGuestCoupon(code) {
 async function guestCartResponse() {
   const items = getGuestCart();
   let products = [];
-  try { ({ products } = await apiFetch('/products')); } catch { /* offline-ish; show empty */ }
+  try { ({ products } = await lookupProducts(items.map(i => i.productId))); } catch { /* offline-ish; show empty */ }
 
   const withDetails = items.map(i => {
     const product = products.find(p => p.id === i.productId);
@@ -283,7 +283,7 @@ async function guestCartResponse() {
   const taxableAmount = Math.max(0, subtotal - discount);
   let shippingFee = 0, taxAmount = 0, taxRate = 0, taxLabel = 'GST', taxInclusive = true;
   try {
-    const [{ shipping }, { tax }] = await Promise.all([apiFetch('/settings/shipping'), apiFetch('/settings/tax')]);
+    const [{ shipping }, { tax }] = await Promise.all([cachedGet('/settings/shipping', 60000), cachedGet('/settings/tax', 60000)]);
     shippingFee = taxableAmount >= (shipping.freeShippingThreshold || 0) ? 0 : (shipping.fee || 0);
     taxRate = tax.enabled ? (tax.gstRate || 0) : 0;
     taxInclusive = tax.inclusive !== false; // defaults true when unset, same as the backend
@@ -308,7 +308,7 @@ async function cartGet() {
 // (offline-ish — in that case we don't block the add, just don't clamp).
 async function guestResolveStock(productId, variantId, color) {
   let products = [];
-  try { ({ products } = await apiFetch('/products')); } catch { return null; }
+  try { ({ products } = await lookupProducts([productId])); } catch { return null; }
   const product = products.find(p => p.id === Number(productId));
   if (!product) return null;
   const variants = product.variants || [];
@@ -386,7 +386,7 @@ async function wishlistGet() {
   if (isLoggedIn()) return apiFetch('/wishlist');
   const ids = getGuestWishlist();
   if (!ids.length) return { products: [] };
-  const { products } = await apiFetch('/products');
+  const { products } = await lookupProducts(ids);
   return { products: products.filter(p => ids.includes(p.id)) };
 }
 
@@ -403,6 +403,153 @@ async function wishlistRemove(productId) {
   setGuestWishlist(getGuestWishlist().filter(id => id !== Number(productId)));
   return wishlistGet();
 }
+
+// ---------------------------------------------------------------------
+// Speed helpers for the bag
+// ---------------------------------------------------------------------
+// A short-lived memory of GET answers that barely change (settings, product details for the bag), so
+// the same page does not download them again for every tap on + / - / Add.
+const _memo = new Map();
+function cachedGet(path, ttlMs) {
+  const hit = _memo.get(path);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.promise;
+  const promise = apiFetch(path).catch(e => { _memo.delete(path); throw e; });
+  _memo.set(path, { at: Date.now(), promise });
+  return promise;
+}
+
+// Just the sarees a guest's bag / wishlist mention (sale sarees included), not the whole catalogue.
+function lookupProducts(ids) {
+  const list = [...new Set((ids || []).map(Number).filter(n => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
+  if (!list.length) return Promise.resolve({ products: [] });
+  return cachedGet('/products/lookup?ids=' + list.join(','), 20000);
+}
+
+// ---------------------------------------------------------------------
+// Buy Now: buy one saree directly, without touching the bag. The choice lives in this browser tab only
+// (sessionStorage) until the order is paid for, so the bag keeps exactly what the shopper had put in it.
+// ---------------------------------------------------------------------
+const BUY_NOW_KEY = 'padmora_buy_now';
+function setBuyNow(item) {
+  try { sessionStorage.setItem(BUY_NOW_KEY, JSON.stringify({ productId: Number(item.productId), variantId: item.variantId ? Number(item.variantId) : null, qty: Math.max(1, Number(item.qty) || 1) })); } catch (e) { /* private mode */ }
+}
+function getBuyNow() {
+  try { const v = JSON.parse(sessionStorage.getItem(BUY_NOW_KEY) || 'null'); return v && v.productId ? v : null; } catch (e) { return null; }
+}
+function clearBuyNow() {
+  try { sessionStorage.removeItem(BUY_NOW_KEY); } catch (e) { /* ignore */ }
+}
+// Prices an arbitrary list of items (and an optional coupon) the same way checkout will charge them.
+async function checkoutQuote(items, couponCode) {
+  return apiFetch('/checkout/quote', { method: 'POST', body: JSON.stringify({ items, couponCode: couponCode || undefined }) });
+}
+
+// ---------------------------------------------------------------------
+// cardCart - instant "Add" and "+ / -" on product cards and the product page.
+// It keeps a local picture of the bag (variantId -> { itemId, qty }), changes it and the header badge the moment
+// the shopper taps, and sends the real change to the server in the background, one at a time and in order. When
+// everything has been confirmed it adopts the server's answer; if anything fails it says so and reloads the real bag.
+// ---------------------------------------------------------------------
+const cardCart = (() => {
+  const lines = {};          // variantId -> { itemId (null until the server has confirmed), qty }   (what the screen shows)
+  const serverQty = {};      // variantId -> quantity the server last confirmed
+  const knownIds = {};       // variantId -> last server line id
+  const meta = {};           // variantId -> { productId, color } (needed to add a line the server does not have yet)
+  const listeners = [];
+  let pending = 0;
+  let queue = Promise.resolve();
+
+  const emit = () => listeners.forEach(fn => { try { fn(); } catch (e) { /* a page's redraw must never break the bag */ } });
+  const total = () => Object.values(lines).reduce((s, l) => s + l.qty, 0);
+  const syncBadge = () => { if (typeof setCartBadge === 'function') setCartBadge(total()); };
+
+  // Learn what the server has: quantities, line ids, and enough about each line to add it again later.
+  function record(cart) {
+    Object.keys(serverQty).forEach(k => delete serverQty[k]);
+    (cart.items || []).forEach(i => {
+      if (!i.variantId) return;
+      serverQty[i.variantId] = i.qty;
+      knownIds[i.variantId] = i.id;
+      meta[i.variantId] = { productId: i.productId, color: i.color };
+    });
+  }
+  function adopt(cart) {
+    record(cart);
+    Object.keys(lines).forEach(k => delete lines[k]);
+    (cart.items || []).forEach(i => { if (i.variantId) lines[i.variantId] = { itemId: i.id, qty: i.qty }; });
+    syncBadge();
+    emit();
+  }
+
+  function enqueue(op) {
+    pending++;
+    queue = queue.then(op).then(cart => {
+      pending--;
+      if (cart) { record(cart); if (pending === 0) adopt(cart); }
+    }).catch(async err => {
+      pending--;
+      if (typeof toast === 'function') toast(err && err.message ? err.message : 'Could not update your bag.', 'error');
+      if (pending === 0) { try { adopt(await cartGet()); } catch (e) { emit(); } }
+    });
+    return queue;
+  }
+
+  // Makes the server's quantity for one colour equal what the screen shows. Taps made in quick succession all end
+  // up as one request: by the time an earlier tap's turn comes the screen already shows the final number, so it
+  // sends that, and the later taps find nothing left to do.
+  function syncVariant(v) {
+    return enqueue(async () => {
+      const target = lines[v] ? lines[v].qty : 0;
+      const have = serverQty[v] || 0;
+      if (target === have) return null;
+      let cart;
+      if (target === 0) {
+        if (!knownIds[v]) return cartGet();
+        cart = await cartRemoveItem(knownIds[v]);
+      } else if (have === 0) {
+        if (!meta[v]) return cartGet();
+        cart = await cartAdd(meta[v].productId, target, meta[v].color, v);
+      } else {
+        cart = await cartUpdateQty(knownIds[v], target);
+      }
+      if (cart.message && typeof toast === 'function') toast(cart.message);
+      return cart;
+    });
+  }
+
+  return {
+    lines,
+    onChange(fn) { listeners.push(fn); },
+    qty(variantId) { return lines[variantId] ? lines[variantId].qty : 0; },
+    async load() {
+      const cart = await cartGet();
+      if (pending === 0) adopt(cart); else record(cart);
+      return cart;
+    },
+    // stock (optional) is the colour's current stock, used to stop at the maximum without a round trip
+    add(productId, variantId, color, stock, by) {
+      const v = Number(variantId);
+      const n = Math.max(1, Number(by) || 1);
+      const cur = lines[v] ? lines[v].qty : 0;
+      let add = n;
+      if (stock != null && cur + add > stock) add = stock - cur;
+      if (add <= 0) { if (typeof toast === 'function') toast(`Only ${stock} left in stock.`); return Promise.resolve(); }
+      if (!meta[v]) meta[v] = { productId: Number(productId), color };
+      lines[v] = { itemId: lines[v] ? lines[v].itemId : (knownIds[v] || null), qty: cur + add };
+      syncBadge(); emit();
+      return syncVariant(v);
+    },
+    change(variantId, delta, stock) {
+      const v = Number(variantId);
+      const cur = lines[v] ? lines[v].qty : 0;
+      const next = cur + delta;
+      if (delta > 0 && stock != null && next > stock) { if (typeof toast === 'function') toast(`Only ${stock} left in stock.`); return Promise.resolve(); }
+      if (next <= 0) delete lines[v]; else lines[v] = { itemId: lines[v] ? lines[v].itemId : (knownIds[v] || null), qty: next };
+      syncBadge(); emit();
+      return syncVariant(v);
+    }
+  };
+})();
 
 // Called right after a successful login/register — folds any guest cart/
 // wishlist built up while signed out into the account that just signed in.

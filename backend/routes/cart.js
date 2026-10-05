@@ -1,5 +1,5 @@
 const express = require('express');
-const { supabase, must, getProducts, getVariantById, getDefaultVariant, getVariants, getPrimaryImagesByVariantIds } = require('../utils/db');
+const { supabase, must, getProductsByIds, getVariantsByIds, getDefaultVariant, getVariants, getPrimaryImagesByVariantIds } = require('../utils/db');
 const { requireAuth } = require('../middleware/auth');
 const { resolveCoupon, computeOrderTotals } = require('../utils/pricing');
 
@@ -22,11 +22,17 @@ async function resolveVariantId(productId, variantId, color) {
 }
 
 async function withProductDetails(items) {
-  const products = await getProducts();
-  const photoByVariant = await getPrimaryImagesByVariantIds(items.map(i => i.variant_id).filter(Boolean));
-  return Promise.all(items.map(async item => {
-    const product = products.find(p => p.id === item.product_id);
-    const variant = item.variant_id ? await getVariantById(item.variant_id) : null;
+  // One query per table for the whole bag (run side by side), not the whole catalogue plus a query per line.
+  const [products, variants, photoByVariant] = await Promise.all([
+    getProductsByIds(items.map(i => i.product_id)),
+    getVariantsByIds(items.map(i => i.variant_id).filter(Boolean)),
+    getPrimaryImagesByVariantIds(items.map(i => i.variant_id).filter(Boolean))
+  ]);
+  const productById = new Map(products.map(p => [p.id, p]));
+  const variantById = new Map(variants.map(v => [v.id, v]));
+  return items.map(item => {
+    const product = productById.get(item.product_id);
+    const variant = item.variant_id ? variantById.get(item.variant_id) : null;
     return {
       id: item.id,
       productId: item.product_id,
@@ -41,14 +47,18 @@ async function withProductDetails(items) {
         badge: product.badge, swatch: variant.swatch, desc: variant.description || product.description, stock: variant.stock
       } : (product || null)
     };
-  }));
+  });
 }
 
 async function cartResponse(userId) {
-  const rawItems = must(await supabase.from('cart_items').select('*').eq('user_id', userId), 'cartResponse:items');
+  const [itemsRes, metaRes] = await Promise.all([
+    supabase.from('cart_items').select('*').eq('user_id', userId),
+    supabase.from('cart_meta').select('coupon_code').eq('user_id', userId).maybeSingle()
+  ]);
+  const rawItems = must(itemsRes, 'cartResponse:items');
+  const meta = must(metaRes, 'cartResponse:meta');
   const items = await withProductDetails(rawItems);
   const subtotal = items.reduce((s, i) => s + (i.product ? i.product.price * i.qty : 0), 0);
-  const meta = must(await supabase.from('cart_meta').select('coupon_code').eq('user_id', userId).maybeSingle(), 'cartResponse:meta');
   const { code, discount } = await resolveCoupon(meta && meta.coupon_code, subtotal, userId);
 
   // Coupon fell out of eligibility (e.g. items removed) — drop it silently.
@@ -59,6 +69,17 @@ async function cartResponse(userId) {
   const { shippingFee, taxAmount, taxRate, taxLabel, taxInclusive, total } = await computeOrderTotals(subtotal, discount);
   return { items, subtotal, discount, shippingFee, taxAmount, taxRate, taxLabel, taxInclusive, total, coupon: code };
 }
+
+// Just the number for the header badge - no pricing, no product details.
+router.get('/count', async (req, res) => {
+  try {
+    const rows = must(await supabase.from('cart_items').select('qty').eq('user_id', req.userId), 'cartCount');
+    res.json({ count: rows.reduce((sum, r) => sum + (r.qty || 0), 0) });
+  } catch (err) {
+    console.error('GET /cart/count failed:', err);
+    res.status(500).json({ message: 'Something went wrong on the server.' });
+  }
+});
 
 router.get('/', async (req, res) => {
   try {
@@ -93,27 +114,32 @@ async function addItem(userId, { productId, qty, color, variantId }) {
   // item is still skipped exactly as quietly as before — this only changes
   // what a direct "add to bag" click sees.
   if (!resolvedVariantId) return { error: 'This saree could not be found.' };
-  const variant = await getVariantById(resolvedVariantId);
-  if (!variant) return { error: 'This saree could not be found.' };
-
   const lineId = `${userId}:${resolvedVariantId}`;
   const now = new Date().toISOString();
-  const existing = must(await supabase.from('cart_items').select('*').eq('id', lineId).maybeSingle(), 'addItem:lookup');
+  const [variantRes, existingRes] = await Promise.all([
+    supabase.from('product_variants').select('id, stock').eq('id', resolvedVariantId).maybeSingle(),
+    supabase.from('cart_items').select('*').eq('id', lineId).maybeSingle()
+  ]);
+  const variant = must(variantRes, 'addItem:variant');
+  if (!variant) return { error: 'This saree could not be found.' };
+  const existing = must(existingRes, 'addItem:lookup');
   const requested = (existing ? existing.qty : 0) + (Number(qty) || 1);
   const finalQty = Math.min(requested, variant.stock);
 
   if (finalQty <= 0) {
     return { error: 'This colour is out of stock.' };
   }
-  if (existing) {
-    must(await supabase.from('cart_items').update({ qty: finalQty, updated_at: now }).eq('id', lineId), 'addItem:update');
-  } else {
-    must(await supabase.from('cart_items').insert({
-      id: lineId, user_id: userId, product_id: Number(productId), variant_id: resolvedVariantId,
-      color: color || 'default', qty: finalQty, updated_at: now
-    }), 'addItem:insert');
-  }
-  await touchCartMeta(userId);
+  const [writeRes, touchRes] = await Promise.all([
+    existing
+      ? supabase.from('cart_items').update({ qty: finalQty, updated_at: now }).eq('id', lineId)
+      : supabase.from('cart_items').insert({
+          id: lineId, user_id: userId, product_id: Number(productId), variant_id: resolvedVariantId,
+          color: color || 'default', qty: finalQty, updated_at: now
+        }),
+    supabase.from('cart_meta').upsert({ user_id: userId, recovery_email_sent_at: null }, { onConflict: 'user_id' })
+  ]);
+  must(writeRes, existing ? 'addItem:update' : 'addItem:insert');
+  must(touchRes, 'touchCartMeta');
   return { error: null, clamped: finalQty < requested, available: variant.stock };
 }
 
@@ -152,15 +178,19 @@ router.put('/:itemId', async (req, res) => {
     const line = must(await supabase.from('cart_items').select('*').eq('id', req.params.itemId).eq('user_id', req.userId).maybeSingle(), 'putItem:lookup');
     if (!line) return res.status(404).json({ message: 'Cart item not found.' });
 
-    const variant = line.variant_id ? await getVariantById(line.variant_id) : null;
+    const variant = line.variant_id ? must(await supabase.from('product_variants').select('id, stock').eq('id', line.variant_id).maybeSingle(), 'putItem:variant') : null;
     const requested = Math.max(1, Number(qty) || 1);
     if (variant && variant.stock <= 0) {
       return res.status(400).json({ message: 'This colour just sold out — remove it from your bag to check out.' });
     }
     const finalQty = variant ? Math.min(requested, variant.stock) : requested;
 
-    must(await supabase.from('cart_items').update({ qty: finalQty, updated_at: new Date().toISOString() }).eq('id', req.params.itemId), 'putItem:update');
-    await touchCartMeta(req.userId);
+    const [updRes, touchRes] = await Promise.all([
+      supabase.from('cart_items').update({ qty: finalQty, updated_at: new Date().toISOString() }).eq('id', req.params.itemId),
+      supabase.from('cart_meta').upsert({ user_id: req.userId, recovery_email_sent_at: null }, { onConflict: 'user_id' })
+    ]);
+    must(updRes, 'putItem:update');
+    must(touchRes, 'touchCartMeta');
     const response = await cartResponse(req.userId);
     if (finalQty < requested) response.message = `Only ${variant.stock} left in stock — set to the max available.`;
     res.json(response);

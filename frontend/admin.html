@@ -314,7 +314,16 @@
 <script>
   const STAGE_NAMES = ['Confirmed','Packed','Shipped','Out for Delivery','Delivered'];
 
+  // The open tab (and the sub-tab inside Catalog / Storefront) is kept in the address (#returns, #storefront/weaves),
+  // so refreshing the page - or sharing / bookmarking the address - lands on the same screen, not on Overview.
+  const ADMIN_TABS = ['overview','products','catalog','storefront','orders','returns','inventory','coupons','customers','reviews','analytics','messages','settings','adminusers','activitylog'];
+  function setHash(tab, sub){ try{ history.replaceState(null, '', '#' + tab + (sub ? '/' + sub : '')); }catch(e){ /* ignore */ } }
+  function hashTarget(){
+    const [tab, sub] = (location.hash || '').replace(/^#/, '').split('/');
+    return ADMIN_TABS.includes(tab) ? { tab, sub: sub || '' } : null;
+  }
   function switchTab(tab){
+    setHash(tab, tab === 'catalog' ? catalogTab : tab === 'storefront' ? storefrontTab : '');
     document.querySelectorAll('.account-nav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
     ['overview','products','catalog','storefront','orders','returns','inventory','coupons','customers','reviews','analytics','messages','settings','adminusers','activitylog'].forEach(t=>{
       document.getElementById('panel-'+t).style.display = (t===tab) ? 'block' : 'none';
@@ -336,6 +345,16 @@
     if(tab==='activitylog') loadActivityLog();
   }
   document.querySelectorAll('.account-nav button').forEach(b=>b.addEventListener('click', ()=>switchTab(b.dataset.tab)));
+  // Editing the address (or the browser's Back / Forward) to another tab opens that tab.
+  window.addEventListener('hashchange', () => {
+    const t = hashTarget();
+    if(!t) return;
+    const current = document.querySelector('.account-nav button.active');
+    if(current && current.dataset.tab === t.tab && !t.sub) return;
+    if(t.tab === 'catalog' && t.sub && document.querySelector(`#catalogTabs [data-ctab="${t.sub}"]`)){ catalogTab = t.sub; document.querySelectorAll('#catalogTabs button').forEach(x=>x.classList.toggle('active', x.dataset.ctab === catalogTab)); }
+    if(t.tab === 'storefront' && t.sub && document.querySelector(`#storefrontTabs [data-stab="${t.sub}"]`)){ storefrontTab = t.sub; document.querySelectorAll('#storefrontTabs button').forEach(x=>x.classList.toggle('active', x.dataset.stab === storefrontTab)); }
+    switchTab(t.tab);
+  });
 
   // Jumps to the Orders tab and opens one specific order's detail — used from
   // places like a customer's order history that only show a summary line.
@@ -1813,15 +1832,31 @@
   let catalogTab = 'fabrics';
   document.querySelectorAll('#catalogTabs button').forEach(b=>b.addEventListener('click', ()=>{
     catalogTab = b.dataset.ctab;
+    setHash('catalog', catalogTab);
     document.querySelectorAll('#catalogTabs button').forEach(x=>x.classList.toggle('active', x===b));
     renderCatalogTab();
   }));
 
+  // Each time a sub-tab is opened it gets a brand-new, empty content box. A slower, earlier tab that is still
+  // loading then finishes into the old (now detached) box and can never paint over the tab that is open now - and
+  // any error it hits after being replaced is simply dropped.
+  function openSubTab(bodyId, render){
+    const old = document.getElementById(bodyId);
+    if(!old) return;
+    const fresh = old.cloneNode(false);
+    old.replaceWith(fresh);
+    Promise.resolve().then(render).catch(e => {
+      if(fresh.isConnected){ console.error(e); toast(e && e.message ? e.message : 'Could not load this tab.', 'error'); }
+    });
+  }
+
   function renderCatalogTab(){
-    if(catalogTab==='fabrics') renderFabricsTab();
-    else if(catalogTab==='occasions') renderOccasionsTab();
-    else if(catalogTab==='badges') renderBadgesTab();
-    else if(catalogTab==='collections') renderCollectionsTab();
+    openSubTab('catalogTabBody', () => {
+      if(catalogTab==='fabrics') return renderFabricsTab();
+      if(catalogTab==='occasions') return renderOccasionsTab();
+      if(catalogTab==='badges') return renderBadgesTab();
+      if(catalogTab==='collections') return renderCollectionsTab();
+    });
   }
 
   function slugify(s){ return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
@@ -2305,19 +2340,22 @@
   let storefrontTab = 'hero';
   document.querySelectorAll('#storefrontTabs button').forEach(b=>b.addEventListener('click', ()=>{
     storefrontTab = b.dataset.stab;
+    setHash('storefront', storefrontTab);
     document.querySelectorAll('#storefrontTabs button').forEach(x=>x.classList.toggle('active', x===b));
     renderStorefrontTab();
   }));
 
   function renderStorefrontTab(){
-    if(storefrontTab==='hero') renderHeroAdmin();
-    else if(storefrontTab==='announce') renderAnnouncementAdmin();
-    else if(storefrontTab==='weaves') renderWeaveSectionAdmin();
-    else if(storefrontTab==='promo') renderPromoAdmin();
-    else if(storefrontTab==='shopall') renderShopAllAdmin();
-    else if(storefrontTab==='reels') renderReelsAdmin();
-    else if(storefrontTab==='upcoming') renderUpcomingAdmin();
-    else if(storefrontTab==='faq') renderFaqAdmin();
+    openSubTab('storefrontTabBody', () => {
+      if(storefrontTab==='hero') return renderHeroAdmin();
+      if(storefrontTab==='announce') return renderAnnouncementAdmin();
+      if(storefrontTab==='weaves') return renderWeaveSectionAdmin();
+      if(storefrontTab==='promo') return renderPromoAdmin();
+      if(storefrontTab==='shopall') return renderShopAllAdmin();
+      if(storefrontTab==='reels') return renderReelsAdmin();
+      if(storefrontTab==='upcoming') return renderUpcomingAdmin();
+      if(storefrontTab==='faq') return renderFaqAdmin();
+    });
   }
 
   // ---- Hero ----
@@ -3410,9 +3448,21 @@
       applyRoleVisibility(admin.role);
       // Land on the first tab this role can actually see, in case they
       // bookmarked/reloaded on one they no longer have access to.
-      const active = document.querySelector('.account-nav button.active');
       const allowed = ROLE_TAB_ACCESS[admin.role];
-      if(allowed && active && !allowed.includes(active.dataset.tab)){
+      const wanted = hashTarget();                       // the tab the address points at (after a refresh)
+      const active = document.querySelector('.account-nav button.active');
+      const start = wanted && (!allowed || allowed.includes(wanted.tab)) ? wanted : null;
+      if(start){
+        if(start.tab === 'catalog' && start.sub && document.querySelector(`#catalogTabs [data-ctab="${start.sub}"]`)){
+          catalogTab = start.sub;
+          document.querySelectorAll('#catalogTabs button').forEach(x=>x.classList.toggle('active', x.dataset.ctab === catalogTab));
+        }
+        if(start.tab === 'storefront' && start.sub && document.querySelector(`#storefrontTabs [data-stab="${start.sub}"]`)){
+          storefrontTab = start.sub;
+          document.querySelectorAll('#storefrontTabs button').forEach(x=>x.classList.toggle('active', x.dataset.stab === storefrontTab));
+        }
+        switchTab(start.tab);
+      }else if(allowed && active && !allowed.includes(active.dataset.tab)){
         switchTab(allowed[0]);
       } else {
         loadOverview();

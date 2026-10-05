@@ -162,6 +162,24 @@ async function getProducts() {
   return attachVariants(rows.map(shapeBlended));
 }
 
+// Just the products and colours a bag or checkout needs - one query each, run side by side - instead of loading the
+// whole catalogue and then one query per line.
+async function getProductsByIds(ids) {
+  const list = [...new Set((ids || []).map(Number).filter(Number.isInteger))];
+  if (!list.length) return [];
+  return must(await supabase.from('products_blended').select('*').in('id', list), 'getProductsByIds').map(shapeBlended);
+}
+
+async function getProductsFullByIds(ids) {
+  return attachVariants(await getProductsByIds(ids));
+}
+
+async function getVariantsByIds(ids) {
+  const list = [...new Set((ids || []).map(Number).filter(Number.isInteger))];
+  if (!list.length) return [];
+  return must(await supabase.from('product_variants').select('*').in('id', list), 'getVariantsByIds');
+}
+
 async function getProductById(id) {
   const row = must(await supabase.from('products_blended').select('*').eq('id', id).maybeSingle(), 'getProductById');
   if (!row) return null;
@@ -259,14 +277,27 @@ async function getCollectionBySlug(slug) {
 }
 
 // ---- Settings (generic key/value store) ----
+// Settings (shipping, tax, banner, store info...) are read on almost every request but change rarely, so the raw
+// value is kept in memory for a few seconds. A save made through this server refreshes it immediately; a save made
+// by the other app (admin and storefront are separate processes) is picked up within SETTINGS_TTL_MS.
+const SETTINGS_TTL_MS = 8000;
+const settingsCache = new Map(); // key -> { raw: string | null, at: number }
+
 async function getSetting(key, fallback) {
-  const row = must(await supabase.from('settings').select('value').eq('key', key).maybeSingle(), 'getSetting');
-  if (!row) return fallback;
-  try { return JSON.parse(row.value); } catch { return fallback; }
+  let hit = settingsCache.get(key);
+  if (!hit || Date.now() - hit.at > SETTINGS_TTL_MS) {
+    const row = must(await supabase.from('settings').select('value').eq('key', key).maybeSingle(), 'getSetting');
+    hit = { raw: row ? row.value : null, at: Date.now() };
+    settingsCache.set(key, hit);
+  }
+  if (hit.raw === null) return fallback;
+  try { return JSON.parse(hit.raw); } catch { return fallback; }
 }
 
 async function setSetting(key, value) {
-  must(await supabase.from('settings').upsert({ key, value: JSON.stringify(value) }, { onConflict: 'key' }), 'setSetting');
+  const raw = JSON.stringify(value);
+  must(await supabase.from('settings').upsert({ key, value: raw }, { onConflict: 'key' }), 'setSetting');
+  settingsCache.set(key, { raw, at: Date.now() });
 }
 
 // ---- Phase 5 (search analytics) ----
@@ -554,7 +585,7 @@ const ready = (async () => {
 
 module.exports = {
   supabase, ready, fetchAllRows, fetchAllByIds,
-  getProducts, getProductById, getReelProducts,
+  getProducts, getProductById, getProductsByIds, getProductsFullByIds, getVariantsByIds, getReelProducts,
   getVariants, getVariantById, getVariantMedia, getPrimaryImagesByVariantIds, getDefaultVariant, syncProductMirrorFromDefaultVariant,
   getSetting, setSetting,
   getFabrics, getOccasions, getBadges, getCollections, getCollectionBySlug, getCollectionProductIds,

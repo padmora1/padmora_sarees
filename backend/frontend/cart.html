@@ -9,6 +9,7 @@
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
 <title>Your Bag — Padmora Sarees by Yashi</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fxjlgsatgajagzqdokbe.supabase.co" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -93,25 +94,45 @@
     document.getElementById('promoApply').addEventListener('click', applyPromo);
   }
 
-  async function changeQty(itemId, delta){
+  // + / - / Remove show their result at once (quantity, line price, subtotal, header badge) and the server catches
+  // up in the background, one change at a time and in order. When the last one is confirmed the exact totals
+  // (discount, shipping, tax) from the server replace the quick estimate; if anything fails the real bag is reloaded.
+  let cartPending = 0, cartChain = Promise.resolve();
+  function queueCartOp(op){
+    cartPending++;
+    cartChain = cartChain.then(op).then(res => {
+      cartPending--;
+      if(res && res.message) toast(res.message);
+      if(cartPending === 0 && res){ cart = res; renderCart(); refreshBadgeCounts(); }
+    }).catch(async e => {
+      cartPending--;
+      toast(e.message, 'error');
+      if(cartPending === 0){ try{ cart = await cartGet(); renderCart(); refreshBadgeCounts(); }catch(e2){ /* keep what is shown */ } }
+    });
+  }
+  function recomputeTotals(){
+    cart.subtotal = cart.items.reduce((sum, i) => sum + (i.product ? i.product.price * i.qty : 0), 0);
+    cart.total = Math.max(0, cart.subtotal - (cart.discount || 0)) + (cart.shippingFee || 0) + (cart.taxInclusive === false ? (cart.taxAmount || 0) : 0);
+    if(typeof setCartBadge === 'function') setCartBadge(cart.items.reduce((sum, i) => sum + i.qty, 0));
+  }
+
+  function changeQty(itemId, delta){
     const item = cart.items.find(i=>i.id===itemId);
+    if(!item) return;
     const newQty = item.qty + delta;
     if(newQty <= 0) return removeItem(itemId);
     if(delta > 0 && item.product && newQty > item.product.stock){
       toast(`Only ${item.product.stock} left in stock.`);
       return;
     }
-    try{
-      cart = await cartUpdateQty(itemId, newQty);
-      if(cart.message) toast(cart.message);
-      renderCart(); refreshBadgeCounts();
-    }catch(e){ toast(e.message, 'error'); }
+    item.qty = newQty;
+    recomputeTotals(); renderCart();
+    queueCartOp(() => cartUpdateQty(itemId, newQty));
   }
-  async function removeItem(itemId){
-    try{
-      cart = await cartRemoveItem(itemId);
-      renderCart(); refreshBadgeCounts();
-    }catch(e){ toast(e.message, 'error'); }
+  function removeItem(itemId){
+    cart.items = cart.items.filter(i => i.id !== itemId);
+    recomputeTotals(); renderCart();
+    queueCartOp(() => cartRemoveItem(itemId));
   }
   async function applyPromo(){
     if(cart.coupon){

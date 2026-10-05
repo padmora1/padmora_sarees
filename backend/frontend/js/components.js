@@ -101,7 +101,7 @@ function initHeader(activeHref) {
     mount.innerHTML = `
       <header class="site-header">
         <div class="header-inner">
-          <a href="/admin" class="logo"><img src="images/padmora-lotus.png" alt="" class="logo-mark">Padmora</a>
+          <a href="/admin" class="logo"><img src="images/padmora-lotus-sm.png" alt="" class="logo-mark" width="40" height="28">Padmora</a>
           <a href="/" class="admin-view-store" target="_blank" rel="noopener noreferrer">View Store ↗</a>
         </div>
       </header>`;
@@ -115,7 +115,7 @@ function initHeader(activeHref) {
         <button class="hamburger" id="hamburgerBtn" aria-label="Open menu">
           <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
         </button>
-        <a href="/" class="logo" aria-label="Padmora — home"><img src="images/padmora-lotus.png" alt="" class="logo-mark"><span class="logo-text-stage" aria-hidden="true"><span class="logo-text-el active" id="logoTextEn">Padmora</span><span class="logo-text-el lang-mr" id="logoTextMr">पद्मोरा</span></span></a>
+        <a href="/" class="logo" aria-label="Padmora — home"><img src="images/padmora-lotus-sm.png" alt="" class="logo-mark" width="40" height="28"><span class="logo-text-stage" aria-hidden="true"><span class="logo-text-el active" id="logoTextEn">Padmora</span><span class="logo-text-el lang-mr" id="logoTextMr">पद्मोरा</span></span></a>
         <nav class="main-nav">
           ${NAV_LINKS.map(l => l.dropdown ? `
             <div class="nav-item">
@@ -242,14 +242,31 @@ function startLogoLanguageCycle() {
   }, 8000);
 }
 
+function setCartBadge(n) {
+  const el = document.getElementById('cartCount');
+  if (el) el.textContent = n;
+  const bn = document.querySelector('[data-bn-badge="Bag"]');
+  if (bn) { bn.textContent = n; bn.style.display = n ? 'flex' : 'none'; }
+}
+function setWishBadge(n) {
+  const el = document.getElementById('wishlistCount');
+  if (el) el.textContent = n;
+  const bn = document.querySelector('[data-bn-badge="Wishlist"]');
+  if (bn) { bn.textContent = n; bn.style.display = n ? 'flex' : 'none'; }
+}
+
+// Guests: the numbers are already in this browser, so no request at all. Logged-in customers: two tiny count
+// requests (not the whole bag and wishlist).
 async function refreshBadgeCounts() {
-  const cartEl = document.getElementById('cartCount');
-  const wishEl = document.getElementById('wishlistCount');
   try {
-    const [cartData, wishData] = await Promise.all([cartGet(), wishlistGet()]);
-    if (cartEl) cartEl.textContent = cartData.items.reduce((s, i) => s + i.qty, 0);
-    if (wishEl) wishEl.textContent = wishData.products.length;
-    updateBottomNavBadges(cartData, wishData);
+    if (!isLoggedIn()) {
+      setCartBadge(getGuestCart().reduce((sum, i) => sum + (i.qty || 0), 0));
+      setWishBadge(getGuestWishlist().length);
+      return;
+    }
+    const [c, w] = await Promise.all([apiFetch('/cart/count'), apiFetch('/wishlist/count')]);
+    setCartBadge(c.count);
+    setWishBadge(w.count);
   } catch (e) {
     // Fail silently on the badge counts — not worth interrupting the page.
   }
@@ -397,55 +414,73 @@ async function openMiniCart() {
   await renderMiniCart();
 }
 
-async function renderMiniCart() {
+let miniCartData = null;   // the last bag shown in the drawer (names, prices, photos)
+
+function drawMiniCart() {
   const body = document.getElementById('miniCartBody');
   const foot = document.getElementById('miniCartFoot');
-  try {
-    const cart = await cartGet();
-    if (!cart.items.length) {
-      body.innerHTML = `<div class="empty-state" style="padding:40px 16px;"><p>Your bag is empty.</p></div>`;
-      foot.innerHTML = `<a href="/shop" class="btn btn-primary btn-block" style="justify-content:center;">Browse Sarees</a>`;
-      return;
-    }
-    body.innerHTML = cart.items.map(item => `
-      <div class="mini-cart-line">
-        <div class="mini-cart-thumb" style="background:${photoBg(item.imageUrl, item.color)};"></div>
-        <div class="mini-cart-line-info">
-          <strong>${item.product.name}</strong>
-          <span>${money(item.product.price)}</span>
-          <div class="qty-stepper mini-cart-stepper">
-            <button data-mini-dec="${item.id}">−</button><span>${item.qty}</span><button data-mini-inc="${item.id}">+</button>
-          </div>
+  if (!body || !miniCartData) return;
+  // quantities come from the live local picture of the bag, so +/- show up the instant they are tapped
+  const items = miniCartData.items
+    .map(i => ({ ...i, qty: i.variantId ? cardCart.qty(i.variantId) : i.qty }))
+    .filter(i => i.qty > 0 && i.product);
+  if (!items.length) {
+    body.innerHTML = `<div class="empty-state" style="padding:40px 16px;"><p>Your bag is empty.</p></div>`;
+    foot.innerHTML = `<a href="/shop" class="btn btn-primary btn-block" style="justify-content:center;">Browse Sarees</a>`;
+    return;
+  }
+  const subtotal = items.reduce((sum, i) => sum + i.product.price * i.qty, 0);
+  body.innerHTML = items.map(item => `
+    <div class="mini-cart-line">
+      <div class="mini-cart-thumb" style="background:${photoBg(item.imageUrl, item.color)};"></div>
+      <div class="mini-cart-line-info">
+        <strong>${item.product.name}</strong>
+        <span>${money(item.product.price)}</span>
+        <div class="qty-stepper mini-cart-stepper">
+          <button data-mini-dec="${item.variantId}">−</button><span>${item.qty}</span><button data-mini-inc="${item.variantId}">+</button>
         </div>
-        <button class="remove-line" data-mini-remove="${item.id}" aria-label="Remove">&times;</button>
-      </div>`).join('');
-    foot.innerHTML = `
-      <div class="summary-row total" style="margin-bottom:12px;"><span>Subtotal</span><span>${money(cart.subtotal)}</span></div>
-      <a href="/cart" class="btn btn-outline btn-block" style="justify-content:center;margin-bottom:10px;">View Bag</a>
-      <a href="/checkout" class="btn btn-primary btn-block" style="justify-content:center;">Checkout</a>`;
+      </div>
+      <button class="remove-line" data-mini-remove="${item.variantId}" aria-label="Remove">&times;</button>
+    </div>`).join('');
+  foot.innerHTML = `
+    <div class="summary-row total" style="margin-bottom:12px;"><span>Subtotal</span><span>${money(subtotal)}</span></div>
+    <a href="/cart" class="btn btn-outline btn-block" style="justify-content:center;margin-bottom:10px;">View Bag</a>
+    <a href="/checkout" class="btn btn-primary btn-block" style="justify-content:center;">Checkout</a>`;
+}
 
-    document.querySelectorAll('[data-mini-remove]').forEach(btn => btn.addEventListener('click', async () => {
-      await cartRemoveItem(btn.dataset.miniRemove);
-      renderMiniCart();
-      refreshBadgeCounts();
-    }));
-    async function changeMiniQty(itemId, delta) {
-      const item = cart.items.find(i => i.id === itemId);
-      const newQty = item.qty + delta;
-      if (newQty <= 0) { await cartRemoveItem(itemId); renderMiniCart(); refreshBadgeCounts(); return; }
-      if (delta > 0 && item.product && newQty > item.product.stock) {
-        toast(`Only ${item.product.stock} left in stock.`);
-        return;
-      }
-      try {
-        const updated = await cartUpdateQty(itemId, newQty);
-        if (updated.message) toast(updated.message);
-        renderMiniCart();
-        refreshBadgeCounts();
-      } catch (e) { toast(e.message, 'error'); }
-    }
-    document.querySelectorAll('[data-mini-inc]').forEach(btn => btn.addEventListener('click', () => changeMiniQty(btn.dataset.miniInc, 1)));
-    document.querySelectorAll('[data-mini-dec]').forEach(btn => btn.addEventListener('click', () => changeMiniQty(btn.dataset.miniDec, -1)));
+// One handler for the whole drawer body, so redrawing never loses a listener.
+function bindMiniCartOnce() {
+  const body = document.getElementById('miniCartBody');
+  if (!body || body._bound) return;
+  body._bound = true;
+  body.addEventListener('click', e => {
+    const inc = e.target.closest('[data-mini-inc]'), dec = e.target.closest('[data-mini-dec]'), rm = e.target.closest('[data-mini-remove]');
+    const vid = Number((inc || dec || rm || {}).dataset ? (inc ? inc.dataset.miniInc : dec ? dec.dataset.miniDec : rm.dataset.miniRemove) : 0);
+    if (!vid || !miniCartData) return;
+    const item = miniCartData.items.find(i => Number(i.variantId) === vid);
+    if (!item) return;
+    const stock = item.product ? item.product.stock : null;
+    if (inc) cardCart.change(vid, 1, stock);
+    else if (dec) cardCart.change(vid, -1);
+    else cardCart.change(vid, -cardCart.qty(vid));
+  });
+  // redraw whenever the local bag changes (from here, a product card, or the product page)
+  cardCart.onChange(() => {
+    const drawer = document.getElementById('miniCartDrawer');
+    if (!drawer || !drawer.classList.contains('open') || !miniCartData) return;
+    // something was added that the drawer has not seen yet: fetch the details once
+    const unseen = Object.keys(cardCart.lines).some(v => !miniCartData.items.some(i => String(i.variantId) === v));
+    if (unseen) { renderMiniCart(); return; }
+    drawMiniCart();
+  });
+}
+
+async function renderMiniCart() {
+  const body = document.getElementById('miniCartBody');
+  try {
+    bindMiniCartOnce();
+    miniCartData = await cardCart.load();
+    drawMiniCart();
   } catch (e) {
     body.innerHTML = `<p style="padding:20px;color:var(--ink-soft);font-size:13px;">Could not load your bag.</p>`;
   }
@@ -520,15 +555,10 @@ async function openQuickView(productId) {
         render();
       }));
       const addBtn = document.getElementById('qvAddToBag');
-      if (addBtn) addBtn.addEventListener('click', async () => {
-        try {
-          await cartAdd(p.id, 1, selected.colorName, selected.id);
-          refreshBadgeCounts();
-          toast('Added to bag');
-          // Lets the product card behind the modal flip from "Add to Cart" to
-          // a qty stepper too, same as adding straight from the card does.
-          if (typeof window.refreshProductGrid === 'function') window.refreshProductGrid();
-        } catch (e) { toast(e.message, 'error'); }
+      if (addBtn) addBtn.addEventListener('click', () => {
+        // instant: the bag badge and the card behind update at once, the server catches up in the background
+        cardCart.add(p.id, selected.id, selected.colorName, selected.stock);
+        toast('Added to bag');
       });
     }
     render();
@@ -916,21 +946,84 @@ function showConfirmDialog(message, opts) {
   });
 }
 
-// Confetti burst for celebratory moments (order confirmed). Pure canvas,
-// no dependency — respects prefers-reduced-motion by skipping entirely.
+// ---------------------------------------------------------------------
+// Product cards: the hover "Add to Cart / Quick View" buttons, shared by every page that shows cards (shop, sale,
+// the recommended sarees on a product page). Adding and +/- go through cardCart (js/api.js), so they happen on screen
+// instantly and the server catches up in the background.
+// ---------------------------------------------------------------------
+const CARD_PRODUCTS = new Map();
+function registerCardProducts(list) { (list || []).forEach(p => CARD_PRODUCTS.set(p.id, p)); }
+function defaultVariantOf(p) { return (p && p.variants && (p.variants.find(v => v.isDefault) || p.variants[0])) || null; }
+
+function cardActionsInner(p) {
+  const dv = defaultVariantOf(p);
+  const line = dv ? cardCart.lines[dv.id] : null;
+  const colorEsc = (dv ? dv.colorName : (p.swatch || '')).replace(/'/g, "\\'");
+  const first = line && line.qty > 0
+    ? `<div class="card-qty-stepper"><button type="button" onclick="event.preventDefault();cardChangeQty(${dv.id}, -1);">−</button><span>${line.qty}</span><button type="button" onclick="event.preventDefault();cardChangeQty(${dv.id}, 1);">+</button></div>`
+    : `<button type="button" onclick="event.preventDefault();quickAddToCart(${p.id}, ${dv ? dv.id : 'null'}, '${colorEsc}', this);">Add to Cart</button>`;
+  return first + `<button type="button" onclick="event.preventDefault();openQuickView(${p.id});">Quick View</button>`;
+}
+
+function quickAddToCart(productId, variantId, color) {
+  const p = CARD_PRODUCTS.get(Number(productId));
+  const dv = defaultVariantOf(p);
+  cardCart.add(productId, variantId, color, dv ? dv.stock : null);
+  toast('Added to bag');
+}
+
+function cardChangeQty(variantId, delta) {
+  let stock = null;
+  for (const p of CARD_PRODUCTS.values()) {
+    const v = (p.variants || []).find(x => x.id === Number(variantId));
+    if (v) { stock = v.stock; break; }
+  }
+  cardCart.change(variantId, delta, stock);
+}
+
+// Redraws only the cards whose bag quantity changed, and only their button area, so a card you are hovering keeps
+// its buttons on screen while the number changes.
+function syncCardActions() {
+  document.querySelectorAll('.product-card[data-pid]').forEach(card => {
+    const p = CARD_PRODUCTS.get(Number(card.dataset.pid));
+    if (!p || p.stock <= 0) return;
+    const dv = defaultVariantOf(p);
+    const q = dv ? cardCart.qty(dv.id) : 0;
+    if (String(q) !== (card.dataset.qty || '0')) {
+      card.dataset.qty = String(q);
+      const qa = card.querySelector('.quick-actions');
+      if (qa) qa.innerHTML = cardActionsInner(p);
+    }
+  });
+}
+cardCart.onChange(syncCardActions);
+
+// Confetti burst for celebratory moments (order confirmed). Pure canvas, no dependency.
+// Time-based, so it looks the same on a 60 Hz phone, a 120 Hz phone and a desktop: pieces fall the full height
+// of whatever screen this is (phones included) and only fade out at the very end. If the phone is in "reduce
+// motion" mode the pieces do not fall - they appear as a still sprinkle that fades - so the celebration is still
+// seen without any movement. If the page is in the background (for example returning from a UPI app) it waits
+// until it is visible again.
 function fireConfetti(opts) {
-  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const options = Object.assign({ duration: 2600, pieceCount: 140 }, opts || {});
-  const colors = ['#AD3B5C', '#7A2740', '#D9A97C', '#F2B9BB', '#B87F55', '#D9749A'];
+  if (document.hidden) {
+    const again = () => { if (!document.hidden) { document.removeEventListener('visibilitychange', again); fireConfetti(opts); } };
+    document.addEventListener('visibilitychange', again);
+    return;
+  }
+  const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const W0 = window.innerWidth, H0 = window.innerHeight;
+  const options = Object.assign({ duration: reduce ? 1800 : 4200, pieceCount: W0 < 640 ? 120 : 170 }, opts || {});
+  const colors = ['#AD3B5C', '#7A2740', '#D9A97C', '#F2B9BB', '#B87F55', '#D9749A', '#E8C07A'];
 
   const canvas = document.createElement('canvas');
-  canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9999;';
+  canvas.setAttribute('aria-hidden', 'true');
+  canvas.style.cssText = 'position:fixed;left:0;top:0;pointer-events:none;z-index:9999;';
   document.body.appendChild(canvas);
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
   function size() {
-    canvas.width = window.innerWidth * dpr;
-    canvas.height = window.innerHeight * dpr;
+    canvas.width = Math.round(window.innerWidth * dpr);
+    canvas.height = Math.round(window.innerHeight * dpr);
     canvas.style.width = window.innerWidth + 'px';
     canvas.style.height = window.innerHeight + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -940,37 +1033,42 @@ function fireConfetti(opts) {
   window.addEventListener('resize', onResize);
 
   const pieces = Array.from({ length: options.pieceCount }, () => ({
-    x: window.innerWidth * (0.15 + Math.random() * 0.7),
-    y: -20 - Math.random() * 200,
-    w: 6 + Math.random() * 6,
-    h: 8 + Math.random() * 10,
+    x: W0 * (0.04 + Math.random() * 0.92),
+    y: reduce ? H0 * (0.08 + Math.random() * 0.7) : -20 - Math.random() * H0 * 0.55,
+    w: 6 + Math.random() * 7,
+    h: 9 + Math.random() * 10,
     color: colors[Math.floor(Math.random() * colors.length)],
     rot: Math.random() * Math.PI,
-    vRot: (Math.random() - 0.5) * 0.3,
-    vx: (Math.random() - 0.5) * 3,
-    vy: 2 + Math.random() * 3,
+    vRot: (Math.random() - 0.5) * 6,          // radians per second
+    vx: (Math.random() - 0.5) * 110,          // px per second
+    vy: H0 * (0.30 + Math.random() * 0.34),   // the whole screen height in roughly 2-3 seconds
     tilt: Math.random() * Math.PI,
-    vTilt: 0.08 + Math.random() * 0.08,
+    vTilt: 5 + Math.random() * 5,
     shape: Math.random() > 0.5 ? 'rect' : 'circle'
   }));
 
   const start = performance.now();
-  let rafId;
+  let last = start;
   function frame(now) {
     const elapsed = now - start;
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    const fade = Math.min(1, Math.max(0, (options.duration - elapsed) / (options.duration * 0.3)));
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
     pieces.forEach(p => {
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy += 0.02;
-      p.rot += p.vRot;
-      p.tilt += p.vTilt;
-      const wobble = Math.sin(p.tilt) * 6;
+      if (!reduce) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 40 * dt;
+        p.rot += p.vRot * dt;
+        p.tilt += p.vTilt * dt;
+      }
+      const wobble = reduce ? 0 : Math.sin(p.tilt) * 6;
       ctx.save();
       ctx.translate(p.x + wobble, p.y);
       ctx.rotate(p.rot);
       ctx.fillStyle = p.color;
-      ctx.globalAlpha = Math.max(0, 1 - elapsed / options.duration);
+      ctx.globalAlpha = fade;
       if (p.shape === 'circle') {
         ctx.beginPath();
         ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2);
@@ -981,13 +1079,13 @@ function fireConfetti(opts) {
       ctx.restore();
     });
     if (elapsed < options.duration) {
-      rafId = requestAnimationFrame(frame);
+      requestAnimationFrame(frame);
     } else {
       window.removeEventListener('resize', onResize);
       canvas.remove();
     }
   }
-  rafId = requestAnimationFrame(frame);
+  requestAnimationFrame(frame);
 }
 window.fireConfetti = fireConfetti;
 
