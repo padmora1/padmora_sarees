@@ -8,6 +8,10 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/images/favicon-192.png">
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
 <title>Contact Us — Padmora Sarees by Yashi</title>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Padmora by Yashi">
+<meta property="og:title" content="Contact Us — Padmora Sarees by Yashi">
+<meta property="og:description" content="Get in touch with Padmora by Yashi — questions about an order, a saree, or our weavers.">
 <meta name="description" content="Get in touch with Padmora by Yashi — questions about an order, a saree, or our weavers.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -31,8 +35,8 @@
       <div class="contact-layout">
         <div class="contact-info-card">
           <h3>Get in Touch</h3>
-          <p>📞 +91 98765 43210<br>Mon–Sat, 10am–7pm IST</p>
-          <p>✉️ hello@padmora.example</p>
+          <p>📞 <span id="cPhone">…</span><br>Mon–Sat, 10am–7pm IST</p>
+          <p>✉️ <a id="cMail" href="#" style="color:inherit;">…</a></p>
           <p>📍 Padmora by Yashi Studio<br>Bandra West, Mumbai, Maharashtra 400050</p>
           <p style="margin-top:20px;">Ordering 5+ sarees at once? Mention it in your message and our team will follow up with a bundle quote.</p>
         </div>
@@ -66,6 +70,13 @@
 <script src="js/api.js"></script>
 <script src="js/components.js"></script>
 <script src="js/cursor.js"></script>
+<script>
+  // The phone number and e-mail shown here are the ones saved in Admin → Settings → Store, never typed into the page.
+  apiFetch('/settings/store').then(({ store }) => {
+    if (store.contactPhone) document.getElementById('cPhone').textContent = store.contactPhone;
+    if (store.contactEmail) { const m = document.getElementById('cMail'); m.textContent = store.contactEmail; m.href = 'mailto:' + store.contactEmail; }
+  }).catch(() => {});
+</script>
 <script>
   document.getElementById('contactForm').addEventListener('submit', async (e)=>{
     e.preventDefault();

@@ -196,11 +196,43 @@ function productPhotoUrl(p) {
   for (let i = 0; !url && i < vs.length; i++) url = primaryPhotoOf(vs[i].media);
   return url;
 }
-function photoBg(url, swatchKey) {
-  const u = String(url || '').replace(/'/g, '%27');
+// Smaller copy of a photo for cards, thumbnails and banners. The photos live in Supabase Storage, which can hand out a
+// resized version of any of them (a phone does not need a 2000px picture for a 300px card). The wanted width is
+// passed in; anything that is not one of our storage photos (or if resizing is ever switched off) is used as it is.
+// A card whose small copy fails to load still shows its colour swatch behind it.
+const IMG_RESIZE_OFF_KEY = 'padmora_img_resize_off';
+let _lastResizedPhoto = '';
+function imgResizeAllowed() {
+  try { const t = Number(localStorage.getItem(IMG_RESIZE_OFF_KEY) || 0); return !(t && Date.now() - t < 24 * 3600 * 1000); } catch (e) { return true; }
+}
+function sizedPhoto(url, width, quality) {
+  const u = String(url || '');
+  if (!width || !imgResizeAllowed() || u.indexOf('/storage/v1/object/public/') === -1) return u;
+  _lastResizedPhoto = u.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=' + Math.round(width) + '&quality=' + (quality || 72) + '&resize=contain';
+  return _lastResizedPhoto;
+}
+// Quietly checks, at most once a day, that a resized photo really loads; if it does not, every page goes back to the originals.
+(function probeImageResize() {
+  try {
+    const last = Number(localStorage.getItem('padmora_img_resize_checked') || 0);
+    if (last && Date.now() - last < 24 * 3600 * 1000) return;
+    window.addEventListener('load', () => setTimeout(() => {
+      if (!_lastResizedPhoto) return;
+      try { localStorage.setItem('padmora_img_resize_checked', String(Date.now())); } catch (e) { return; }
+      const t = new Image();
+      t.onload = () => { try { localStorage.removeItem(IMG_RESIZE_OFF_KEY); } catch (e) {} };
+      t.onerror = () => { try { localStorage.setItem(IMG_RESIZE_OFF_KEY, String(Date.now())); } catch (e) {} };
+      t.src = _lastResizedPhoto;
+    }, 2500));
+  } catch (e) { /* ignore */ }
+})();
+// width = the widest this picture is shown (CSS pixels); the screen's pixel density is allowed for.
+function photoBg(url, swatchKey, width) {
+  const dpr = Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1);
+  const u = sizedPhoto(url, (width || 360) * dpr).replace(/'/g, '%27');
   return u ? `url('${u}') center/cover no-repeat, ${swatchBg(swatchKey)}` : swatchBg(swatchKey);
 }
-function productBg(p) { return photoBg(productPhotoUrl(p), p && p.swatch); }
+function productBg(p, width) { return photoBg(productPhotoUrl(p), p && p.swatch, width); }
 
 // The crossed-out original price and "% off" belong to Sale sarees only. Every other saree shows one
 // price — what it actually sells for — so shoppers aren't nudged by a discount that isn't a real sale.

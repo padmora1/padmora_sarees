@@ -8,6 +8,8 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/images/favicon-192.png">
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
 <title>My Account — Padmora Sarees by Yashi</title>
+<meta name="description" content="Manage your Padmora account: profile, saved addresses, orders, returns and reviews.">
+<meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fxjlgsatgajagzqdokbe.supabase.co" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -301,7 +303,6 @@
           <div class="order-timeline">
             ${o.timeline.map(t=>`<div class="tl-step ${t.done?'done':''}"><div class="tl-dot"></div><div class="tl-label">${t.status}</div></div>`).join('')}
           </div>` : ''}
-          ${o.giftNote ? `<p style="font-size:12.5px;color:var(--ink-soft);margin:10px 0;">🎁 Gift note: “${escHTML(o.giftNote)}”</p>` : ''}
           ${o.items.map(li=>`<div class="order-item-row"><span>${li.name} × ${li.qty}${li.canReview ? ` <button type="button" class="order-review-btn" data-review-order="${o.id}" data-review-item="${li.id}">Write a review</button>` : li.reviewed ? ' <span class="order-reviewed">✓ Reviewed</span>' : ''}</span><span>${money(li.price*li.qty)}</span></div><div id="reviewForm-${o.id}-${li.id}"></div>`).join('')}
           ${o.discount > 0 ? `<div class="order-item-row"><span>Discount ${o.couponCode ? '('+o.couponCode+')' : ''}</span><span>−${money(o.discount)}</span></div>` : ''}
           <div class="order-item-row" style="font-weight:600;color:var(--ink);border-top:1px solid rgba(173,59,92,0.1);margin-top:8px;padding-top:8px;">
@@ -796,10 +797,26 @@
     });
   }
 
+  // The review e-mail links here as /account?review=<order>:<item>#orders: open Order History and that saree's review form.
+  async function openReviewFromLink(){
+    const param = new URLSearchParams(location.search).get('review');
+    if(!param || param.indexOf(':') === -1) return;
+    const [orderId, itemId] = param.split(':');
+    const panel = document.getElementById('panel-orders');
+    if(!panel || panel.style.display === 'none') switchTab('orders');   // already open when the link carries #orders
+    for(let i = 0; i < 60 && !lastOrders.length; i++) await new Promise(r => setTimeout(r, 150));   // wait for the order list to load
+    const btn = document.querySelector(`[data-review-order="${CSS.escape(orderId)}"][data-review-item="${CSS.escape(itemId)}"]`);
+    if(!btn){ toast('That saree has already been reviewed — thank you!'); return; }
+    openReviewForm(orderId, itemId);
+    const form = document.getElementById('reviewForm-' + orderId + '-' + itemId);
+    if(form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
   if(requireLogin()){
     loadProfile();
     const wanted = (location.hash || '').replace(/^#/, '');
     if(ACCOUNT_TABS.includes(wanted) && wanted !== 'profile') switchTab(wanted);
+    openReviewFromLink();
   }
 </script>
 </body>

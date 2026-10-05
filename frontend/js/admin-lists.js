@@ -141,5 +141,8 @@ const AdminLists = (() => {
     if (box) { e.preventDefault(); box.focus(); box.select(); }
   });
 
-  return { createTools, parseQuery, matches, highlight, inRange, presetRange, fmtDate, fmtDateTime, downloadCsv };
+  // Today's date in the admin's own time zone (YYYY-MM-DD), for file names. toISOString() would give the UTC date, which is
+  // yesterday's date for the first hours of the day in India.
+  const today = () => ymd(new Date());
+  return { createTools, parseQuery, matches, highlight, inRange, presetRange, fmtDate, fmtDateTime, downloadCsv, today };
 })();

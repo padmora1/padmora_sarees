@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/images/favicon-192.png">
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
-<title>Padmora Sarees by Yashi</title>
+<title>Padmora Sarees by Yashi — Handloom Maheshwari, Paithani, Ajrakh &amp; Narayanpet Sarees</title>
 <meta name="description" content="Handloom and heritage sarees sourced directly from India's weaving communities — Maheshwari, Ajrakh, Paithani and Narayanpet, with honest loom-to-you provenance on every piece.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Padmora Sarees by Yashi">
@@ -214,7 +214,7 @@
     const link = escAttr(h.ctaLink || '/shop');
     const label = escAttr(h.ctaText || 'Shop All Sarees');
     const media = desktop
-      ? `<picture>${h.mobileImage ? `<source media="(max-width:760px)" srcset="${escAttr(h.mobileImage)}">` : ''}<img class="home-hero-img" src="${escAttr(desktop)}" alt="${escAttr(h.altText || 'Padmora sarees')}" fetchpriority="high" decoding="async"></picture>`
+      ? `<picture><source media="(max-width:760px)" srcset="${escAttr(sizedPhoto(h.mobileImage || desktop, 900, 75))}"><img class="home-hero-img" src="${escAttr(sizedPhoto(desktop, 1600, 75))}" alt="${escAttr(h.altText || 'Padmora sarees')}" fetchpriority="high" decoding="async"></picture>`
       : `<div class="home-hero-fallback"></div>`;
     section.innerHTML = `<a class="home-hero-link" href="${link}" aria-label="${label}">${media}<span class="home-hero-btn"><span>${label}</span><i><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></i></span></a>`;
     section.style.display = '';
@@ -255,7 +255,7 @@
     // this clickable rail until there's something to actually show.
     rail.innerHTML = fabrics.filter(f=>f.productCount > 0).map(f=>`
       <a class="cat-item" href="/shop?fabric=${encodeURIComponent(f.name)}">
-        <div class="cat-swatch"><div class="cat-swatch-inner" style="background:${photoBg(f.thumbnail || f.heroImage, f.swatch)};"></div></div>
+        <div class="cat-swatch"><div class="cat-swatch-inner" style="background:${photoBg(f.thumbnail || f.heroImage, f.swatch, 200)};"></div></div>
         <strong>${escHTML(f.name)}</strong>
       </a>`).join('');
     // Only show scroll arrows once there's actually more to scroll to —
@@ -281,7 +281,7 @@
 
   function reelCardHTML(p){
     const mediaHTML = p.reelVideo
-      ? `<video class="reel-media" src="${p.reelVideo}" ${p.reelThumbnail?`poster="${p.reelThumbnail}"`:''} muted loop playsinline preload="metadata"></video>`
+      ? `<video class="reel-media" src="${p.reelVideo}" ${p.reelThumbnail?`poster="${escAttr(sizedPhoto(p.reelThumbnail, 380 * Math.min(2, window.devicePixelRatio || 1)))}"`:''} muted loop playsinline preload="${p.reelThumbnail ? 'none' : 'metadata'}"></video>`
       : p.reelThumbnail
         ? `<div class="reel-media" style="background:url('${p.reelThumbnail}') center/cover;"></div>`
         : `<div class="reel-media reel-placeholder" style="background:${swatchBg(p.swatch)};"></div>`;
@@ -428,7 +428,7 @@
         const v = (p.variants || []).find(v=>v.isDefault) || (p.variants || [])[0];
         const media = (v && v.media || []);
         const img = media.find(m=>m.type==='image' && m.isPrimary) || media.find(m=>m.type==='image');
-        const bg = img ? `background-image:url('${escAttr(img.url)}');` : `background:${swatchBg(p.swatch)};`;
+        const bg = img ? `background-image:url('${escAttr(sizedPhoto(img.url, 420 * Math.min(2, window.devicePixelRatio || 1)))}');` : `background:${swatchBg(p.swatch)};`;
         return `<a class="sa-card" href="/product?id=${p.id}" style="--sx:${sl.sx};--y:${sl.y};--rot:${sl.rot};--depth:${sl.depth};--z:${sl.z};">
           <div class="sa-card-inner" style="${bg}--delay:${sl.delay};">
             <div class="sa-card-cap"><strong>${escAttr(p.name)}</strong><span>${escAttr(p.fabric)} · ${money(p.price)}</span></div>

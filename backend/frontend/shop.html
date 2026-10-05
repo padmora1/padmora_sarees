@@ -115,7 +115,7 @@
     occasion: params.get('occasion') ? new Set([params.get('occasion')]) : new Set(),
     color: params.get('color') ? new Set([params.get('color')]) : new Set(),
     // a budget handed over by a link (the Find My Saree results) - a floor and/or a ceiling
-    maxPrice: (Number(params.get('maxPrice')) > 0 && Number(params.get('maxPrice')) < 25000) ? Math.max(1500, Number(params.get('maxPrice'))) : 25000,
+    maxPrice: Number(params.get('maxPrice')) > 0 ? Math.max(1500, Number(params.get('maxPrice'))) : Number.MAX_SAFE_INTEGER,   // no ceiling until a link or the slider sets one
     minPrice: Number(params.get('minPrice')) > 0 ? Number(params.get('minPrice')) : 0,
     sort: params.get('sort') || 'popular',
     search: params.get('search') || '',
@@ -174,6 +174,26 @@
   // are applied — same expectation as the Fabric/Occasion lists).
   let allColors = [];
 
+  // The price slider reaches up to the dearest saree in the shop (rounded up to the next 5,000), so a Rs. 70,000 saree
+  // is never out of reach; with the slider all the way right, no price limit is applied at all.
+  let priceCap = 25000;
+  const priceRangeEl = () => document.getElementById('priceRange');
+  function syncPriceUI(){
+    const shown = Math.min(state.maxPrice, priceCap);
+    priceRangeEl().value = shown;
+    document.getElementById('priceLabel').textContent = shown.toLocaleString('en-IN');
+  }
+  function applyPriceCap(list){
+    let top = 0, bottom = Infinity;
+    (list || []).forEach(p => [p.price].concat((p.variants || []).map(v => v.price)).forEach(x => { if(x > top) top = x; if(x > 0 && x < bottom) bottom = x; }));
+    priceCap = top > 0 ? Math.max(5000, Math.ceil(top / 5000) * 5000) : 25000;
+    const r = priceRangeEl();
+    r.max = priceCap;
+    r.min = Math.max(0, isFinite(bottom) ? Math.min(1500, Math.floor(bottom / 500) * 500) : 1500);
+    if(state.maxPrice > priceCap) state.maxPrice = priceCap;
+    syncPriceUI();
+  }
+
   async function loadTaxonomy(){
     try{
       const [{fabrics}, {occasions}, {products}] = await Promise.all([apiFetch('/fabrics'), apiFetch('/occasions'), apiFetch('/products')]);
@@ -183,6 +203,7 @@
       allFabrics = fabrics.filter(f=>f.productCount > 0).map(f=>f.name);
       allOccasions = occasions.map(o=>o.name);
       allColors = [...new Set(products.map(p=>String(p.swatch||'').trim().toLowerCase()).filter(Boolean))].sort();
+      applyPriceCap(collectionData ? collectionData.products : products);
       // Inside a collection, only offer fabrics/colours that exist in it.
       if(collectionData){
         const inColl = collectionData.products;
@@ -220,11 +241,10 @@
     }));
   }
 
-  document.getElementById('priceRange').value = state.maxPrice;
-  document.getElementById('priceLabel').textContent = state.maxPrice.toLocaleString('en-IN');
+  syncPriceUI();
   document.getElementById('priceRange').addEventListener('input', e=>{
     state.maxPrice = Number(e.target.value);
-    document.getElementById('priceLabel').textContent = state.maxPrice.toLocaleString('en-IN');
+    syncPriceUI();
     state.loadedCount = 20;
     loadProducts();
   });
@@ -232,9 +252,8 @@
   document.getElementById('clearFilters').addEventListener('click', ()=>{
     // Keeps `collection` — clearing filters inside a collection shows the
     // whole collection again, not an unscoped escape to the full catalog.
-    state = { collection: state.collection, fabric:new Set(), occasion:new Set(), color:new Set(), maxPrice:25000, sort:'popular', search:'', loadedCount:20 };
-    document.getElementById('priceRange').value = 25000;
-    document.getElementById('priceLabel').textContent = '25000';
+    state = { collection: state.collection, fabric:new Set(), occasion:new Set(), color:new Set(), maxPrice:Number.MAX_SAFE_INTEGER, sort:'popular', search:'', loadedCount:20 };
+    syncPriceUI();
     document.getElementById('searchInput').value = '';
     setSort('popular');
     renderFilterOptions();
@@ -286,7 +305,7 @@
   // Badge on the Filters button = how many filters are on; the drawer's
   // footer button shows the live result count.
   function updateFilterSummary(total){
-    const n = state.fabric.size + state.occasion.size + state.color.size + (state.maxPrice < 25000 ? 1 : 0) + (state.minPrice ? 1 : 0) + (state.search ? 1 : 0);
+    const n = state.fabric.size + state.occasion.size + state.color.size + (state.maxPrice < priceCap ? 1 : 0) + (state.minPrice ? 1 : 0) + (state.search ? 1 : 0);
     const badge = document.getElementById('filtersBadge');
     badge.textContent = n;
     badge.style.display = n ? '' : 'none';
@@ -350,7 +369,7 @@
     if(state.fabric.size) q.set('fabric', [...state.fabric].join(','));
     if(state.occasion.size) q.set('occasion', [...state.occasion].join(','));
     if(state.color.size) q.set('color', [...state.color].join(','));
-    if(state.maxPrice < 25000) q.set('maxPrice', state.maxPrice);
+    if(state.maxPrice < priceCap) q.set('maxPrice', state.maxPrice);
     if(state.minPrice) q.set('minPrice', state.minPrice);
     if(state.search) q.set('search', state.search);
     if(state.sort) q.set('sort', state.sort);

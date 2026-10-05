@@ -8,6 +8,8 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/images/favicon-192.png">
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
 <title>Checkout — Padmora Sarees by Yashi</title>
+<meta name="description" content="Secure checkout for your Padmora saree order.">
+<meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
@@ -47,7 +49,6 @@
           </div>
           <div class="form-field"><label>Phone Number</label><input type="tel" id="phone" placeholder="+91 98765 43210"></div>
         </div>
-        <div class="form-field"><label>Gift note (optional) — sending this as a gift?</label><textarea id="giftNote" rows="2" placeholder="e.g. Happy Anniversary, Ma! With love, Ananya"></textarea></div>
         <label class="filter-option" id="saveAddressField" style="margin-bottom:16px;"><input type="checkbox" id="saveAddress"> Save this address for next time</label>
         <p id="guestAccountNudge" style="display:none;font-size:12.5px;color:var(--ink-soft);margin-bottom:16px;">Checking out as a guest. <a href="/login?redirect=/checkout" style="color:var(--maroon);text-decoration:underline;">Log in</a> to save this address and track orders from your account.</p>
         <button class="btn btn-primary btn-block" style="justify-content:center;" id="toStep2">Continue to Payment</button>
@@ -196,7 +197,7 @@
     // what is being paid for, with quantity and remove
     document.getElementById('coItems').innerHTML = cart.items.map((i, idx) => `
       <div class="co-item">
-        <span class="co-item-thumb" style="background:${photoBg(i.imageUrl, i.color)};"></span>
+        <span class="co-item-thumb" style="background:${photoBg(i.imageUrl, i.color, 100)};"></span>
         <span class="co-item-info">
           <strong>${escHTML(i.product ? i.product.name : '')}</strong>
           <small>${escHTML(i.colorName || '')}</small>
@@ -397,20 +398,19 @@
     errBox.classList.remove('show');
     const btn = document.getElementById('toStep3');
     const address = currentAddress();
-    const giftNote = document.getElementById('giftNote').value.trim() || undefined;
     const loggedIn = isLoggedIn();
 
     btn.disabled = true; btn.textContent = 'Starting payment…';
     try{
       let session;
       if(loggedIn){
-        const body = { address, giftNote, couponCode: cart.coupon };
+        const body = { address, couponCode: cart.coupon };
         if(buyNowItem) body.items = [buyNowItem];   // Buy Now: pay for this one saree only, leave the bag alone
         session = await apiFetch('/payments/razorpay/order', { method:'POST', body: JSON.stringify(body) });
       }else{
         const email = document.getElementById('guestEmail').value.trim();
         const items = (buyNowItem ? [buyNowItem] : cart.items).map(i => ({ productId: i.productId, variantId: i.variantId, qty: i.qty }));
-        session = await apiFetch('/payments/razorpay/guest-order', { method:'POST', body: JSON.stringify({ address, giftNote, couponCode: cart.coupon, items, email }) });
+        session = await apiFetch('/payments/razorpay/guest-order', { method:'POST', body: JSON.stringify({ address, couponCode: cart.coupon, items, email }) });
       }
 
       const user = getStoredUser();

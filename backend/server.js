@@ -33,6 +33,7 @@ const { checkWishlistAlerts } = require('./utils/wishlistAlerts');
 const { checkAbandonedCarts } = require('./utils/abandonedCart');
 const { checkLowStock } = require('./utils/lowStockAlerts');
 const { checkPrebookNotifications } = require('./utils/prebookAlerts');
+const { checkReviewReminders } = require('./utils/reviewReminders');
 const { ready: dbReady } = require('./utils/db');
 
 const app = express();
@@ -52,7 +53,14 @@ function isAdminHost(req) {
 }
 function adminHostOnly(req, res, next) {
   if (!ADMIN_HOST || isAdminHost(req)) return next();
-  return res.status(404).json({ message: 'Not found.' });
+  return sendNotFound(req, res);
+}
+// A page that does not exist: the branded 404 page for a browser (with a real 404 status, so search engines drop
+// the address); plain JSON for the API and plain text for a missing script/image.
+function sendNotFound(req, res) {
+  if (req.path.startsWith('/api/')) return res.status(404).json({ message: 'Not found.' });
+  if (!/text\/html/.test(req.headers.accept || '')) return res.status(404).type('text/plain').send('Not found');
+  res.status(404).sendFile(path.join(__dirname, 'frontend', '404.html'), err => { if (err && !res.headersSent) res.status(404).type('text/plain').send('Not found'); });
 }
 
 // Browser-hardening headers on every response. The admin panel (and its API) can never be shown inside another
@@ -125,6 +133,61 @@ function withQuery(req, cleanPath) {
   const qsIndex = req.url.indexOf('?');
   return qsIndex === -1 ? cleanPath : cleanPath + req.url.slice(qsIndex);
 }
+// A product page is one HTML file for every saree; the saree's own name, description and photo are filled in by the
+// page's script. Search engines and link previews (WhatsApp, Instagram, Facebook) often do not run that script, so the
+// server writes the saree's title, description, share photo and canonical address into the page before sending it.
+const productMetaCache = new Map();   // id -> { at, meta }
+const PRODUCT_META_TTL = 60 * 1000;
+const escAttr = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+async function productMeta(id) {
+  const hit = productMetaCache.get(id);
+  if (hit && Date.now() - hit.at < PRODUCT_META_TTL) return hit.meta;
+  const { getProductById } = require('./utils/db');
+  const { richToPlain } = require('./utils/richText');
+  const p = await getProductById(id);
+  let meta = null;
+  if (p && p.status !== 'archived') {
+    const variants = (p.variants || []).filter(v => !v.archived);
+    const def = variants.find(v => v.is_default) || variants[0];
+    const media = def && (def.media || []).filter(m => m.type === 'image');
+    const photo = media && media.length ? (media.find(m => m.is_primary) || media[0]).url : '';
+    const colours = variants.map(v => v.color_name).filter(Boolean);
+    const plain = richToPlain(p.description || (def && def.description) || '').replace(/\s+/g, ' ').trim();
+    const fallback = `${p.name}: a handloom ${p.fabric} saree${colours.length ? ' in ' + colours.slice(0, 3).join(', ') : ''}, from Rs. ${def ? def.price : p.price}. Free shipping above Rs. 1,999 and easy returns from Padmora by Yashi.`;
+    meta = {
+      title: `${p.name} — ${p.fabric} Saree | Padmora Sarees by Yashi`,
+      description: (plain || fallback).slice(0, 158),
+      image: photo ? photo.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/') + '?width=1200&quality=78&resize=contain' : ''
+    };
+  }
+  productMetaCache.set(id, { at: Date.now(), meta });
+  return meta;
+}
+let productHtml = null;
+app.get('/product', async (req, res) => {
+  const file = path.join(FRONTEND_DIR, 'product.html');
+  const id = Number(req.query.id);
+  try {
+    if (!Number.isInteger(id) || id < 1) return res.sendFile(file);
+    const meta = await productMeta(id);
+    if (!meta) return sendNotFound(req, res);   // a saree that does not exist (or was removed) is a real 404, not a blank page
+    if (!productHtml || productHtml.at < require('fs').statSync(file).mtimeMs) productHtml = { at: Date.now(), html: require('fs').readFileSync(file, 'utf8') };
+    const base = process.env.SITE_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+    const url = `${base}/product?id=${id}`;
+    let html = productHtml.html
+      .replace(/<title>[^<]*<\/title>/, `<title>${escAttr(meta.title)}</title>`)
+      .replace(/(<meta name="description" id="metaDescription" content=")[^"]*(")/, `$1${escAttr(meta.description)}$2`)
+      .replace(/(<meta property="og:title" id="ogTitle" content=")[^"]*(")/, `$1${escAttr(meta.title)}$2`)
+      .replace(/(<meta property="og:description" id="ogDescription" content=")[^"]*(")/, `$1${escAttr(meta.description)}$2`)
+      .replace(/(<meta property="og:image" id="ogImage" content=")[^"]*(")/, `$1${escAttr(meta.image)}$2`);
+    html = html.replace('</head>', `<link rel="canonical" href="${escAttr(url)}">\n<meta property="og:url" content="${escAttr(url)}">\n<meta name="twitter:card" content="${meta.image ? 'summary_large_image' : 'summary'}">\n</head>`);
+    res.set('Cache-Control', 'no-cache').type('html').send(html);
+  } catch (err) {
+    console.error('GET /product meta failed:', err.message);
+    res.sendFile(file);
+  }
+});
+
 CLEAN_PAGES.forEach(name => {
   app.get(`/${name}`, (req, res) => res.sendFile(path.join(FRONTEND_DIR, `${name}.html`)));
   app.get(`/${name}.html`, (req, res) => res.redirect(301, withQuery(req, `/${name}`)));
@@ -170,11 +233,10 @@ app.use(express.static(FRONTEND_DIR, {
 // Admin-uploaded variant images/video, served back out at /uploads/<file>
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Anything that is not an API call, a page or a file is a page that does not exist.
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) return next();
-  res.sendFile(path.join(FRONTEND_DIR, 'index.html'), err => {
-    if (err) next();
-  });
+  sendNotFound(req, res);
 });
 
 app.use((req, res) => res.status(404).json({ message: 'Not found.' }));
@@ -202,6 +264,9 @@ dbReady.then(() => {
     setInterval(() => { checkAbandonedCarts().catch(err => console.error('Abandoned cart check failed:', err.message)); }, 30 * 60 * 1000);
     setInterval(() => { checkLowStock().catch(err => console.error('Low stock check failed:', err.message)); }, HOUR);
     setInterval(() => { checkPrebookNotifications().catch(err => console.error('Pre-book check failed:', err.message)); }, 15 * 60 * 1000);
+    // "Please review your saree" e-mails a few days after delivery (see utils/reviewReminders.js)
+    setTimeout(() => checkReviewReminders().catch(err => console.error('Review reminder check failed:', err.message)), 60 * 1000);
+    setInterval(() => { checkReviewReminders().catch(err => console.error('Review reminder check failed:', err.message)); }, 30 * 60 * 1000);
   });
 }).catch(err => {
   console.error('Failed to initialize Supabase database:', err);
