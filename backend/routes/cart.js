@@ -52,7 +52,7 @@ async function withProductDetails(items) {
 
 async function cartResponse(userId) {
   const [itemsRes, metaRes] = await Promise.all([
-    supabase.from('cart_items').select('*').eq('user_id', userId),
+    supabase.from('cart_items').select('*').eq('user_id', userId).order('variant_id', { ascending: true }),   // stable row order - without it Postgres reshuffles rows after an update
     supabase.from('cart_meta').select('coupon_code').eq('user_id', userId).maybeSingle()
   ]);
   const rawItems = must(itemsRes, 'cartResponse:items');

@@ -59,6 +59,8 @@
           <p style="font-size:13.5px;color:var(--ink-soft);margin:0;">You'll pay securely on Razorpay's checkout — UPI, cards, or netbanking, whichever you prefer. We never see or store your payment details.</p>
         </div>
 
+        <div class="co-address" id="coAddress"></div>
+
         <div class="co-items" id="coItems"></div>
 
         <div class="co-coupon" id="coCoupon">
@@ -186,10 +188,24 @@
 
   // What is being paid for - every saree with its picture, colour, quantity and price - plus the totals.
   function renderCheckoutSummary(){
-    document.getElementById('coItems').innerHTML = cart.items.map(i => `
+    // where it is going
+    const a = currentAddress();
+    const guestEmail = !isLoggedIn() ? document.getElementById('guestEmail').value.trim() : '';
+    document.getElementById('coAddress').innerHTML = `
+      <div class="co-address-head"><span>Delivering to</span><button type="button" id="coAddressChange">Change</button></div>
+      <p><strong>${escHTML(a.name.trim())}</strong><br>${escHTML(a.line1)}<br>${escHTML(a.city)}${a.state ? ', ' + escHTML(a.state) : ''} ${escHTML(a.pincode)}${a.phone ? '<br>' + escHTML(a.phone) : ''}${guestEmail ? '<br>' + escHTML(guestEmail) : ''}</p>`;
+    // what is being paid for, with quantity and remove
+    document.getElementById('coItems').innerHTML = cart.items.map((i, idx) => `
       <div class="co-item">
         <span class="co-item-thumb" style="background:${photoBg(i.imageUrl, i.color)};"></span>
-        <span class="co-item-info"><strong>${escHTML(i.product ? i.product.name : '')}</strong><small>${escHTML(i.colorName || '')} · Qty ${i.qty}</small></span>
+        <span class="co-item-info">
+          <strong>${escHTML(i.product ? i.product.name : '')}</strong>
+          <small>${escHTML(i.colorName || '')}</small>
+          <span class="co-item-controls">
+            <span class="qty-stepper co-stepper"><button type="button" data-co-dec="${idx}" ${i.qty <= 1 ? 'disabled' : ''} aria-label="Fewer">−</button><span>${i.qty}</span><button type="button" data-co-inc="${idx}" aria-label="More">+</button></span>
+            <button type="button" class="co-item-remove" data-co-remove="${idx}">Remove</button>
+          </span>
+        </span>
         <span class="co-item-price">${money((i.product ? i.product.price : 0) * i.qty)}</span>
       </div>`).join('');
     document.getElementById('coSubtotal').textContent = money(cart.subtotal);
@@ -273,6 +289,75 @@
     if(ok) toast('Order ID copied');
     setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2200);
   });
+
+  // Changing a quantity or removing a saree right here. The screen updates at once; the server (the bag, or the
+  // Buy Now price quote) is told in the background, one change at a time, and its exact totals replace the estimate.
+  let coPending = 0, coChain = Promise.resolve();
+  function showCheckoutEmpty(message, linkHref, linkText){
+    document.querySelector('main .container').innerHTML = `
+      <div class="empty-state">
+        <p>${escHTML(message)}</p>
+        <a href="${linkHref}" class="btn btn-primary" style="margin-top:16px;">${escHTML(linkText)}</a>
+      </div>`;
+  }
+  function estimateTotals(){
+    cart.subtotal = cart.items.reduce((sum, i) => sum + (i.product ? i.product.price * i.qty : 0), 0);
+    cart.total = Math.max(0, cart.subtotal - (cart.discount || 0)) + (cart.shippingFee || 0) + (cart.taxInclusive === false ? (cart.taxAmount || 0) : 0);
+  }
+  function queueCheckoutOp(op, rollback){
+    coPending++;
+    document.getElementById('toStep3').disabled = true;
+    coChain = coChain.then(op).then(res => {
+      coPending--;
+      if(coPending === 0 && res){
+        cart = res;
+        if(!cart.items.length){ clearBuyNow(); showCheckoutEmpty(buyNowItem ? 'Nothing left to buy.' : 'Your bag is empty — add a saree before checking out.', '/shop', 'Browse Sarees'); return; }
+        renderCheckoutSummary();
+      }
+      if(coPending === 0) document.getElementById('toStep3').disabled = false;
+    }).catch(async e => {
+      coPending--;
+      toast(e.message, 'error');
+      if(rollback) await rollback();
+      if(coPending === 0){ renderCheckoutSummary(); document.getElementById('toStep3').disabled = false; }
+    });
+  }
+  function changeCheckoutQty(idx, delta){
+    const item = cart.items[idx];
+    if(!item) return;
+    const newQty = item.qty + delta;
+    if(newQty < 1) return;
+    if(delta > 0 && item.product && newQty > item.product.stock){ toast(`Only ${item.product.stock} left in stock.`); return; }
+    const before = item.qty;
+    item.qty = newQty; estimateTotals(); renderCheckoutSummary();
+    if(buyNowItem){
+      buyNowItem.qty = newQty; setBuyNow(buyNowItem);
+      queueCheckoutOp(() => checkoutQuote([buyNowItem], cart.coupon), async () => { item.qty = before; buyNowItem.qty = before; setBuyNow(buyNowItem); estimateTotals(); });
+    }else{
+      queueCheckoutOp(() => cartUpdateQty(item.id, newQty), async () => { try{ cart = await cartGet(); }catch(e){ /* keep */ } });
+    }
+  }
+  function removeCheckoutItem(idx){
+    const item = cart.items[idx];
+    if(!item) return;
+    cart.items.splice(idx, 1);
+    if(!cart.items.length){
+      if(buyNowItem){ clearBuyNow(); showCheckoutEmpty('Nothing left to buy.', '/product?id=' + buyNowItem.productId, 'Back to the saree'); return; }
+      queueCheckoutOp(() => cartRemoveItem(item.id));
+      showCheckoutEmpty('Your bag is empty — add a saree before checking out.', '/shop', 'Browse Sarees');
+      return;
+    }
+    estimateTotals(); renderCheckoutSummary();
+    queueCheckoutOp(() => cartRemoveItem(item.id), async () => { try{ cart = await cartGet(); }catch(e){ /* keep */ } });
+  }
+  document.getElementById('coItems').addEventListener('click', e => {
+    const inc = e.target.closest('[data-co-inc]'), dec = e.target.closest('[data-co-dec]'), rm = e.target.closest('[data-co-remove]');
+    if(inc) changeCheckoutQty(Number(inc.dataset.coInc), 1);
+    else if(dec) changeCheckoutQty(Number(dec.dataset.coDec), -1);
+    else if(rm) removeCheckoutItem(Number(rm.dataset.coRemove));
+  });
+  document.getElementById('coAddress').addEventListener('click', e => { if(e.target.closest('#coAddressChange')) goToStep(1); });
+
 
   function currentAddress(){
     return {
