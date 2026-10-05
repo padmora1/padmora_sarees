@@ -107,13 +107,10 @@ router.get('/settings/shipping', async (req, res) => {
   }
 });
 
-router.get('/settings/tax', async (req, res) => {
-  try {
-    res.json({ tax: await getSetting('tax_settings', {}) });
-  } catch (err) {
-    console.error('GET /settings/tax failed:', err);
-    res.status(500).json({ message: 'Something went wrong on the server.' });
-  }
+// GST is no longer added or shown anywhere - every price already includes it. Kept only so a page loaded before this
+// change (still holding the old script) reads "no tax" instead of failing.
+router.get('/settings/tax', (req, res) => {
+  res.json({ tax: { enabled: false, gstRate: 0, inclusive: true } });
 });
 
 router.get('/settings/return-policy', async (req, res) => {

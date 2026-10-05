@@ -479,9 +479,7 @@
     });
   }
 
-  // "*Tax Included" under the price - only while the admin's tax setting is "GST included in the price"
-  // (the default). If the store switches to adding tax on top, the note disappears instead of misleading.
-  const taxIncludedPromise = apiFetch('/settings/tax').then(({ tax }) => !(tax && tax.inclusive === false)).catch(() => false);
+  // "*Tax Included" under the price - every price in the store already includes GST.
   function renderProduct(p){
     currentProduct = p;
     const variants = (p.variants && p.variants.length) ? p.variants : [{
@@ -493,7 +491,6 @@
     document.title = p.name + ' — Padmora Sarees by Yashi';
     updateProductSEO(p, selectedVariant);
 
-    taxIncludedPromise.then(inc => { const el = document.getElementById('pdTaxNote'); if(el) el.hidden = !inc; });
     document.getElementById('pdWrap').innerHTML = `
       <div class="container">
         <div class="pd-grid">
@@ -503,7 +500,7 @@
             <h1>${p.name}</h1>
             <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews} reviews)</div>
             <div class="product-price" style="margin-top:10px;" id="pdPrice"></div>
-            <div class="pd-tax-note" id="pdTaxNote" hidden>*Tax Included</div>
+            <div class="pd-tax-note" id="pdTaxNote">*Tax Included</div>
             <div class="pd-desc" id="pdDesc"></div>
             <p class="stock-note" id="pdStockNote"></p>
             <div>

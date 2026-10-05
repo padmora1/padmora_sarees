@@ -1298,7 +1298,7 @@ router.put('/settings/tracking', asyncRoute(async (req, res) => {
   res.json({ timing: await getSetting('tracking_timing', {}), mode: now.mode, since: now.since ? new Date(now.since).toISOString() : null });
 }));
 
-// ---- Store / Shipping / Tax settings (Phase 7) ----
+// ---- Store / Shipping settings (Phase 7) ----
 router.get('/settings/store', asyncRoute(async (req, res) => {
   res.json({ store: await getSetting('store_info', {}) });
 }));
@@ -1359,22 +1359,6 @@ router.put('/settings/shipping', asyncRoute(async (req, res) => {
   await setSetting('shipping_settings', next);
   await record(req, 'settings updated', 'shipping_settings', null, before, next);
   res.json({ shipping: next });
-}));
-
-router.get('/settings/tax', asyncRoute(async (req, res) => {
-  res.json({ tax: await getSetting('tax_settings', { inclusive: true }) });
-}));
-
-router.put('/settings/tax', asyncRoute(async (req, res) => {
-  const { enabled, gstRate, label, inclusive } = req.body || {};
-  if (isNaN(Number(gstRate)) || Number(gstRate) < 0 || Number(gstRate) > 100) {
-    return res.status(400).json({ message: 'GST rate must be a number between 0 and 100.' });
-  }
-  const before = await getSetting('tax_settings', { inclusive: true });
-  const next = { enabled: !!enabled, gstRate: Number(gstRate), label: label || 'GST', inclusive: inclusive !== false };
-  await setSetting('tax_settings', next);
-  await record(req, 'settings updated', 'tax_settings', null, before, next);
-  res.json({ tax: next });
 }));
 
 router.get('/settings/return-policy', asyncRoute(async (req, res) => {

@@ -276,25 +276,18 @@ async function guestCartResponse() {
     } catch { setGuestCoupon(null); }
   }
 
-  // Mirrors backend/utils/pricing.js's computeOrderTotals() exactly — a guest
-  // has no server-side cart for the backend to compute this for, but the
-  // preview shown here must still match what /orders/guest actually charges,
-  // or "Total Payable" at checkout would silently understate the real total.
+  // Mirrors backend/utils/pricing.js's computeOrderTotals() exactly - a guest has no server-side cart for the
+  // backend to compute this for, but the preview shown here must still match what /orders/guest actually charges.
+  // Prices already include GST, so there is no tax line.
   const taxableAmount = Math.max(0, subtotal - discount);
-  let shippingFee = 0, taxAmount = 0, taxRate = 0, taxLabel = 'GST', taxInclusive = true;
+  let shippingFee = 0;
   try {
-    const [{ shipping }, { tax }] = await Promise.all([cachedGet('/settings/shipping', 60000), cachedGet('/settings/tax', 60000)]);
+    const { shipping } = await cachedGet('/settings/shipping', 60000);
     shippingFee = taxableAmount >= (shipping.freeShippingThreshold || 0) ? 0 : (shipping.fee || 0);
-    taxRate = tax.enabled ? (tax.gstRate || 0) : 0;
-    taxInclusive = tax.inclusive !== false; // defaults true when unset, same as the backend
-    taxAmount = taxInclusive
-      ? Math.round(taxableAmount * (taxRate / (100 + taxRate)) || 0)
-      : Math.round(taxableAmount * (taxRate / 100));
-    taxLabel = tax.label || 'GST';
-  } catch { /* settings unreachable — fall back to no shipping/tax rather than blocking the cart */ }
+  } catch { /* settings unreachable - fall back to no shipping rather than blocking the cart */ }
 
-  const total = taxInclusive ? (taxableAmount + shippingFee) : (taxableAmount + shippingFee + taxAmount);
-  return { items: withDetails, subtotal, discount, shippingFee, taxAmount, taxRate, taxLabel, taxInclusive, total, coupon: appliedCode };
+  const total = taxableAmount + shippingFee;
+  return { items: withDetails, subtotal, discount, shippingFee, taxAmount: 0, taxRate: 0, taxInclusive: true, total, coupon: appliedCode };
 }
 
 async function cartGet() {
