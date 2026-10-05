@@ -69,38 +69,49 @@
             <h2>Products</h2>
             <button class="btn btn-sm btn-outline" id="showAddProduct" style="margin-bottom:16px;">+ Add Product</button>
             <div class="admin-form" id="addProductForm" style="display:none;">
-              <div class="form-row-2">
-                <div class="form-field"><label>Name</label><input type="text" id="npName"></div>
-                <div class="form-field"><label>Fabric</label><input type="text" id="npFabric"></div>
-              </div>
-              <div class="form-row-2">
-                <div class="form-field"><label>Occasion</label><select class="admin-input" style="width:100%;" id="npOccasion"></select></div>
-                <div class="form-field"><label>Swatch key</label><input type="text" id="npSwatch" placeholder="maroon, teal, indigo..."></div>
-              </div>
-              <div class="form-row-2">
-                <div class="form-field"><label id="npPriceLabel">Price (₹)</label><input type="number" id="npPrice" min="1"></div>
-                <div class="form-field" id="npSaleField" style="display:none;"><label>Sale % off</label><input type="number" id="npSalePct" min="1" max="90" placeholder="e.g. 20"><span id="npSalePreview" style="display:block;font-size:12px;color:var(--teal);margin-top:6px;"></span></div>
-              </div>
-              <div class="form-row-2">
-                <div class="form-field"><label>Stock</label><input type="number" id="npStock" value="20"></div>
-                <div class="form-field"><label>Badge</label>
-                  <select id="npBadge"><option value="">None</option><option value="new">New</option><option value="bestseller">Bestseller</option><option value="sale">Sale</option></select>
+              <div class="pf-section">
+                <h4>About the saree</h4>
+                <p class="pf-note">Not sure what a box means? Hover over (or tap) the small <b>i</b> next to it.</p>
+                <div class="form-row-2">
+                  <div class="form-field"><label>Name * <button type="button" class="info-tip" data-tip="The name customers see, for example “Mustard Zari-Border Maheshwari”." aria-label="The name customers see, for example “Mustard Zari-Border Maheshwari”.">i</button></label><input type="text" id="npName" maxlength="120" placeholder="e.g. Mustard Zari-Border Maheshwari"></div>
+                  <div class="form-field"><label>Fabric * <button type="button" class="info-tip" data-tip="The weave or cloth, for example Maheshwari, Ajrakh or Paithani. Customers can filter the shop by fabric, so pick one from the suggestions to keep the spelling the same." aria-label="The weave or cloth, for example Maheshwari, Ajrakh or Paithani. Customers can filter the shop by fabric, so pick one from the suggestions to keep the spelling the same.">i</button></label><input type="text" id="npFabric" list="fabricSuggestions" maxlength="80" placeholder="e.g. Maheshwari" autocomplete="off"></div>
                 </div>
+                <div class="form-row-2">
+                  <div class="form-field"><label>Occasion * <button type="button" class="info-tip" data-tip="When this saree is usually worn (Wedding, Festive…). Used by the Occasion filter and by Find My Saree." aria-label="When this saree is usually worn (Wedding, Festive…). Used by the Occasion filter and by Find My Saree.">i</button></label><select class="admin-input" style="width:100%;" id="npOccasion"></select></div>
+                  <div class="form-field"><label>Badge <button type="button" class="info-tip" data-tip="A small tag on the saree card. “Sale” also shows the crossed-out original price and the % off." aria-label="A small tag on the saree card. “Sale” also shows the crossed-out original price and the % off.">i</button></label>
+                    <select id="npBadge"><option value="">None</option><option value="new">New</option><option value="bestseller">Bestseller</option><option value="sale">Sale</option></select>
+                  </div>
+                </div>
+                <div class="form-field"><label for="npDesc">Description <button type="button" class="info-tip" data-tip="What customers read on the product page: the weave, border, length, blouse piece and care. You can use bold and bullet points." aria-label="What customers read on the product page: the weave, border, length, blouse piece and care. You can use bold and bullet points.">i</button></label><textarea id="npDesc" rows="2"></textarea></div>
+                <div class="form-row-2">
+                  <div class="form-field"><label>Weaver name <button type="button" class="info-tip" data-tip="Who made it. Shown on the product page as part of the saree’s story. Optional." aria-label="Who made it. Shown on the product page as part of the saree’s story. Optional.">i</button></label><input type="text" id="npWeaverName"></div>
+                  <div class="form-field"><label>Weaver region (state) <button type="button" class="info-tip" data-tip="The state the weaver works in. Shown on the product page. Optional." aria-label="The state the weaver works in. Shown on the product page. Optional.">i</button></label><select class="admin-input" style="width:100%;" id="npWeaverRegion"></select></div>
+                </div>
+                <div class="form-field"><label>Loom type <button type="button" class="info-tip" data-tip="How it was woven (Handloom, Powerloom…). Shown in the product details." aria-label="How it was woven (Handloom, Powerloom…). Shown in the product details.">i</button></label><select class="admin-input" style="width:100%;" id="npLoomType"></select></div>
               </div>
-              <div class="form-field"><label for="npDesc">Description</label><textarea id="npDesc" rows="2"></textarea></div>
-              <div class="form-row-2">
-                <div class="form-field"><label>Weaver Name</label><input type="text" id="npWeaverName"></div>
-                <div class="form-field"><label>Weaver Region (state)</label><select class="admin-input" style="width:100%;" id="npWeaverRegion"></select></div>
+
+              <div class="pf-section">
+                <h4>Main colour</h4>
+                <p class="pf-note">The colour customers see first — its photos are the saree’s main photos. A product code (SKU) is made for it automatically.</p>
+                <div id="npMainColour"></div>
               </div>
-              <div class="form-field"><label>Loom Type</label><select class="admin-input" style="width:100%;" id="npLoomType"></select></div>
-              <button class="btn btn-primary btn-sm" id="createProduct">Create Product</button>
+
+              <div class="pf-section">
+                <h4>More colours (optional)</h4>
+                <p class="pf-note">Same saree in other colours. Each colour has its own photos, price and stock, and gets its own automatic product code.</p>
+                <div id="npExtraColours"></div>
+                <button type="button" class="btn btn-sm btn-outline" id="npAddColour" style="margin-bottom:14px;">+ Add another colour</button>
+              </div>
+
+              <div class="pf-actions"><button class="btn btn-primary btn-sm" id="createProduct">Create Product</button><span class="pf-status" id="npStatus"></span></div>
             </div>
+            <datalist id="fabricSuggestions"></datalist>
+            <div class="upload-status" id="productUploadStatus" role="status" aria-live="polite"></div>
             <div id="productTools"></div>
             <div id="archivedProductsToggle" style="display:none;margin-bottom:10px;font-size:12.5px;color:var(--ink-soft);"></div>
             <div style="overflow-x:auto;">
               <table class="admin-table" id="productsTable"></table>
             </div>
-            <div id="productEditor" style="display:none;"></div>
           </div>
 
           <div id="panel-catalog" style="display:none;">
@@ -316,6 +327,7 @@
 <script src="js/cursor.js"></script>
 <script src="js/admin-api.js"></script>
 <script src="js/admin-lists.js"></script>
+<script src="js/admin-colours.js"></script>
 <script>
   const STAGE_NAMES = ['Confirmed','Packed','Shipped','Out for Delivery','Delivered'];
 
@@ -642,12 +654,14 @@
       const fabSel = document.getElementById('productFabricFilter'), keep = fabSel.value;
       fabSel.innerHTML = '<option value="">All fabrics</option>' + [...new Set(products.map(p => p.fabric).filter(Boolean))].sort().map(f => `<option value="${escHTML(f)}">${escHTML(f)}</option>`).join('');
       fabSel.value = [...fabSel.options].some(o => o.value === keep) ? keep : '';
-      renderProductsTable();
+      renderProductsTable({ freshEditor: true });
     }catch(e){ toast(e.message, 'error'); }
   }
 
-  function renderProductsTable(){
+  function renderProductsTable(opts){
     try{
+    const table = document.getElementById('productsTable');
+    const keptEditor = table.querySelector('tr.editor-row');   // keeps what is being typed when only the list around it changes
     ensureProductsTools();
     const products = allProducts;
     const archivedCount = products.filter(p=>p.status==='archived').length;
@@ -667,7 +681,7 @@
       <tbody>${visible.length ? visible.map(p=>{
         const st = stockStateOf(p);
         return `
-        <tr data-id="${p.id}" ${p.status==='archived'?'style="opacity:.55;"':''}>
+        <tr data-id="${p.id}" class="${openProductId === p.id ? 'is-open' : ''}" ${p.status==='archived'?'style="opacity:.55;"':''}>
           <td>${p.status==='archived'?`<s>${hl(p.name)}</s>`:hl(p.name)}</td>
           <td>${hl(p.fabric)}</td>
           <td>${p.variantCount}</td>
@@ -675,15 +689,20 @@
           <td>${p.badge || '—'}</td>
           <td>${p.status==='archived' ? '<strong>archived</strong>' : (p.status || 'active')}</td>
           <td style="white-space:nowrap;">
-            <button class="btn btn-sm btn-outline" data-edit="${p.id}">Edit</button>
+            <button class="btn btn-sm btn-outline" data-edit="${p.id}">${openProductId === p.id ? 'Close' : 'Edit'}</button>
             ${p.status==='archived' ? '' : `<button class="btn btn-sm" style="color:var(--maroon);" data-delete="${p.id}">Delete</button>`}
           </td>
         </tr>`; }).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:24px;">No products match this search and these filters.</td></tr>`}</tbody>`;
 
       document.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click', ()=>{
-        openProductId = Number(btn.dataset.edit);
+        const id = Number(btn.dataset.edit);
+        if(openProductId === id){ closeProductEditor(); return; }   // the open product's button says "Close"
+        openProductId = id;
         editorTab = 'general';
-        renderProductEditor();
+        renderProductsTable({ freshEditor: true });
+        // the editor opens right under this product - bring it into view
+        const row = document.querySelector('#productsTable tr.editor-row');
+        if(row) row.previousElementSibling.scrollIntoView({ behavior:'smooth', block:'start' });
       }));
       document.querySelectorAll('[data-delete]').forEach(btn=>btn.addEventListener('click', async ()=>{
         const ok = await showConfirmDialog('This cannot be undone unless the product has past orders (then it’s archived instead).', {title:'Delete this product?', confirmLabel:'Delete', danger:true});
@@ -691,30 +710,61 @@
         try{
           const result = await adminApiFetch('/admin/products/' + btn.dataset.delete, {method:'DELETE'});
           toast(result.message || 'Product removed');
-          if(openProductId === Number(btn.dataset.delete)){ openProductId = null; document.getElementById('productEditor').style.display = 'none'; }
+          if(openProductId === Number(btn.dataset.delete)) openProductId = null;
           loadProducts();
         }catch(e){ toast(e.message, 'error'); }
       }));
+      // put the editor back under its product (a fresh one when the data just changed)
+      const openRow = openProductId != null ? table.querySelector(`tr[data-id="${openProductId}"]`) : null;
+      if(openRow && keptEditor && !(opts && opts.freshEditor)) openRow.after(keptEditor);
+      else if(openRow) renderProductEditor();
     }catch(e){ toast(e.message, 'error'); }
+  }
+
+  function closeProductEditor(){
+    openProductId = null;
+    renderProductsTable();
+  }
+  // Replaces one product in the list with its latest copy and redraws - far quicker than reloading every product.
+  function applyProduct(product){
+    const i = allProducts.findIndex(x => x.id === product.id);
+    if(i >= 0) allProducts[i] = product; else allProducts.push(product);
+    renderProductsTable({ freshEditor: true });
+  }
+  async function refreshProduct(id){
+    const {product} = await adminApiFetch('/admin/products/' + id);
+    applyProduct(product);
   }
 
   // ---- Product editor: General + Variants tabs ----
   function renderProductEditor(){
-    const wrap = document.getElementById('productEditor');
+    const table = document.getElementById('productsTable');
+    table.querySelectorAll('tr.editor-row').forEach(r => r.remove());
     const p = allProducts.find(x => x.id === openProductId);
-    if(!p){ wrap.style.display = 'none'; return; }
-    wrap.style.display = 'block';
-
-    wrap.innerHTML = `
+    const row = p && table.querySelector(`tr[data-id="${p.id}"]`);
+    if(!row) return;
+    // The editor is a table row of its own, placed directly under the product being edited.
+    const tr = document.createElement('tr');
+    tr.className = 'editor-row';
+    tr.innerHTML = `<td colspan="7"><div id="productEditor">
       <div class="editor-card">
         <div class="editor-tabs">
           <button data-tab="general" class="${editorTab==='general'?'active':''}">General</button>
-          <button data-tab="variants" class="${editorTab==='variants'?'active':''}">Variants (${p.variants.length})</button>
+          <button data-tab="variants" class="${editorTab==='variants'?'active':''}">Colours (${p.variants.length})</button>
+          <button type="button" id="closeEditorBtn" style="margin-left:auto;">Close ✕</button>
         </div>
         <div id="editorTabBody"></div>
-      </div>`;
-
-    wrap.querySelectorAll('.editor-tabs button').forEach(b=>b.addEventListener('click', ()=>{ editorTab = b.dataset.tab; renderProductEditor(); }));
+      </div></div></td>`;
+    row.after(tr);
+    tr.querySelectorAll('.editor-tabs button[data-tab]').forEach(b=>b.addEventListener('click', ()=>{ editorTab = b.dataset.tab; renderProductEditor(); }));
+    tr.querySelector('#closeEditorBtn').addEventListener('click', closeProductEditor);
+    // On a phone the products table scrolls sideways; the editor stays pinned to the visible width instead of being
+    // as wide as the table, and the table is scrolled back to its left edge so nothing is cut off.
+    if(window.innerWidth <= 760){
+      const scroller = table.parentElement;
+      scroller.scrollLeft = 0;
+      tr.querySelector('#productEditor').style.width = (scroller.clientWidth - 2) + 'px';
+    }
 
     if(editorTab === 'general') renderGeneralTab(p); else renderVariantsTab(p);
   }
@@ -723,7 +773,7 @@
     document.getElementById('editorTabBody').innerHTML = `
       <div class="form-row-2">
         <div class="form-field"><label>Name</label><input type="text" id="egName" value="${escHTML(p.name)}"></div>
-        <div class="form-field"><label>Fabric</label><input type="text" id="egFabric" value="${escHTML(p.fabric)}"></div>
+        <div class="form-field"><label>Fabric</label><input type="text" id="egFabric" list="fabricSuggestions" value="${escHTML(p.fabric)}" autocomplete="off"></div>
       </div>
       <div class="form-row-2">
         <div class="form-field"><label>Occasion</label><select class="admin-input" style="width:100%;" id="egOccasion">${occasionOptionsHTML(p.occasion)}</select></div>
@@ -756,7 +806,8 @@
     enhanceRichText(document.getElementById('egDesc'));
     document.getElementById('egSave').addEventListener('click', async ()=>{
       try{
-        await adminApiFetch('/admin/products/' + p.id, { method:'PUT', body: JSON.stringify({
+        const btn = document.getElementById('egSave'); btn.disabled = true; btn.textContent = 'Saving…';
+        const {product} = await adminApiFetch('/admin/products/' + p.id, { method:'PUT', body: JSON.stringify({
           name: document.getElementById('egName').value, fabric: document.getElementById('egFabric').value,
           occasion: document.getElementById('egOccasion').value, badge: document.getElementById('egBadge').value,
           desc: document.getElementById('egDesc').value, weaverName: document.getElementById('egWeaverName').value,
@@ -764,9 +815,8 @@
           status: document.getElementById('egStatus').value
         })});
         toast('Product details saved');
-        await loadProducts();
-        renderProductEditor();
-      }catch(e){ toast(e.message, 'error'); }
+        applyProduct(product);
+      }catch(e){ toast(e.message, 'error'); const b = document.getElementById('egSave'); if(b){ b.disabled = false; b.textContent = 'Save General Info'; } }
     });
   }
 
@@ -797,16 +847,16 @@
             </div>
           </div>
           <div class="variant-fields">
-            <div class="form-field"><label>Colour Name</label><input type="text" class="admin-input" style="width:100%;" data-vf="colorName" value="${escHTML(v.colorName)}"></div>
-            <div class="form-field"><label>Swatch Key</label><input type="text" class="admin-input" style="width:100%;" data-vf="swatch" value="${v.swatch}" placeholder="maroon, emerald..."></div>
-            <div class="form-field"><label>SKU</label><input type="text" class="admin-input" style="width:100%;" data-vf="sku" value="${v.sku || ''}"></div>
-            <div class="form-field"><label>Low Stock At</label><input type="number" class="admin-input" style="width:100%;" data-vf="lowStockThreshold" value="${v.lowStockThreshold}"></div>
+            <div class="form-field"><label>Colour name ${AdminColours.tip('What customers see for this colour, for example “Mustard Yellow”.')}</label><input type="text" class="admin-input" style="width:100%;" data-vf="colorName" maxlength="60" value="${escHTML(v.colorName)}"></div>
+            <div class="form-field"><label>Colour shade ${AdminColours.tip('Picks the little round colour dot and the group this colour appears under in the shop’s Colour filter. Choose the closest shade.')}</label><select class="admin-input" style="width:100%;" data-vf="swatch">${AdminColours.shadeOptionsHTML(v.swatch)}</select></div>
+            <div class="form-field"><label>Product code (SKU) ${AdminColours.tip('Made automatically for every colour, for example PDM-12-MUSTARD. Used on packing slips and inventory. You can type your own instead.')}</label><input type="text" class="admin-input" style="width:100%;" data-vf="sku" maxlength="60" value="${escHTML(v.sku || '')}" placeholder="Made automatically"></div>
+            <div class="form-field"><label>Low-stock alert at ${AdminColours.tip('When stock falls to this number (or below) the colour is marked “Low stock” and you get a low-stock alert.')}</label><input type="number" class="admin-input" style="width:100%;" data-vf="lowStockThreshold" value="${v.lowStockThreshold}"></div>
             ${onSale ? `
             <div class="form-field"><label>Actual price (₹)</label><input type="number" class="admin-input" style="width:100%;" data-vf="price" data-sale-actual value="${v.mrp > v.price ? v.mrp : v.price}"></div>
             <div class="form-field"><label>Sale % off</label><input type="number" class="admin-input" style="width:100%;" data-vf="salePercent" data-sale-pct min="1" max="90" placeholder="e.g. 20" value="${offOf(v)}"></div>
             <div class="form-field"><label>Sale price (auto)</label><div class="sale-preview" style="padding:9px 0;font-weight:600;color:var(--teal);">${v.mrp > v.price ? '₹' + v.price.toLocaleString('en-IN') : '—'}</div></div>`
-            : `<div class="form-field"><label>Price (₹)</label><input type="number" class="admin-input" style="width:100%;" data-vf="price" value="${v.price}"></div>`}
-            <div class="form-field"><label>Stock</label><input type="number" class="admin-input" style="width:100%;${v.stock<=v.lowStockThreshold?'border-color:var(--maroon);color:var(--maroon);':''}" data-vf="stock" value="${v.stock}"></div>
+            : `<div class="form-field"><label>Price (₹) ${AdminColours.tip('The price customers pay, in rupees. GST is already included — nothing is added on top.')}</label><input type="number" class="admin-input" style="width:100%;" data-vf="price" value="${v.price}"></div>`}
+            <div class="form-field"><label>Stock ${AdminColours.tip('How many pieces of this colour you have. It counts down as orders come in.')}</label><input type="number" class="admin-input" style="width:100%;${v.stock<=v.lowStockThreshold?'border-color:var(--maroon);color:var(--maroon);':''}" data-vf="stock" value="${v.stock}"></div>
           </div>
           <div class="form-field"><label>Variant Description (optional override)</label><textarea class="admin-input" style="width:100%;" rows="2" data-vf="desc">${escHTML(v.desc || '')}</textarea></div>
           <button class="btn btn-sm btn-primary" data-save-variant="${v.id}">Save Variant</button>
@@ -822,16 +872,9 @@
         </div>`).join('')}
 
       <div class="variant-card" style="border-style:dashed;">
-        <h4 style="margin-bottom:12px;">+ Add New Colour Variant</h4>
-        <div class="variant-fields">
-          <div class="form-field"><label>Colour Name</label><input type="text" class="admin-input" style="width:100%;" id="nvColorName" placeholder="e.g. Emerald Green"></div>
-          <div class="form-field"><label>Swatch Key</label><input type="text" class="admin-input" style="width:100%;" id="nvSwatch" placeholder="emerald"></div>
-          <div class="form-field"><label>SKU</label><input type="text" class="admin-input" style="width:100%;" id="nvSku"></div>
-          <div class="form-field"><label>Stock</label><input type="number" class="admin-input" style="width:100%;" id="nvStock" value="10"></div>
-          <div class="form-field"><label>${onSale ? 'Actual price (₹)' : 'Price (₹)'}</label><input type="number" class="admin-input" style="width:100%;" id="nvPrice"></div>
-          ${onSale ? `<div class="form-field"><label>Sale % off</label><input type="number" class="admin-input" style="width:100%;" id="nvSalePct" min="1" max="90" placeholder="e.g. 20"></div>` : ''}
-        </div>
-        <button class="btn btn-sm btn-outline" id="addVariantBtn">Add Variant</button>
+        <h4 style="margin-bottom:12px;">+ Add another colour</h4>
+        <div id="nvBlock"></div>
+        <div class="pf-actions"><button class="btn btn-sm btn-primary" id="addVariantBtn">Add this colour</button><span class="pf-status" id="nvStatus"></span></div>
       </div>`;
 
     body.querySelectorAll('textarea[data-vf="desc"]').forEach(enhanceRichText);
@@ -851,8 +894,7 @@
       try{
         await adminApiFetch('/admin/variants/' + btn.dataset.saveVariant, { method:'PUT', body: JSON.stringify(payload) });
         toast('Variant saved');
-        await loadProducts();
-        renderProductEditor();
+        await refreshProduct(p.id);
       }catch(e){ toast(e.message, 'error'); }
     }));
 
@@ -860,8 +902,7 @@
       try{
         await adminApiFetch('/admin/variants/' + btn.dataset.setDefault, { method:'PUT', body: JSON.stringify({ isDefault: true }) });
         toast('Default variant updated');
-        await loadProducts();
-        renderProductEditor();
+        await refreshProduct(p.id);
       }catch(e){ toast(e.message, 'error'); }
     }));
 
@@ -871,23 +912,20 @@
       try{
         const result = await adminApiFetch('/admin/variants/' + btn.dataset.delVariant, { method:'DELETE' });
         toast(result.message || 'Variant removed');
-        await loadProducts();
-        renderProductEditor();
+        await refreshProduct(p.id);
       }catch(e){ toast(e.message, 'error'); }
     }));
 
     body.querySelectorAll('[data-del-media]').forEach(btn=>btn.addEventListener('click', async ()=>{
       try{
         await adminApiFetch('/admin/media/' + btn.dataset.delMedia, { method:'DELETE' });
-        await loadProducts();
-        renderProductEditor();
+        await refreshProduct(p.id);
       }catch(e){ toast(e.message, 'error'); }
     }));
     body.querySelectorAll('[data-primary-media]').forEach(btn=>btn.addEventListener('click', async ()=>{
       try{
         await adminApiFetch('/admin/media/' + btn.dataset.primaryMedia + '/primary', { method:'PUT' });
-        await loadProducts();
-        renderProductEditor();
+        await refreshProduct(p.id);
       }catch(e){ toast(e.message, 'error'); }
     }));
     // Several photos can be picked at once; they upload one after another
@@ -920,93 +958,186 @@
         label.firstChild.textContent = idleText;
         input.disabled = false;
       }
-      await loadProducts();
-      renderProductEditor();
+      await refreshProduct(p.id);
     }));
 
+    // Add a colour: name, shade, price, stock and photos in one go.
+    const defV = p.variants.find(v => v.isDefault) || p.variants[0];
+    const nv = AdminColours.wire((()=>{ const h = document.getElementById('nvBlock'); h.innerHTML = AdminColours.blockHTML({
+      onSale, price: defV ? (defV.mrp > defV.price ? defV.mrp : defV.price) : '', salePct: defV ? offOf(defV) : '', stock: 10, low: 3 }); return h; })(), { onSale });
     document.getElementById('addVariantBtn').addEventListener('click', async ()=>{
-      const price = document.getElementById('nvPrice').value;
-      const salePct = document.getElementById('nvSalePct');
-      const colorName = document.getElementById('nvColorName').value;
-      if(!colorName || !price){ toast('Colour name and price are required.', 'error'); return; }
-      if(onSale && !(salePct && salePct.value)){ toast('Enter the sale percentage for this colour.', 'error'); return; }
+      const d = nv.read();
+      if(!d.colorName || !d.price){ toast('Colour name and price are required.', 'error'); return; }
+      if(onSale && !d.salePercent){ toast('Enter the sale percentage for this colour.', 'error'); return; }
+      const btn = document.getElementById('addVariantBtn'), status = document.getElementById('nvStatus');
+      btn.disabled = true; status.textContent = 'Adding…';
       try{
-        await adminApiFetch('/admin/products/' + p.id + '/variants', { method:'POST', body: JSON.stringify({
-          colorName, swatch: document.getElementById('nvSwatch').value || 'maroon', sku: document.getElementById('nvSku').value,
-          stock: document.getElementById('nvStock').value, price, salePercent: onSale ? salePct.value : undefined
+        const {variant} = await adminApiFetch('/admin/products/' + p.id + '/variants', { method:'POST', body: JSON.stringify({
+          colorName: d.colorName, swatch: d.swatch, price: d.price, salePercent: d.salePercent, stock: d.stock, lowStockThreshold: d.lowStockThreshold
         })});
-        toast('Variant added');
-        await loadProducts();
-        renderProductEditor();
-      }catch(e){ toast(e.message, 'error'); }
+        let failed = '';
+        if(d.files.length){
+          status.textContent = 'Uploading photos…';
+          try{ await uploadVariantPhotos(variant.id, d.files, (n, total) => { status.textContent = `Uploading photos ${n}/${total}…`; }); }
+          catch(err){ failed = err.message; }
+        }
+        toast(failed ? 'Colour added, but a photo did not upload: ' + failed : 'Colour added', failed ? 'error' : undefined);
+        await refreshProduct(p.id);
+      }catch(e){ toast(e.message, 'error'); btn.disabled = false; status.textContent = ''; }
     });
   }
 
-  // The form itself is static HTML (toggled via display:none, not re-rendered
-  // from scratch each time) — without an explicit reset, whatever an admin
-  // typed for one product would silently still be sitting in every field the
-  // next time "+ Add Product" was opened, ready to be submitted again by
-  // mistake. Reset every field back to its blank/default state.
-  function resetAddProductForm(){
-    ['npName','npFabric','npOccasion','npSwatch','npPrice','npSalePct','npDesc','npWeaverName','npWeaverRegion','npLoomType']
-      .forEach(id => { document.getElementById(id).value = ''; });
-    document.getElementById('npDesc')._rich.set('');
-    document.getElementById('npStock').value = '20';
-    document.getElementById('npBadge').value = '';
-    refreshAddProductSaleFields();
+  // Uploads one colour's photos one after another (so the first becomes the main photo and the order is kept),
+  // each shrunk first. Different colours can upload side by side. Calls onStep(done, total) after each photo.
+  async function uploadVariantPhotos(variantId, files, onStep){
+    let done = 0;
+    for(const original of files){
+      const file = await prepareImageForUpload(original);
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await fetch('/api/admin/variants/' + variantId + '/media', { method:'POST', headers: { Authorization: 'Bearer ' + getAdminToken() }, body: fd });
+      if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.message || 'Upload failed'); }
+      done++;
+      if(onStep) onStep(done, files.length);
+    }
+    return done;
   }
 
-  // Only a Sale saree has an original price and a discount: pick Sale and the price becomes the
-  // "actual price", a percentage appears, and the sale price is worked out live.
+  // The form is static HTML that is shown and hidden, not rebuilt each time. Without an explicit reset, whatever was
+  // typed for one product would still be sitting there the next time "+ Add Product" opens, ready to be submitted
+  // again by mistake - so every field goes back to blank, and the colour blocks are rebuilt.
+  // Used by the "Sale price" line under each colour's Sale % box in the Colours tab.
   function salePreviewText(actual, pct){
     const a = Number(actual), q = Number(pct);
     if(!(a > 0) || !(q > 0 && q <= 90)) return '';
     const sp = Math.max(1, Math.round(a * (100 - q) / 100));
     return `Sale price ₹${sp.toLocaleString('en-IN')} — customers save ₹${(a - sp).toLocaleString('en-IN')}`;
   }
-  function refreshAddProductSaleFields(){
-    const sale = document.getElementById('npBadge').value === 'sale';
-    document.getElementById('npSaleField').style.display = sale ? '' : 'none';
-    document.getElementById('npPriceLabel').textContent = sale ? 'Actual price (₹)' : 'Price (₹)';
-    document.getElementById('npSalePreview').textContent = sale ? salePreviewText(document.getElementById('npPrice').value, document.getElementById('npSalePct').value) : '';
+  let npMain = null, npExtras = [];
+  const npOnSale = () => document.getElementById('npBadge').value === 'sale';
+  function newColourBlock(opts){
+    const host = document.createElement('div');
+    host.innerHTML = AdminColours.blockHTML(opts);
+    return { host, root: host.firstElementChild };
   }
-  ['npBadge','npPrice','npSalePct'].forEach(id => document.getElementById(id).addEventListener('input', refreshAddProductSaleFields));
-  document.getElementById('npBadge').addEventListener('change', refreshAddProductSaleFields);
+  function buildAddProductColours(){
+    if(npMain) npMain.destroy();
+    npExtras.forEach(c => c.destroy());
+    npExtras = [];
+    document.getElementById('npExtraColours').innerHTML = '';
+    const mainHost = document.getElementById('npMainColour');
+    mainHost.innerHTML = AdminColours.blockHTML({ onSale: false, stock: 10, low: 3 });
+    npMain = AdminColours.wire(mainHost.firstElementChild, { onSale: false, onPriceInput: (v, kind) => npExtras.forEach(c => kind === 'price' ? c.setPrice(v) : c.setPct(v)) });
+  }
+  function addExtraColour(){
+    const n = npExtras.length + 2;   // the main colour is colour 1
+    const m = npMain.read();
+    const { root } = newColourBlock({ title: 'Colour ' + n, removable: true, onSale: npOnSale(), price: m.price, salePct: m.salePercent, stock: 10, low: 3 });
+    document.getElementById('npExtraColours').appendChild(root);
+    const ctl = AdminColours.wire(root, { onSale: npOnSale() });
+    npExtras.push(ctl);
+    root.querySelector('[data-cb-remove]').addEventListener('click', () => {
+      const i = npExtras.indexOf(ctl); if(i >= 0) npExtras.splice(i, 1);
+      ctl.destroy(); root.remove();
+      npExtras.forEach((c, k) => { const h = c.el.querySelector('.colour-block-head h4'); if(h) h.textContent = 'Colour ' + (k + 2); });
+    });
+    ctl.focusName();
+  }
+  function resetAddProductForm(){
+    ['npName','npFabric','npOccasion','npDesc','npWeaverName','npWeaverRegion','npLoomType']
+      .forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('npDesc')._rich.set('');
+    document.getElementById('npBadge').value = '';
+    document.getElementById('npStatus').textContent = '';
+    buildAddProductColours();
+  }
+  // Sale applies to the whole saree: the price boxes of every colour switch between "Price" and "Actual price + % off".
+  document.getElementById('npBadge').addEventListener('change', () => { const on = npOnSale(); npMain && npMain.setSale(on); npExtras.forEach(c => c.setSale(on)); });
+  document.getElementById('npAddColour').addEventListener('click', addExtraColour);
 
   fillAddProductDropdowns();
   enhanceRichText(document.getElementById('npDesc'));
   loadOccasionOptions().then(fillAddProductDropdowns);
+  buildAddProductColours();
+  // Fabric suggestions: the fabrics already in the shop (keeps spelling identical to what the filter uses).
+  async function fillFabricSuggestions(){
+    try{
+      const {fabrics} = await adminApiFetch('/admin/fabrics');
+      const names = new Set((fabrics || []).map(f => f.name).filter(Boolean));
+      allProducts.forEach(p => p.fabric && names.add(p.fabric));
+      document.getElementById('fabricSuggestions').innerHTML = [...names].sort().map(n => `<option value="${escHTML(n)}"></option>`).join('');
+    }catch(e){ /* suggestions are a nicety - typing still works */ }
+  }
 
   document.getElementById('showAddProduct').addEventListener('click', ()=>{
     const form = document.getElementById('addProductForm');
     const opening = form.style.display === 'none';
     form.style.display = opening ? 'block' : 'none';
-    if(opening) resetAddProductForm();
+    if(opening){ resetAddProductForm(); fillFabricSuggestions(); }
   });
+
+  // Photos keep uploading after the product is saved (colours in parallel), so saving itself is quick.
+  let uploadsRunning = 0;
+  window.addEventListener('beforeunload', e => { if(uploadsRunning > 0){ e.preventDefault(); e.returnValue = ''; } });
+  async function uploadNewProductPhotos(product, jobs){
+    const total = jobs.reduce((n, j) => n + j.files.length, 0);
+    if(!total) return;
+    const box = document.getElementById('productUploadStatus');
+    let done = 0; const failures = [];
+    const paint = () => { box.style.display = 'block'; box.textContent = `“${product.name}” saved — uploading photos ${done}/${total}… (you can keep working, but keep this page open)`; };
+    uploadsRunning++; paint();
+    await Promise.all(jobs.filter(j => j.files.length).map(async j => {
+      try{ await uploadVariantPhotos(j.variantId, j.files, () => { done++; paint(); }); }
+      catch(err){ failures.push(err.message); }
+    }));
+    uploadsRunning--;
+    box.textContent = failures.length ? `“${product.name}”: some photos did not upload (${failures[0]}). Open the product → Colours to add them again.` : `“${product.name}”: all ${total} photo${total === 1 ? '' : 's'} uploaded.`;
+    setTimeout(() => { if(!uploadsRunning) box.style.display = 'none'; }, failures.length ? 12000 : 4000);
+    try{ await refreshProduct(product.id); }catch(e){ /* the list refreshes next time it is opened */ }
+  }
+
   document.getElementById('createProduct').addEventListener('click', async ()=>{
+    const btn = document.getElementById('createProduct'), status = document.getElementById('npStatus');
+    const main = npMain.read(), extras = npExtras.map(c => c.read());
+    const sale = npOnSale();
+    if(!document.getElementById('npName').value.trim()){ toast('Enter the saree name.', 'error'); return; }
+    if(!document.getElementById('npFabric').value.trim()){ toast('Enter the fabric.', 'error'); return; }
+    if(!document.getElementById('npOccasion').value){ toast('Choose the occasion.', 'error'); return; }
+    if(!main.colorName){ toast('Enter the main colour name.', 'error'); npMain.focusName(); return; }
+    if(!main.price){ toast('Enter the price.', 'error'); return; }
+    for(const [i, c] of extras.entries()){
+      if(!c.colorName || !c.price){ toast(`Colour ${i + 2}: enter the colour name and price.`, 'error'); return; }
+      if(sale && !c.salePercent){ toast(`Colour ${i + 2}: enter the sale percentage.`, 'error'); return; }
+    }
+    if(sale && !main.salePercent){ toast('Enter the sale percentage.', 'error'); return; }
+    btn.disabled = true; status.textContent = 'Saving…';
     try{
-      await adminApiFetch('/admin/products', {
+      const {product} = await adminApiFetch('/admin/products', {
         method:'POST',
         body: JSON.stringify({
           name: document.getElementById('npName').value,
           fabric: document.getElementById('npFabric').value,
           occasion: document.getElementById('npOccasion').value,
-          swatch: document.getElementById('npSwatch').value || 'maroon',
-          price: document.getElementById('npPrice').value,
-          salePercent: document.getElementById('npBadge').value === 'sale' ? document.getElementById('npSalePct').value : undefined,
-          stock: document.getElementById('npStock').value,
+          colorName: main.colorName, swatch: main.swatch,
+          price: main.price, salePercent: sale ? main.salePercent : undefined,
+          stock: main.stock, lowStockThreshold: main.lowStockThreshold,
           badge: document.getElementById('npBadge').value,
           desc: document.getElementById('npDesc').value,
           weaverName: document.getElementById('npWeaverName').value,
           weaverRegion: document.getElementById('npWeaverRegion').value,
-          loomType: document.getElementById('npLoomType').value
+          loomType: document.getElementById('npLoomType').value,
+          colors: extras.map(c => ({ colorName: c.colorName, swatch: c.swatch, price: c.price, salePercent: sale ? c.salePercent : undefined, stock: c.stock, lowStockThreshold: c.lowStockThreshold }))
         })
       });
-      toast('Product created');
+      toast(product.variants.length > 1 ? `Product created with ${product.variants.length} colours` : 'Product created');
+      // the first colour is the default and the others follow in the order they were added
+      const jobs = [main, ...extras].map((c, i) => ({ variantId: product.variants[i] && product.variants[i].id, files: c.files })).filter(j => j.variantId);
       document.getElementById('addProductForm').style.display = 'none';
       resetAddProductForm();
-      loadProducts();
-    }catch(e){ toast(e.message, 'error'); }
+      applyProduct(product);          // it appears in the list at once
+      btn.disabled = false; status.textContent = '';
+      uploadNewProductPhotos(product, jobs);   // photos continue in the background
+    }catch(e){ toast(e.message, 'error'); btn.disabled = false; status.textContent = ''; }
   });
 
   function debounce(fn, ms){
