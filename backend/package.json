@@ -4,11 +4,11 @@
   "description": "Backend API + static server for the Padmora by Yashi saree e-commerce site",
   "main": "server.js",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "node --watch server.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
@@ -19,11 +19,8 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.2.0",
-    "nodemailer": "^9.0.5",
+    "nodemailer": "^10.0.15",
     "razorpay": "^2.9.8"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.4"
   },
   "overrides": {
     "qs": "6.16.0"

@@ -28,8 +28,7 @@
     100%{background-position:80% 70%;transform:scale(1.12);}
   }
   .reel-play{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,0.35);color:var(--ivory);display:flex;align-items:center;justify-content:center;font-size:15px;backdrop-filter:blur(2px);pointer-events:none;transition:opacity .2s ease;}
-  .reel-card:hover .reel-play{opacity:0;}
-  .reel-duration{position:absolute;top:10px;right:10px;font-size:10.5px;color:var(--ivory);background:rgba(0,0,0,0.4);padding:2px 8px;border-radius:20px;letter-spacing:.03em;}
+  .reel-card:hover .reel-play,.reel-card.is-playing .reel-play{opacity:0;}
   .reel-info{position:absolute;left:0;right:0;bottom:0;padding:14px 12px;background:linear-gradient(0deg, rgba(10,5,6,0.85) 0%, rgba(10,5,6,0.15) 70%, transparent 100%);}
   .reel-info strong{display:block;color:var(--ivory);font-size:12.5px;font-weight:500;line-height:1.3;font-family:var(--font-body);}
   .reel-info span{display:block;color:var(--gold-soft);font-size:11px;margin-top:3px;}
@@ -290,7 +289,6 @@
     <a class="reel-card" href="/product?id=${p.id}">
       ${mediaHTML}
       <span class="reel-play">▶</span>
-      ${p.reelVideo ? '<span class="reel-duration" hidden></span>' : ''}
       <div class="reel-info">
         <strong>${p.name}</strong>
         <span>${p.fabric} · ${money(p.price)}</span>
@@ -301,21 +299,57 @@
   // Videos stay paused (showing their poster/first frame) until the shopper
   // actually hovers the card — clicking anywhere on the card still just
   // follows the link to the product page as normal.
+  // Computers: hover a reel and it plays. Phones and tablets have no hover, so there the reel that is in view plays
+  // by itself instead (see bindReelAutoPlay) - a video starts only while it is muted, so no sound ever surprises anyone.
+  const REELS_CAN_HOVER = !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
   function bindReelHoverPlay(){
+    if(!REELS_CAN_HOVER) return;
     document.querySelectorAll('#reelRail .reel-card').forEach(card=>{
       const video = card.querySelector('video.reel-media');
       if(!video) return;
-      const badge = card.querySelector('.reel-duration');
-      const showLength = () => {
-        if(!badge || !isFinite(video.duration) || video.duration <= 0) return;
-        const secs = Math.round(video.duration);
-        badge.textContent = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
-        badge.hidden = false;
-      };
-      if(video.readyState >= 1) showLength(); else video.addEventListener('loadedmetadata', showLength, { once: true });
       card.addEventListener('mouseenter', ()=>{ video.currentTime = 0; video.play().catch(()=>{}); });
       card.addEventListener('mouseleave', ()=>{ video.pause(); video.currentTime = 0; });
     });
+  }
+
+  // Touch screens: whichever reel sits in the middle of the row when scrolling stops plays; the others pause.
+  // Nothing plays while the row is off screen or the tab is in the background.
+  function bindReelAutoPlay(){
+    if(REELS_CAN_HOVER) return;
+    const rail = document.getElementById('reelRail');
+    const cards = Array.from(rail.querySelectorAll('.reel-card')).filter(c => c.querySelector('video.reel-media'));
+    if(!cards.length) return;
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if(reduceMotion) return;
+    let visible = false, current = null, timer = null;
+    const nearestToCentre = () => {
+      const r = rail.getBoundingClientRect(), cx = r.left + r.width / 2;
+      let best = null, bestD = Infinity;
+      cards.forEach(c => { const q = c.getBoundingClientRect(); const d = Math.abs(q.left + q.width / 2 - cx); if(d < bestD){ bestD = d; best = c; } });
+      return best;
+    };
+    const stop = card => { const v = card && card.querySelector('video.reel-media'); if(v){ v.pause(); } if(card) card.classList.remove('is-playing'); };
+    const apply = () => {
+      const target = visible && !document.hidden ? nearestToCentre() : null;
+      if(target === current) return;
+      stop(current);
+      current = target;
+      if(target){
+        const v = target.querySelector('video.reel-media');
+        v.muted = true;
+        v.currentTime = 0;
+        const pr = v.play();
+        if(pr && pr.catch) pr.catch(() => { /* the browser said no (data saver, low power): the poster simply stays */ });
+        target.classList.add('is-playing');
+      }
+    };
+    const soon = () => { clearTimeout(timer); timer = setTimeout(apply, 140); };   // wait until the scrolling has settled
+    rail.addEventListener('scroll', soon, { passive: true });
+    window.addEventListener('resize', soon);
+    document.addEventListener('visibilitychange', apply);
+    if('IntersectionObserver' in window){
+      new IntersectionObserver(entries => { visible = entries[0].isIntersecting; apply(); }, { threshold: 0.6 }).observe(rail);
+    }
   }
 
   async function loadReels(){
@@ -323,6 +357,7 @@
       const {products} = await apiFetch('/products/reels');
       document.getElementById('reelRail').innerHTML = products.map(reelCardHTML).join('');
       bindReelHoverPlay();
+      bindReelAutoPlay();
     }catch(e){
       document.getElementById('reelRail').innerHTML = '';
     }

@@ -630,6 +630,7 @@ async function shapeAdminOrder(o, { full } = {}) {
     shippingFee: o.shipping_fee,
     taxAmount: o.tax_amount,
     couponCode: o.coupon_code,
+    payment: o.payment,
     total: o.total,
     status,
     manualStatus: o.manual_status,

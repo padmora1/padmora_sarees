@@ -33,7 +33,12 @@
   <section class="section" style="padding-top:36px;">
     <div class="container">
       <div class="account-layout">
-        <nav class="account-nav">
+        <button type="button" class="admin-menu-toggle" id="adminMenuToggle" aria-expanded="false" aria-controls="adminNav">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+          <span id="adminMenuLabel">Overview</span>
+          <svg class="admin-menu-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <nav class="account-nav admin-nav" id="adminNav">
           <button class="active" data-tab="overview">Overview</button>
           <button data-tab="products">Products</button>
           <button data-tab="catalog">Catalog</button>
@@ -90,6 +95,7 @@
               <div class="form-field"><label>Loom Type</label><select class="admin-input" style="width:100%;" id="npLoomType"></select></div>
               <button class="btn btn-primary btn-sm" id="createProduct">Create Product</button>
             </div>
+            <div id="productTools"></div>
             <div id="archivedProductsToggle" style="display:none;margin-bottom:10px;font-size:12.5px;color:var(--ink-soft);"></div>
             <div style="overflow-x:auto;">
               <table class="admin-table" id="productsTable"></table>
@@ -135,9 +141,7 @@
           <div id="panel-orders" style="display:none;">
             <h2>Orders</h2>
             <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
-              <button class="btn btn-outline btn-sm" id="exportOrdersCsv">Export CSV</button>
               <button class="btn btn-outline btn-sm" id="printSelectedSlips" style="display:none;">Print Packing Slips (<span id="selectedSlipCount">0</span>)</button>
-              <input type="search" class="admin-input" id="orderSearchBox" placeholder="Search order #, customer name or email…" style="max-width:280px;margin-left:auto;">
             </div>
             <details class="editor-card" id="bulkStatusCard" style="margin-bottom:16px;">
               <summary style="cursor:pointer;font-weight:600;color:var(--maroon-deep);">Bulk update status — upload a sheet of order IDs</summary>
@@ -159,6 +163,7 @@
               </div>
             </details>
             <div class="order-filter-row" id="orderStatusFilters"></div>
+            <div id="orderTools"></div>
             <div style="overflow-x:auto;">
               <table class="admin-table" id="ordersTable"></table>
             </div>
@@ -169,6 +174,7 @@
             <h2>Returns &amp; Refunds</h2>
             <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Requested → Approved/Rejected → Received → Refunded. Refunds can only be processed once an item is marked Received — never before the saree is actually back in hand.</p>
             <div class="order-filter-row" id="returnStatusFilters"></div>
+            <div id="returnTools"></div>
             <div style="overflow-x:auto;">
               <table class="admin-table" id="returnsTable"></table>
             </div>
@@ -218,6 +224,7 @@
           <div id="panel-reviews" style="display:none;">
             <h2>Reviews</h2>
             <div class="order-filter-row" id="reviewStatusFilters"></div>
+            <div id="reviewTools"></div>
             <div style="overflow-x:auto;">
               <table class="admin-table" id="reviewsTable"></table>
             </div>
@@ -239,6 +246,7 @@
 
           <div id="panel-messages" style="display:none;">
             <h2>Customer Messages</h2>
+            <div id="messageTools"></div>
             <div id="messagesList"></div>
           </div>
 
@@ -311,6 +319,7 @@
 <script src="js/components.js"></script>
 <script src="js/cursor.js"></script>
 <script src="js/admin-api.js"></script>
+<script src="js/admin-lists.js"></script>
 <script>
   const STAGE_NAMES = ['Confirmed','Packed','Shipped','Out for Delivery','Delivered'];
 
@@ -325,6 +334,10 @@
   function switchTab(tab){
     setHash(tab, tab === 'catalog' ? catalogTab : tab === 'storefront' ? storefrontTab : '');
     document.querySelectorAll('.account-nav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+    const activeBtn = document.querySelector('.account-nav button.active');
+    const label = document.getElementById('adminMenuLabel');
+    if(label && activeBtn) label.textContent = activeBtn.textContent.trim();
+    closeAdminMenu();
     ['overview','products','catalog','storefront','orders','returns','inventory','coupons','customers','reviews','analytics','messages','settings','adminusers','activitylog'].forEach(t=>{
       document.getElementById('panel-'+t).style.display = (t===tab) ? 'block' : 'none';
     });
@@ -345,6 +358,21 @@
     if(tab==='activitylog') loadActivityLog();
   }
   document.querySelectorAll('.account-nav button').forEach(b=>b.addEventListener('click', ()=>switchTab(b.dataset.tab)));
+  // Phone menu: the section list folds behind a "Menu" button and closes after a choice, a tap elsewhere or Esc.
+  function closeAdminMenu(){
+    const nav = document.getElementById('adminNav'), btn = document.getElementById('adminMenuToggle');
+    if(nav) nav.classList.remove('open');
+    if(btn) btn.setAttribute('aria-expanded', 'false');
+  }
+  document.getElementById('adminMenuToggle').addEventListener('click', e => {
+    e.stopPropagation();
+    const nav = document.getElementById('adminNav');
+    const open = nav.classList.toggle('open');
+    document.getElementById('adminMenuToggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  document.addEventListener('click', e => { if(!e.target.closest('#adminNav') && !e.target.closest('#adminMenuToggle')) closeAdminMenu(); });
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') closeAdminMenu(); });
+
   // Editing the address (or the browser's Back / Forward) to another tab opens that tab.
   window.addEventListener('hashchange', () => {
     const t = hashTarget();
@@ -562,36 +590,99 @@
     ta._rich.set(ta.value);
   }
 
+  // ---- Products list: search, fabric, stock and sort on the products already loaded ----
+  let productsTools = null;
+  const stockStateOf = p => {
+    const vs = p.variants || [];
+    const total = p.totalStock != null ? p.totalStock : vs.reduce((sum, v) => sum + (v.stock || 0), 0);
+    if(total <= 0) return 'out';
+    if(vs.some(v => v.stock <= (v.lowStockThreshold != null ? v.lowStockThreshold : 10))) return 'low';
+    return 'in';
+  };
+  function ensureProductsTools(){
+    if(productsTools) return;
+    productsTools = AdminLists.createTools(document.getElementById('productTools'), {
+      searchId: 'productSearchBox', noun: 'products', dateField: false,
+      placeholder: 'Search saree name, fabric, colour, SKU…',
+      sorts: [{value:'new',label:'Newest first'},{value:'name',label:'Name A–Z'},{value:'stockLow',label:'Stock: low to high'},{value:'stockHigh',label:'Stock: high to low'},{value:'priceLow',label:'Price: low to high'},{value:'priceHigh',label:'Price: high to low'}],
+      extraHTML: '<label>Fabric <select class="admin-input" id="productFabricFilter"><option value="">All fabrics</option></select></label>' +
+                 '<label>Stock <select class="admin-input" id="productStockFilter"><option value="">All stock levels</option><option value="in">In stock</option><option value="low">Low stock</option><option value="out">Out of stock</option></select></label>',
+      onChange: renderProductsTable, exportCsv: exportProductsCsv
+    });
+    document.getElementById('productFabricFilter').addEventListener('change', renderProductsTable);
+    document.getElementById('productStockFilter').addEventListener('change', renderProductsTable);
+  }
+  function visibleProducts(){
+    const t = productsTools, groups = t.groups();
+    const fabric = document.getElementById('productFabricFilter').value, stock = document.getElementById('productStockFilter').value;
+    const base = showArchivedProducts ? allProducts : allProducts.filter(p => p.status !== 'archived');
+    const rows = base.filter(p =>
+      (!fabric || p.fabric === fabric) && (!stock || stockStateOf(p) === stock) &&
+      AdminLists.matches(groups, [p.id, p.name, p.fabric, p.occasion, p.badge, p.status, (p.variants || []).map(v => (v.colorName || '') + ' ' + (v.sku || '')).join(' ')].join(' ')));
+    const by = {
+      new: (x, y) => y.id - x.id, name: (x, y) => String(x.name).localeCompare(String(y.name)),
+      stockLow: (x, y) => x.totalStock - y.totalStock, stockHigh: (x, y) => y.totalStock - x.totalStock,
+      priceLow: (x, y) => x.price - y.price, priceHigh: (x, y) => y.price - x.price
+    };
+    return rows.sort(by[t.state.sort] || by.new);
+  }
+  function exportProductsCsv(){
+    const rows = visibleProducts();
+    if(!rows.length){ toast('Nothing to export for this search and filters.', 'error'); return; }
+    AdminLists.downloadCsv('padmora-products-' + new Date().toISOString().slice(0,10) + '.csv',
+      ['ID','Name','Fabric','Occasion','Price','Colours','Total stock','Stock level','Badge','Status'],
+      rows.map(p => [p.id, p.name, p.fabric, p.occasion || '', p.price, p.variantCount, p.totalStock, { in: 'In stock', low: 'Low stock', out: 'Out of stock' }[stockStateOf(p)], p.badge || '', p.status || 'active']));
+    toast(rows.length + ' product' + (rows.length === 1 ? '' : 's') + ' exported');
+  }
+
   async function loadProducts(){
     try{
+      ensureProductsTools();
       await loadOccasionOptions();
       fillAddProductDropdowns();
       const {products} = await adminApiFetch('/admin/products');
       allProducts = products;
-      const archivedCount = products.filter(p=>p.status==='archived').length;
-      const visible = showArchivedProducts ? products : products.filter(p=>p.status!=='archived');
-      const toggleEl = document.getElementById('archivedProductsToggle');
-      toggleEl.style.display = archivedCount ? 'block' : 'none';
-      toggleEl.innerHTML = archivedCount
-        ? `${archivedCount} archived product${archivedCount===1?'':'s'} (deleted, but had past orders) ${showArchivedProducts ? 'shown below' : 'hidden'} — <a href="#" id="toggleArchivedLink" style="color:var(--maroon);">${showArchivedProducts?'Hide':'Show'} archived</a>`
-        : '';
-      const link = document.getElementById('toggleArchivedLink');
-      if(link) link.addEventListener('click', (e)=>{ e.preventDefault(); showArchivedProducts = !showArchivedProducts; loadProducts(); });
-      document.getElementById('productsTable').innerHTML = `
-        <thead><tr><th>Name</th><th>Fabric</th><th>Variants</th><th>Total Stock</th><th>Badge</th><th>Status</th><th></th></tr></thead>
-        <tbody>${visible.map(p=>`
-          <tr data-id="${p.id}" ${p.status==='archived'?'style="opacity:.55;"':''}>
-            <td>${p.status==='archived'?`<s>${escHTML(p.name)}</s>`:p.name}</td>
-            <td>${escHTML(p.fabric)}</td>
-            <td>${p.variantCount}</td>
-            <td style="${p.totalStock<=10?'color:var(--maroon);font-weight:600;':''}">${p.totalStock}</td>
-            <td>${p.badge || '—'}</td>
-            <td>${p.status==='archived' ? '<strong>archived</strong>' : (p.status || 'active')}</td>
-            <td style="white-space:nowrap;">
-              <button class="btn btn-sm btn-outline" data-edit="${p.id}">Edit</button>
-              ${p.status==='archived' ? '' : `<button class="btn btn-sm" style="color:var(--maroon);" data-delete="${p.id}">Delete</button>`}
-            </td>
-          </tr>`).join('')}</tbody>`;
+      // the Fabric box lists the fabrics that actually have products
+      const fabSel = document.getElementById('productFabricFilter'), keep = fabSel.value;
+      fabSel.innerHTML = '<option value="">All fabrics</option>' + [...new Set(products.map(p => p.fabric).filter(Boolean))].sort().map(f => `<option value="${escHTML(f)}">${escHTML(f)}</option>`).join('');
+      fabSel.value = [...fabSel.options].some(o => o.value === keep) ? keep : '';
+      renderProductsTable();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  function renderProductsTable(){
+    try{
+    ensureProductsTools();
+    const products = allProducts;
+    const archivedCount = products.filter(p=>p.status==='archived').length;
+    const visible = visibleProducts();
+    const groups = productsTools.groups();
+    const hl = text => AdminLists.highlight(text, groups);
+    productsTools.setCount(visible.length, showArchivedProducts ? products.length : products.length - archivedCount);
+    const toggleEl = document.getElementById('archivedProductsToggle');
+    toggleEl.style.display = archivedCount ? 'block' : 'none';
+    toggleEl.innerHTML = archivedCount
+      ? `${archivedCount} archived product${archivedCount===1?'':'s'} (deleted, but had past orders) ${showArchivedProducts ? 'shown below' : 'hidden'} — <a href="#" id="toggleArchivedLink" style="color:var(--maroon);">${showArchivedProducts ? 'hide them' : 'show them'}</a>`
+      : '';
+    const link = document.getElementById('toggleArchivedLink');
+    if(link) link.addEventListener('click', (e)=>{ e.preventDefault(); showArchivedProducts = !showArchivedProducts; renderProductsTable(); });
+    document.getElementById('productsTable').innerHTML = `
+      <thead><tr><th>Name</th><th>Fabric</th><th>Variants</th><th>Total Stock</th><th>Badge</th><th>Status</th><th></th></tr></thead>
+      <tbody>${visible.length ? visible.map(p=>{
+        const st = stockStateOf(p);
+        return `
+        <tr data-id="${p.id}" ${p.status==='archived'?'style="opacity:.55;"':''}>
+          <td>${p.status==='archived'?`<s>${hl(p.name)}</s>`:hl(p.name)}</td>
+          <td>${hl(p.fabric)}</td>
+          <td>${p.variantCount}</td>
+          <td style="${st !== 'in' ? 'color:var(--maroon);font-weight:600;' : ''}">${p.totalStock}${st === 'out' ? ' <span class="lt-badge out">Out</span>' : st === 'low' ? ' <span class="lt-badge low">Low</span>' : ''}</td>
+          <td>${p.badge || '—'}</td>
+          <td>${p.status==='archived' ? '<strong>archived</strong>' : (p.status || 'active')}</td>
+          <td style="white-space:nowrap;">
+            <button class="btn btn-sm btn-outline" data-edit="${p.id}">Edit</button>
+            ${p.status==='archived' ? '' : `<button class="btn btn-sm" style="color:var(--maroon);" data-delete="${p.id}">Delete</button>`}
+          </td>
+        </tr>`; }).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:24px;">No products match this search and these filters.</td></tr>`}</tbody>`;
 
       document.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click', ()=>{
         openProductId = Number(btn.dataset.edit);
@@ -932,15 +1023,10 @@
   let selectedOrderIds = new Set();
   const ORDER_FILTERS = ['all', 'Cancellation Requested', 'Confirmed', 'Packed', 'Shipped', 'Out for Delivery', 'Delivered', 'Cancelled'];
 
-  document.getElementById('exportOrdersCsv').addEventListener('click', async ()=>{
-    try{ await adminDownloadFile('/admin/orders/export.csv', 'padmora-orders.csv'); }
-    catch(e){ toast(e.message, 'error'); }
-  });
   document.getElementById('printSelectedSlips').addEventListener('click', ()=>{
     if(!selectedOrderIds.size) return;
     window.open('/packing-slip?ids=' + Array.from(selectedOrderIds).map(encodeURIComponent).join(','), '_blank');
   });
-  document.getElementById('orderSearchBox').addEventListener('input', debounce(()=>loadOrders(), 250));
   document.getElementById('customerSearchBox').addEventListener('input', debounce(()=>renderCustomersTable(), 200));
 
   function updateSelectedSlipUI(){
@@ -1020,72 +1106,107 @@
     }
   })();
 
+  // ---- Orders list: search, date range, sort and CSV all work on the orders already fetched ----
+  let ordersCache = [];
+  let ordersTools = null;
+  function ensureOrdersTools(){
+    if(ordersTools) return;
+    ordersTools = AdminLists.createTools(document.getElementById('orderTools'), {
+      searchId: 'orderSearchBox', noun: 'orders',
+      placeholder: 'Search order #, customer name, e-mail, saree, city…',
+      sorts: [{value:'new',label:'Newest first'},{value:'old',label:'Oldest first'},{value:'high',label:'Highest total'},{value:'low',label:'Lowest total'}],
+      onChange: renderOrdersTable, exportCsv: exportOrdersCsv
+    });
+  }
+  function visibleOrders(){
+    const t = ordersTools, groups = t.groups();
+    let rows = ordersCache.filter(o => AdminLists.inRange(o.placedAt, t.state.from, t.state.to) && AdminLists.matches(groups, [
+      o.id, o.customerName, o.customerEmail, o.address && o.address.name, o.address && o.address.city, o.address && o.address.state, o.address && o.address.pincode,
+      o.status, o.couponCode, o.total, o.items.map(i => i.name + ' ' + (i.color || '')).join(' ')
+    ].join(' ')));
+    const by = { new: (x, y) => new Date(y.placedAt) - new Date(x.placedAt), old: (x, y) => new Date(x.placedAt) - new Date(y.placedAt), high: (x, y) => y.total - x.total, low: (x, y) => x.total - y.total };
+    return rows.sort(by[t.state.sort] || by.new);
+  }
+  function exportOrdersCsv(){
+    const rows = visibleOrders();
+    if(!rows.length){ toast('Nothing to export for this search and date range.', 'error'); return; }
+    AdminLists.downloadCsv('padmora-orders-' + new Date().toISOString().slice(0,10) + '.csv',
+      ['Order ID','Placed at','Customer','E-mail','Status','Payment','Items','Subtotal','Discount','Shipping','Tax','Total','Coupon','City','State','Pincode'],
+      rows.map(o => [o.id, new Date(o.placedAt).toLocaleString('en-IN'), o.customerName, o.customerEmail, o.status, o.payment || '',
+        o.items.map(i => `${i.name}${i.color ? ' (' + i.color + ')' : ''} x${i.qty}`).join('; '),
+        o.subtotal, o.discount, o.shippingFee, o.taxAmount, o.total, o.couponCode || '', o.address && o.address.city || '', o.address && o.address.state || '', o.address && o.address.pincode || '']));
+    toast(rows.length + ' order' + (rows.length === 1 ? '' : 's') + ' exported');
+  }
+
   async function loadOrders(){
+    ensureOrdersTools();
     document.getElementById('orderStatusFilters').innerHTML = ORDER_FILTERS.map(f=>
       `<button data-filter="${f}" class="${orderFilter===f?'active':''}">${f==='all'?'All':f}</button>`).join('');
     document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click', ()=>{ orderFilter = b.dataset.filter; loadOrders(); }));
-
     try{
       const q = (orderFilter !== 'all' && orderFilter !== 'Cancellation Requested') ? ('?status=' + encodeURIComponent(orderFilter)) : '';
       let {orders} = await adminApiFetch('/admin/orders' + q);
       if(orderFilter === 'Cancellation Requested') orders = orders.filter(o=>o.cancelRequestStatus === 'Requested');
-      const searchTerm = document.getElementById('orderSearchBox').value.trim().toLowerCase();
-      if(searchTerm){
-        orders = orders.filter(o=>
-          o.id.toLowerCase().includes(searchTerm) ||
-          (o.customerName||'').toLowerCase().includes(searchTerm) ||
-          (o.customerEmail||'').toLowerCase().includes(searchTerm)
-        );
-      }
-      // Selection shouldn't silently hold onto orders that scrolled out of the
-      // current filter view — keep only what's still visible.
-      const visibleIds = new Set(orders.map(o=>o.id));
-      selectedOrderIds = new Set(Array.from(selectedOrderIds).filter(id=>visibleIds.has(id)));
-
-      document.getElementById('ordersTable').innerHTML = `
-        <thead><tr><th><input type="checkbox" id="selectAllOrders" aria-label="Select all"></th><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead>
-        <tbody>${orders.length ? orders.map(o=>`
-          <tr>
-            <td><input type="checkbox" class="order-select-box" data-select-order="${o.id}" ${selectedOrderIds.has(o.id)?'checked':''}></td>
-            <td>#${o.id}<br><span style="font-size:11px;color:var(--ink-soft);">${new Date(o.placedAt).toLocaleDateString('en-IN')}</span></td>
-            <td>${escHTML(o.customerName)}<br><span style="font-size:11px;color:var(--ink-soft);">${escHTML(o.customerEmail)}</span></td>
-            <td style="font-size:12.5px;">${o.items.map(i=>`${escHTML(i.name)}${i.color?' ('+i.color+')':''} ×${i.qty}`).join('<br>')}</td>
-            <td>${money(o.total)}</td>
-            <td>
-              ${o.status === 'Cancelled' ? '<span class="order-status cancelled">Cancelled</span>' : `
-              <select class="admin-input" data-order-status="${o.id}">
-                <option value="auto" ${!o.manualStatus?'selected':''}>Auto (${o.status})</option>
-                ${STAGE_NAMES.map(s=>`<option value="${s}" ${o.manualStatus===s?'selected':''}>${s}</option>`).join('')}
-              </select>${o.manualStatus?'<span class="manual-override-flag">Override</span>':''}`}
-              ${o.cancelRequestStatus === 'Requested' ? '<br><span class="order-status" style="background:var(--gold);color:#fff;">Cancellation Requested</span>' : ''}
-            </td>
-            <td><button class="btn btn-sm btn-outline" data-view-order="${o.id}">View</button></td>
-          </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:24px;">No orders in this status.</td></tr>`}</tbody>`;
-
-      document.querySelectorAll('[data-order-status]').forEach(sel=>sel.addEventListener('change', async ()=>{
-        try{
-          await adminApiFetch('/admin/orders/' + sel.dataset.orderStatus + '/status', {method:'PUT', body: JSON.stringify({status: sel.value})});
-          toast('Order status updated');
-          loadOrders();
-        }catch(e){ toast(e.message, 'error'); }
-      }));
-      document.querySelectorAll('[data-view-order]').forEach(btn=>btn.addEventListener('click', ()=>{
-        openOrderId = btn.dataset.viewOrder;
-        renderOrderDetail();
-      }));
-      document.querySelectorAll('[data-select-order]').forEach(box=>box.addEventListener('change', ()=>{
-        if(box.checked) selectedOrderIds.add(box.dataset.selectOrder);
-        else selectedOrderIds.delete(box.dataset.selectOrder);
-        document.getElementById('selectAllOrders').checked = orders.length > 0 && selectedOrderIds.size === orders.length;
-        updateSelectedSlipUI();
-      }));
-      document.getElementById('selectAllOrders').addEventListener('change', (e)=>{
-        selectedOrderIds = new Set(e.target.checked ? orders.map(o=>o.id) : []);
-        document.querySelectorAll('.order-select-box').forEach(box=>box.checked = e.target.checked);
-        updateSelectedSlipUI();
-      });
-      updateSelectedSlipUI();
+      ordersCache = orders;
+      renderOrdersTable();
     }catch(e){ toast(e.message, 'error'); }
+  }
+
+  function renderOrdersTable(){
+    ensureOrdersTools();
+    const orders = visibleOrders();
+    const groups = ordersTools.groups();
+    const hl = text => AdminLists.highlight(text, groups);
+    // Selection shouldn't silently hold onto orders that scrolled out of the
+    // current view — keep only what's still visible.
+    const visibleIds = new Set(orders.map(o=>o.id));
+    selectedOrderIds = new Set(Array.from(selectedOrderIds).filter(id=>visibleIds.has(id)));
+    ordersTools.setCount(orders.length, ordersCache.length);
+
+    document.getElementById('ordersTable').innerHTML = `
+      <thead><tr><th><input type="checkbox" id="selectAllOrders" aria-label="Select all"></th><th>Order</th><th>Date</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead>
+      <tbody>${orders.length ? orders.map(o=>`
+        <tr>
+          <td><input type="checkbox" class="order-select-box" data-select-order="${escHTML(o.id)}" ${selectedOrderIds.has(o.id)?'checked':''}></td>
+          <td>#${hl(o.id)}</td>
+          <td style="white-space:nowrap;font-size:12.5px;">${AdminLists.fmtDate(o.placedAt)}<br><span style="font-size:11px;color:var(--ink-soft);">${new Date(o.placedAt).toLocaleTimeString('en-IN', {hour:'numeric', minute:'2-digit'})}</span></td>
+          <td>${hl(o.customerName)}<br><span style="font-size:11px;color:var(--ink-soft);">${hl(o.customerEmail)}</span></td>
+          <td style="font-size:12.5px;">${o.items.map(i=>`${hl(i.name)}${i.color?' ('+escHTML(i.color)+')':''} ×${i.qty}`).join('<br>')}</td>
+          <td>${money(o.total)}</td>
+          <td>
+            ${o.status === 'Cancelled' ? '<span class="order-status cancelled">Cancelled</span>' : `
+            <select class="admin-input" data-order-status="${escHTML(o.id)}">
+              <option value="auto" ${!o.manualStatus?'selected':''}>Auto (${o.status})</option>
+              ${STAGE_NAMES.map(s=>`<option value="${s}" ${o.manualStatus===s?'selected':''}>${s}</option>`).join('')}
+            </select>${o.manualStatus?'<span class="manual-override-flag">Override</span>':''}`}
+            ${o.cancelRequestStatus === 'Requested' ? '<br><span class="order-status" style="background:var(--gold);color:#fff;">Cancellation Requested</span>' : ''}
+          </td>
+          <td><button class="btn btn-sm btn-outline" data-view-order="${escHTML(o.id)}">View</button></td>
+        </tr>`).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--ink-soft);padding:24px;">${ordersCache.length ? 'No orders match this search and date range.' : 'No orders in this status.'}</td></tr>`}</tbody>`;
+
+    document.querySelectorAll('[data-order-status]').forEach(sel=>sel.addEventListener('change', async ()=>{
+      try{
+        await adminApiFetch('/admin/orders/' + sel.dataset.orderStatus + '/status', {method:'PUT', body: JSON.stringify({status: sel.value})});
+        toast('Order status updated');
+        loadOrders();
+      }catch(e){ toast(e.message, 'error'); }
+    }));
+    document.querySelectorAll('[data-view-order]').forEach(btn=>btn.addEventListener('click', ()=>{
+      openOrderId = btn.dataset.viewOrder;
+      renderOrderDetail();
+    }));
+    document.querySelectorAll('[data-select-order]').forEach(box=>box.addEventListener('change', ()=>{
+      if(box.checked) selectedOrderIds.add(box.dataset.selectOrder);
+      else selectedOrderIds.delete(box.dataset.selectOrder);
+      document.getElementById('selectAllOrders').checked = orders.length > 0 && selectedOrderIds.size === orders.length;
+      updateSelectedSlipUI();
+    }));
+    document.getElementById('selectAllOrders').addEventListener('change', (e)=>{
+      selectedOrderIds = new Set(e.target.checked ? orders.map(o=>o.id) : []);
+      document.querySelectorAll('.order-select-box').forEach(box=>box.checked = e.target.checked);
+      updateSelectedSlipUI();
+    });
+    updateSelectedSlipUI();
   }
 
   async function renderOrderDetail(){
@@ -1244,31 +1365,73 @@
   let returnFilter = 'all';
   let openReturnId = null;
 
+  // ---- Returns list ----
+  let returnsCache = [];
+  let returnsTools = null;
+  function ensureReturnsTools(){
+    if(returnsTools) return;
+    returnsTools = AdminLists.createTools(document.getElementById('returnTools'), {
+      searchId: 'returnSearchBox', noun: 'return requests',
+      placeholder: 'Search return #, order #, customer name, e-mail, reason, saree…',
+      sorts: [{value:'new',label:'Newest first'},{value:'old',label:'Oldest first'},{value:'high',label:'Highest refund'},{value:'low',label:'Lowest refund'}],
+      onChange: renderReturnsTable, exportCsv: exportReturnsCsv
+    });
+  }
+  const returnAmount = r => r.finalRefundAmount ?? r.computedRefundAmount ?? 0;
+  function visibleReturns(){
+    const t = returnsTools, groups = t.groups();
+    const rows = returnsCache.filter(r => AdminLists.inRange(r.requestedAt, t.state.from, t.state.to) && AdminLists.matches(groups, [
+      r.id, r.orderId, r.customerName, r.customerEmail, r.customerPhone, r.reasonLabel, r.status, r.refundMethod, (r.items || []).map(i => i.name).join(' ')
+    ].join(' ')));
+    const by = { new: (x, y) => new Date(y.requestedAt) - new Date(x.requestedAt), old: (x, y) => new Date(x.requestedAt) - new Date(y.requestedAt), high: (x, y) => returnAmount(y) - returnAmount(x), low: (x, y) => returnAmount(x) - returnAmount(y) };
+    return rows.sort(by[t.state.sort] || by.new);
+  }
+  function exportReturnsCsv(){
+    const rows = visibleReturns();
+    if(!rows.length){ toast('Nothing to export for this search and date range.', 'error'); return; }
+    AdminLists.downloadCsv('padmora-returns-' + new Date().toISOString().slice(0,10) + '.csv',
+      ['Return #','Requested at','Order ID','Customer','E-mail','Phone','Reason','Items','Refund method','Refund amount','Status'],
+      rows.map(r => [r.id, new Date(r.requestedAt).toLocaleString('en-IN'), r.orderId, r.customerName, r.customerEmail, r.customerPhone || '', r.reasonLabel,
+        (r.items || []).map(i => `${i.name} x${i.qty}`).join('; '), r.refundMethod || '', returnAmount(r), r.status]));
+    toast(rows.length + ' return' + (rows.length === 1 ? '' : 's') + ' exported');
+  }
+
   async function loadReturns(){
+    ensureReturnsTools();
     document.getElementById('returnStatusFilters').innerHTML = RETURN_FILTERS.map(f=>
       `<button data-rfilter="${f}" class="${returnFilter===f?'active':''}">${f==='all'?'All':f}</button>`).join('');
     document.querySelectorAll('[data-rfilter]').forEach(b=>b.addEventListener('click', ()=>{ returnFilter = b.dataset.rfilter; loadReturns(); }));
-
     try{
       const q = returnFilter !== 'all' ? ('?status=' + encodeURIComponent(returnFilter)) : '';
       const {returns} = await adminApiFetch('/admin/returns' + q);
-      document.getElementById('returnsTable').innerHTML = `
-        <thead><tr><th>Return</th><th>Order</th><th>Customer</th><th>Reason</th><th>Refund</th><th>Status</th><th></th></tr></thead>
-        <tbody>${returns.length ? returns.map(r=>`
-          <tr>
-            <td>#${r.id}<br><span style="font-size:11px;color:var(--ink-soft);">${new Date(r.requestedAt).toLocaleDateString('en-IN')}</span></td>
-            <td>#${r.orderId}</td>
-            <td>${escHTML(r.customerName)}<br><span style="font-size:11px;color:var(--ink-soft);">${escHTML(r.customerEmail)}</span></td>
-            <td style="font-size:12.5px;">${r.reasonLabel}</td>
-            <td>${money(r.finalRefundAmount ?? r.computedRefundAmount)}</td>
-            <td><span class="status-pill status-${r.status==='Rejected'?'cancelled':(r.status==='Refunded'?'confirmed':'pending')}">${r.status}</span></td>
-            <td><button class="btn btn-sm btn-outline" data-view-return="${r.id}">View</button></td>
-          </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:24px;">No return requests in this status.</td></tr>`}</tbody>`;
-      document.querySelectorAll('[data-view-return]').forEach(btn=>btn.addEventListener('click', ()=>{
-        openReturnId = btn.dataset.viewReturn;
-        renderReturnDetail();
-      }));
+      returnsCache = returns;
+      renderReturnsTable();
     }catch(e){ toast(e.message, 'error'); }
+  }
+
+  function renderReturnsTable(){
+    ensureReturnsTools();
+    const returns = visibleReturns();
+    const groups = returnsTools.groups();
+    const hl = text => AdminLists.highlight(text, groups);
+    returnsTools.setCount(returns.length, returnsCache.length);
+    document.getElementById('returnsTable').innerHTML = `
+      <thead><tr><th>Return</th><th>Date</th><th>Order</th><th>Customer</th><th>Reason</th><th>Refund</th><th>Status</th><th></th></tr></thead>
+      <tbody>${returns.length ? returns.map(r=>`
+        <tr>
+          <td>#${hl(r.id)}</td>
+          <td style="white-space:nowrap;font-size:12.5px;">${AdminLists.fmtDate(r.requestedAt)}<br><span style="font-size:11px;color:var(--ink-soft);">${new Date(r.requestedAt).toLocaleTimeString('en-IN', {hour:'numeric', minute:'2-digit'})}</span></td>
+          <td>#${hl(r.orderId)}</td>
+          <td>${hl(r.customerName)}<br><span style="font-size:11px;color:var(--ink-soft);">${hl(r.customerEmail)}</span></td>
+          <td style="font-size:12.5px;">${hl(r.reasonLabel)}</td>
+          <td>${money(returnAmount(r))}</td>
+          <td><span class="status-pill status-${r.status==='Rejected'?'cancelled':(r.status==='Refunded'?'confirmed':'pending')}">${r.status}</span></td>
+          <td><button class="btn btn-sm btn-outline" data-view-return="${r.id}">View</button></td>
+        </tr>`).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--ink-soft);padding:24px;">${returnsCache.length ? 'No return requests match this search and date range.' : 'No return requests in this status.'}</td></tr>`}</tbody>`;
+    document.querySelectorAll('[data-view-return]').forEach(btn=>btn.addEventListener('click', ()=>{
+      openReturnId = btn.dataset.viewReturn;
+      renderReturnDetail();
+    }));
   }
 
   async function renderReturnDetail(){
@@ -2939,23 +3102,64 @@
   let reviewFilter = 'all';
   const REVIEW_FILTERS = ['all','pending','published','rejected'];
 
+  // ---- Reviews list ----
+  let reviewsCache = [];
+  let reviewsTools = null;
+  function ensureReviewsTools(){
+    if(reviewsTools) return;
+    reviewsTools = AdminLists.createTools(document.getElementById('reviewTools'), {
+      searchId: 'reviewSearchBox', noun: 'reviews',
+      placeholder: 'Search saree, customer name, review text…',
+      sorts: [{value:'new',label:'Newest first'},{value:'old',label:'Oldest first'},{value:'high',label:'Highest rating'},{value:'low',label:'Lowest rating'}],
+      onChange: renderReviewsTable, exportCsv: exportReviewsCsv
+    });
+  }
+  function visibleReviews(){
+    const t = reviewsTools, groups = t.groups();
+    const rows = reviewsCache.filter(r => AdminLists.inRange(r.createdAt, t.state.from, t.state.to) && AdminLists.matches(groups,
+      [r.productName, r.userName, r.title, r.body, r.status, r.rating + ' star', r.adminReply].join(' ')));
+    const by = { new: (x, y) => new Date(y.createdAt) - new Date(x.createdAt), old: (x, y) => new Date(x.createdAt) - new Date(y.createdAt), high: (x, y) => y.rating - x.rating, low: (x, y) => x.rating - y.rating };
+    return rows.sort(by[t.state.sort] || by.new);
+  }
+  function exportReviewsCsv(){
+    const rows = visibleReviews();
+    if(!rows.length){ toast('Nothing to export for this search and date range.', 'error'); return; }
+    AdminLists.downloadCsv('padmora-reviews-' + new Date().toISOString().slice(0,10) + '.csv',
+      ['Date','Saree','Customer','Rating','Title','Review','Verified purchase','Status','Featured','Your reply'],
+      rows.map(r => [new Date(r.createdAt).toLocaleString('en-IN'), r.productName, r.userName, r.rating, r.title || '', r.body, r.verified ? 'Yes' : 'No', r.status, r.featured ? 'Yes' : 'No', r.adminReply || '']));
+    toast(rows.length + ' review' + (rows.length === 1 ? '' : 's') + ' exported');
+  }
+
   async function loadReviews(){
+    ensureReviewsTools();
     document.getElementById('reviewStatusFilters').innerHTML = REVIEW_FILTERS.map(f=>
       `<button data-rfilter="${f}" class="${reviewFilter===f?'active':''}">${f[0].toUpperCase()+f.slice(1)}</button>`).join('');
     document.querySelectorAll('[data-rfilter]').forEach(b=>b.addEventListener('click', ()=>{ reviewFilter = b.dataset.rfilter; loadReviews(); }));
-
     try{
       const q = reviewFilter !== 'all' ? ('?status=' + reviewFilter) : '';
       const {reviews} = await adminApiFetch('/admin/reviews' + q);
+      reviewsCache = reviews;
+      renderReviewsTable();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  function renderReviewsTable(){
+    ensureReviewsTools();
+    const reviews = visibleReviews();
+    const groups = reviewsTools.groups();
+    const hl = text => AdminLists.highlight(text, groups);
+    reviewsTools.setCount(reviews.length, reviewsCache.length);
+    try{
       document.getElementById('reviewsTable').innerHTML = `
-        <thead><tr><th>Product</th><th>Customer</th><th>Rating</th><th>Review</th><th>Verified</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Product</th><th>Date</th><th>Customer</th><th>Rating</th><th>Review</th><th>Verified</th><th>Status</th><th></th></tr></thead>
         <tbody>${reviews.length ? reviews.map(r=>`
           <tr>
-            <td style="font-size:12.5px;">${r.productName}</td>
-            <td style="font-size:12.5px;">${escHTML(r.userName)}</td>
+            <td style="font-size:12.5px;">${hl(r.productName)}</td>
+            <td style="white-space:nowrap;font-size:12.5px;">${AdminLists.fmtDate(r.createdAt)}<br><span style="font-size:11px;color:var(--ink-soft);">${new Date(r.createdAt).toLocaleTimeString('en-IN', {hour:'numeric', minute:'2-digit'})}</span></td>
+            <td style="font-size:12.5px;">${hl(r.userName)}</td>
             <td>${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</td>
             <td style="font-size:12px;max-width:220px;">
-              ${r.title?`<strong>${escHTML(r.title)}</strong><br>`:''}${escHTML(r.body)}
+              ${r.title?`<strong>${hl(r.title)}</strong><br>`:''}${hl(r.body)}
               ${r.adminReply ? `<div style="margin-top:6px;padding:6px 8px;background:var(--ivory-deep);border-radius:3px;"><strong style="font-size:10.5px;color:var(--maroon);text-transform:uppercase;">Your reply</strong><br>${escHTML(r.adminReply)}</div>`
                 : `<div style="margin-top:6px;"><textarea class="admin-input" id="revReply-${r.id}" rows="2" style="width:100%;font-size:12px;" placeholder="Reply to this review…"></textarea><button class="btn btn-sm btn-outline" data-rev-reply="${r.id}" style="margin-top:4px;">Send Reply</button></div>`}
             </td>
@@ -2967,7 +3171,7 @@
               <button class="btn btn-sm btn-outline" data-rev-feature="${r.id}" data-featured="${r.featured}">${r.featured?'Unfeature':'Feature'}</button>
               <button class="btn btn-sm" style="color:var(--maroon);" data-rev-del="${r.id}">Delete</button>
             </td>
-          </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--ink-soft);padding:24px;">No reviews in this view.</td></tr>`}</tbody>`;
+          </tr>`).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--ink-soft);padding:24px;">${reviewsCache.length ? 'No reviews match this search and date range.' : 'No reviews in this view.'}</td></tr>`}</tbody>`;
 
       document.querySelectorAll('[data-rev-approve]').forEach(btn=>btn.addEventListener('click', async ()=>{
         try{ await adminApiFetch('/admin/reviews/'+btn.dataset.revApprove, {method:'PUT', body: JSON.stringify({status:'published'})}); toast('Review approved'); loadReviews(); }
@@ -3373,24 +3577,70 @@
     }catch(e){ toast(e.message, 'error'); }
   }
 
+  // ---- Customer messages ----
+  let messagesCache = [];
+  let messagesTools = null;
+  function ensureMessagesTools(){
+    if(messagesTools) return;
+    messagesTools = AdminLists.createTools(document.getElementById('messageTools'), {
+      searchId: 'messageSearchBox', noun: 'messages',
+      placeholder: 'Search customer name, e-mail, subject, message…',
+      sorts: [{value:'new',label:'Newest first'},{value:'old',label:'Oldest first'}],
+      extraHTML: '<label>Show <select class="admin-input" id="messageFilter"><option value="all">All messages</option><option value="unread">Unread</option><option value="noreply">Not replied yet</option><option value="replied">Replied</option></select></label>',
+      onChange: renderMessagesList, exportCsv: exportMessagesCsv
+    });
+    document.getElementById('messageFilter').addEventListener('change', renderMessagesList);
+  }
+  function visibleMessages(){
+    const t = messagesTools, groups = t.groups();
+    const f = document.getElementById('messageFilter').value;
+    const rows = messagesCache.filter(m =>
+      AdminLists.inRange(m.created_at, t.state.from, t.state.to) &&
+      (f === 'all' || (f === 'unread' && !m.read) || (f === 'noreply' && !m.admin_reply) || (f === 'replied' && !!m.admin_reply)) &&
+      AdminLists.matches(groups, [m.name, m.email, m.subject, m.message, m.admin_reply].join(' ')));
+    const by = { new: (x, y) => new Date(y.created_at) - new Date(x.created_at), old: (x, y) => new Date(x.created_at) - new Date(y.created_at) };
+    return rows.sort(by[t.state.sort] || by.new);
+  }
+  function exportMessagesCsv(){
+    const rows = visibleMessages();
+    if(!rows.length){ toast('Nothing to export for this search and date range.', 'error'); return; }
+    AdminLists.downloadCsv('padmora-messages-' + new Date().toISOString().slice(0,10) + '.csv',
+      ['Date','Name','E-mail','Subject','Message','Read','Your reply','Replied at'],
+      rows.map(m => [new Date(m.created_at).toLocaleString('en-IN'), m.name, m.email, m.subject, m.message, m.read ? 'Yes' : 'No', m.admin_reply || '', m.replied_at ? new Date(m.replied_at).toLocaleString('en-IN') : '']));
+    toast(rows.length + ' message' + (rows.length === 1 ? '' : 's') + ' exported');
+  }
+
   async function loadMessages(){
+    ensureMessagesTools();
     try{
       const {messages} = await adminApiFetch('/admin/contact');
+      messagesCache = messages;
+      renderMessagesList();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+
+  function renderMessagesList(){
+    ensureMessagesTools();
+    const messages = visibleMessages();
+    const groups = messagesTools.groups();
+    const hl = text => AdminLists.highlight(text, groups);
+    messagesTools.setCount(messages.length, messagesCache.length);
+    try{
       document.getElementById('messagesList').innerHTML = messages.length ? messages.map(m=>`
         <div class="order-card" style="${!m.read?'border-color:var(--maroon);':''}">
           <div class="order-card-head">
-            <span><strong>${escHTML(m.name)}</strong> · ${escHTML(m.email)}</span>
-            <span style="font-size:11px;">${new Date(m.created_at).toLocaleDateString('en-IN')}</span>
+            <span><strong>${hl(m.name)}</strong> · ${hl(m.email)}</span>
+            <span style="font-size:11px;">${AdminLists.fmtDateTime(m.created_at)}</span>
           </div>
-          <p style="font-size:12.5px;color:var(--gold);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">${escHTML(m.subject)}</p>
-          <p style="font-size:13.5px;color:var(--ink-soft);">${escHTML(m.message)}</p>
+          <p style="font-size:12.5px;color:var(--gold);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">${hl(m.subject)}</p>
+          <p style="font-size:13.5px;color:var(--ink-soft);">${hl(m.message)}</p>
           ${!m.read ? `<div class="cancel-order-btn" data-read="${m.id}" style="color:var(--teal);">Mark as read</div>` : ''}
           ${m.admin_reply ? `<div class="detail-block" style="margin-top:10px;"><h5>Your reply${m.replied_at?' — '+new Date(m.replied_at).toLocaleString('en-IN'):''}</h5><p style="font-size:13px;">${escHTML(m.admin_reply)}</p></div>` : `
           <div style="margin-top:10px;">
             <textarea class="admin-input" id="replyText-${m.id}" rows="2" style="width:100%;" placeholder="Write a reply…"></textarea>
             <button class="btn btn-sm btn-primary" data-reply-send="${m.id}" style="margin-top:6px;">Send Reply</button>
           </div>`}
-        </div>`).join('') : `<p style="color:var(--ink-soft);">No messages yet.</p>`;
+        </div>`).join('') : `<p style="color:var(--ink-soft);">${messagesCache.length ? 'No messages match this search, filter and date range.' : 'No messages yet.'}</p>`;
 
       document.querySelectorAll('[data-read]').forEach(el=>el.addEventListener('click', async ()=>{
         try{ await adminApiFetch('/admin/contact/' + el.dataset.read + '/read', {method:'PUT'}); loadMessages(); }
