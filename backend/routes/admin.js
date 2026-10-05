@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const {
-  supabase, must, getProducts, getVariantById, getPrimaryImagesByVariantIds, syncProductMirrorFromDefaultVariant, getSetting, setSetting,
+  supabase, must, getProducts, getProductById, getVariantById, getPrimaryImagesByVariantIds, syncProductMirrorFromDefaultVariant, getSetting, setSetting,
   getFabrics, getOccasions, getBadges, getCollections, getCollectionProductIds, getReelItems, getFaqItems,
   ADMIN_ROLES, logActivity
 } = require('../utils/db');
@@ -100,6 +100,29 @@ function cleanText(v, max) {
   return t && t.length <= max ? t : null;
 }
 
+// Product codes (SKU) are made automatically so nobody has to invent them: PDM-<product id>-<COLOUR>, with -2, -3...
+// added if the same colour name repeats on one product. An admin can still type their own code on a colour.
+function skuCodeWord(name) {
+  return String(name || '').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'COLOUR';
+}
+function uniqueSku(productId, colorName, taken) {
+  const base = `PDM-${productId}-${skuCodeWord(colorName)}`;
+  let sku = base, n = 2;
+  while (taken.has(sku)) sku = `${base}-${n++}`;
+  taken.add(sku);
+  return sku;
+}
+async function takenSkus(productId) {
+  const rows = must(await supabase.from('product_variants').select('sku').eq('product_id', productId), 'takenSkus');
+  return new Set(rows.map(r => r.sku).filter(Boolean));
+}
+
+// The product as the admin list shows it (with its colour count and total stock).
+function adminProductShape(row) {
+  const p = toProductApiShape(row);
+  return { ...p, variantCount: p.variants.length, totalStock: p.variants.reduce((sum, v) => sum + v.stock, 0) };
+}
+
 // Pricing rule: only Sale sarees carry an original price and a discount.
 //  - Normal saree: one price. `mrp` is kept equal to it, so nothing downstream can show a fake discount.
 //  - Sale saree: the admin enters the ACTUAL price and a sale %; the selling price is worked out here
@@ -193,44 +216,77 @@ router.get('/stats', asyncRoute(async (req, res) => {
 
 // ---- Products ----
 router.get('/products', asyncRoute(async (req, res) => {
-  const products = (await getProducts()).map(toProductApiShape).map(p => ({
-    ...p,
-    variantCount: p.variants.length,
-    totalStock: p.variants.reduce((s, v) => s + v.stock, 0)
-  }));
-  res.json({ products });
+  res.json({ products: (await getProducts()).map(adminProductShape) });
 }));
 
 router.get('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
-  const id = Number(req.params.id);
-  const product = (await getProducts()).map(toProductApiShape).find(p => p.id === id);
-  if (!product) return res.status(404).json({ message: 'Product not found.' });
-  res.json({ product });
+  const row = await getProductById(Number(req.params.id));
+  if (!row) return res.status(404).json({ message: 'Product not found.' });
+  res.json({ product: adminProductShape(row) });
 }));
 
 router.post('/products', asyncRoute(async (req, res) => {
-  const { name: rawName, fabric: rawFabric, occasion: rawOccasion, price, mrp, salePercent, badge, swatch, desc, stock: rawStock, weaverName, weaverRegion, loomType } = req.body;
+  const { name: rawName, fabric: rawFabric, occasion: rawOccasion, price, mrp, salePercent, badge, swatch, desc, stock: rawStock, weaverName, weaverRegion, loomType,
+          colorName: rawColor, lowStockThreshold: rawLow, colors } = req.body;
   const name = cleanText(rawName, 120), fabric = cleanText(rawFabric, 80), occasion = cleanText(rawOccasion, 80);
   if (!name || !fabric || !occasion || price === undefined || price === null || price === '') {
     return res.status(400).json({ message: 'Name, fabric, occasion and price are required (name up to 120 characters).' });
   }
+  const onSale = badge === 'sale';
   // Stock left empty means "the usual 20"; a typed 0 is a real answer (sold out) and must be kept.
   const stock = (rawStock === undefined || rawStock === null || rawStock === '') ? 20 : wholeNumber(rawStock);
   if (stock === null) return res.status(400).json({ message: 'Stock must be a whole number, 0 or more.' });
-  const prices = resolvePrices({ onSale: badge === 'sale', price, mrp, salePercent });
+  const low = (rawLow === undefined || rawLow === null || rawLow === '') ? 10 : wholeNumber(rawLow, { min: 0, max: 100000 });
+  if (low === null) return res.status(400).json({ message: '"Low-stock alert" must be a whole number, 0 or more.' });
+  const prices = resolvePrices({ onSale, price, mrp, salePercent });
   if (prices.error) return res.status(400).json({ message: prices.error });
+  const swatchKey = cleanSwatch(swatch) || 'maroon';
+  // The first colour's name: what the admin typed, or (older pages) the shade word.
+  const colorName = cleanText(rawColor, 60) || swatchKey.replace(/^\w/, c => c.toUpperCase());
+
+  // Any extra colours sent along are checked up front, so a typo in the third colour never leaves a half-made product.
+  const extras = [];
+  if (colors !== undefined && colors !== null) {
+    if (!Array.isArray(colors) || colors.length > 20) return res.status(400).json({ message: 'Add up to 20 extra colours.' });
+    for (const [i, c] of colors.entries()) {
+      const label = `Extra colour ${i + 1}`;
+      const cName = cleanText(c && c.colorName, 60);
+      if (!cName) return res.status(400).json({ message: `${label}: enter the colour name (up to 60 characters).` });
+      const cPrices = resolvePrices({ onSale, price: c.price, mrp: c.mrp, salePercent: c.salePercent });
+      if (cPrices.error) return res.status(400).json({ message: `${label}: ${cPrices.error}` });
+      const cStock = (c.stock === undefined || c.stock === null || c.stock === '') ? 0 : wholeNumber(c.stock);
+      if (cStock === null) return res.status(400).json({ message: `${label}: stock must be a whole number, 0 or more.` });
+      const cLow = (c.lowStockThreshold === undefined || c.lowStockThreshold === null || c.lowStockThreshold === '') ? 10 : wholeNumber(c.lowStockThreshold, { min: 0, max: 100000 });
+      if (cLow === null) return res.status(400).json({ message: `${label}: "Low-stock alert" must be a whole number, 0 or more.` });
+      extras.push({ colorName: cName, swatch: cleanSwatch(c.swatch) || 'maroon', prices: cPrices, stock: cStock, low: cLow });
+    }
+  }
+
   const maxRow = must(await supabase.from('products').select('id').order('id', { ascending: false }).limit(1), 'createProduct:maxId');
   const id = (maxRow[0]?.id || 0) + 1;
+  const taken = new Set();
   const rpc = await supabase.rpc('create_product_with_default_variant', {
     p_id: id, p_name: name, p_fabric: fabric, p_occasion: occasion, p_price: prices.price, p_mrp: prices.mrp,
-    p_badge: badge || null, p_swatch: cleanSwatch(swatch) || 'maroon', p_description: sanitizeRich(desc), p_stock: stock,
+    p_badge: badge || null, p_swatch: swatchKey, p_description: sanitizeRich(desc), p_stock: stock,
     p_weaver_name: weaverName || '', p_weaver_region: weaverRegion || '', p_loom_type: loomType || 'Handloom',
-    p_color_name: (cleanSwatch(swatch) || 'maroon').replace(/^\w/, c => c.toUpperCase()), p_sku: `PDM-${id}-DEF`
+    p_color_name: colorName, p_sku: uniqueSku(id, colorName, taken)
   });
   if (rpc.error) throw new Error(rpc.error.message);
-  await record(req, 'created', 'product', id, null, { name, fabric, price: prices.price, mrp: prices.mrp, stock });
+  // The extra colours go in with one insert, and the first colour's low-stock alert is set at the same time.
+  const writes = [];
+  if (low !== 10) writes.push(supabase.from('product_variants').update({ low_stock_threshold: low }).eq('product_id', id));
+  if (extras.length) {
+    writes.push(supabase.from('product_variants').insert(extras.map((c, i) => ({
+      product_id: id, color_name: c.colorName, swatch: c.swatch, sku: uniqueSku(id, c.colorName, taken),
+      price: c.prices.price, mrp: c.prices.mrp, stock: c.stock, low_stock_threshold: c.low,
+      description: sanitizeRich(undefined), is_default: false, sort_order: i + 1
+    }))));
+  }
+  const results = await Promise.all(writes);
+  results.forEach(r => must(r, 'createProduct:variants'));
+  await record(req, 'created', 'product', id, null, { name, fabric, price: prices.price, mrp: prices.mrp, stock, extraColours: extras.length });
 
-  res.status(201).json({ product: (await getProducts()).map(toProductApiShape).find(p => p.id === id) });
+  res.status(201).json({ product: adminProductShape(await getProductById(id)) });
 }));
 
 router.put('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
@@ -270,7 +326,7 @@ router.put('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   }
   await record(req, 'updated', 'product', id, { name: existing.name, status: existing.status, badge: existing.badge }, { name, status, badge });
 
-  res.json({ product: (await getProducts()).map(toProductApiShape).find(p => p.id === id) });
+  res.json({ product: adminProductShape(await getProductById(id)) });
 }));
 
 // Archive rather than hard-delete once a product has ever been ordered —
@@ -327,7 +383,8 @@ router.post('/products/:id(\\d{1,9})/variants', asyncRoute(async (req, res) => {
   const maxSort = must(await supabase.from('product_variants').select('sort_order').eq('product_id', productId).order('sort_order', { ascending: false }).limit(1), 'addVariant:maxSort');
   const sortOrder = (maxSort[0]?.sort_order ?? -1) + 1;
   const inserted = must(await supabase.from('product_variants').insert({
-    product_id: productId, color_name: colorName, swatch: cleanSwatch(swatch) || 'maroon', sku: sku || null,
+    product_id: productId, color_name: colorName, swatch: cleanSwatch(swatch) || 'maroon',
+    sku: cleanText(sku, 60) || uniqueSku(productId, colorName, await takenSkus(productId)),
     price: prices.price, mrp: prices.mrp, stock, low_stock_threshold: lowStockThreshold,
     description: sanitizeRich(description), is_default: false, sort_order: sortOrder
   }).select().single(), 'addVariant:insert');
@@ -365,7 +422,8 @@ router.put('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
 
   must(await supabase.from('product_variants').update({
     color_name: colorName !== undefined ? colorName.trim() : existing.color_name, swatch: cleanSwatch(swatch) ?? existing.swatch,
-    sku: sku !== undefined ? sku : existing.sku,
+    // blank = keep the colour's code; a colour that never had one gets an automatic one
+    sku: (sku !== undefined && cleanText(sku, 60)) || existing.sku || uniqueSku(existing.product_id, colorName !== undefined ? colorName : existing.color_name, await takenSkus(existing.product_id)),
     price: newPrice, mrp: newMrp,
     stock: newStock,
     low_stock_threshold: newLow,
