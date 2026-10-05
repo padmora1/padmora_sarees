@@ -29,30 +29,43 @@ function validateAddress(address, { requirePhone } = {}) {
   return null;
 }
 
-async function insertPendingCheckout({ id, userId, isGuest, email, lineItems, subtotal, couponCode, address, giftNote, amount }) {
+async function insertPendingCheckout({ id, userId, isGuest, email, lineItems, subtotal, couponCode, address, giftNote, amount, direct }) {
   must(await supabase.from('pending_checkouts').insert({
-    id, user_id: userId || null, is_guest: !!isGuest, email: email || null, line_items: JSON.stringify(lineItems),
+    id, user_id: userId || null, is_guest: !!isGuest, email: email || null,
+    // a "Buy Now" checkout is stored as { direct: true, items } so that paying for it leaves the customer's bag alone
+    line_items: JSON.stringify(direct ? { direct: true, items: lineItems } : lineItems),
     subtotal, coupon_code: couponCode || null, address: JSON.stringify(address), gift_note: giftNote || null,
     amount, status: 'created', created_at: new Date().toISOString()
   }), 'insertPendingCheckout');
 }
 
-// ---- Authenticated: price the logged-in cart and open a Razorpay order ----
+// ---- Authenticated: price the logged-in cart (or, for Buy Now, just the posted item) and open a Razorpay order ----
 router.post('/razorpay/order', requireAuth, async (req, res) => {
-  const { address, giftNote, couponCode } = req.body || {};
+  const { address, giftNote, couponCode, items } = req.body || {};
   const addrError = validateAddress(address);
   if (addrError) return res.status(400).json({ message: addrError });
 
   try {
-    const cartItems = must(await supabase.from('cart_items').select('*').eq('user_id', req.userId), 'razorpayOrder:cart');
-    if (!cartItems.length) return res.status(400).json({ message: 'Your bag is empty.' });
+    // Buy Now sends the one saree being bought; the bag is neither read nor changed. Without `items` this is the
+    // normal bag checkout, exactly as before.
+    const direct = Array.isArray(items) && items.length > 0;
+    let sourceItems;
+    if (direct) {
+      sourceItems = items.slice(0, 20)
+        .filter(i => i && Number(i.productId) > 0 && Number(i.qty) > 0)
+        .map(i => ({ product_id: Number(i.productId), variant_id: i.variantId ? Number(i.variantId) : null, qty: Math.min(99, Math.max(1, Math.floor(Number(i.qty) || 1))), color: i.color }));
+      if (!sourceItems.length) return res.status(400).json({ message: 'Nothing to buy — choose a saree first.' });
+    } else {
+      sourceItems = must(await supabase.from('cart_items').select('*').eq('user_id', req.userId), 'razorpayOrder:cart');
+      if (!sourceItems.length) return res.status(400).json({ message: 'Your bag is empty.' });
+    }
 
-    const { lineItems, subtotal } = await resolvePricedLineItems(cartItems);
+    const { lineItems, subtotal } = await resolvePricedLineItems(sourceItems);
     const { code: resolvedCoupon, discount } = await resolveCoupon(couponCode, subtotal, req.userId);
     const { total } = await computeOrderTotals(subtotal, discount);
 
     const rzpOrder = await razorpay.createOrder(total, 'chk_' + Date.now().toString(36));
-    await insertPendingCheckout({ id: rzpOrder.id, userId: req.userId, isGuest: false, lineItems, subtotal, couponCode: resolvedCoupon, address, giftNote, amount: total });
+    await insertPendingCheckout({ id: rzpOrder.id, userId: req.userId, isGuest: false, lineItems, subtotal, couponCode: resolvedCoupon, address, giftNote, amount: total, direct });
 
     res.json({ razorpayOrderId: rzpOrder.id, amount: total, currency: 'INR', keyId: razorpay.KEY_ID });
   } catch (err) {
@@ -117,7 +130,9 @@ router.post('/razorpay/verify', async (req, res) => {
       return res.status(409).json({ message: 'This payment has already been processed.' });
     }
 
-    const lineItems = JSON.parse(pending.line_items);
+    const storedLines = JSON.parse(pending.line_items);
+    const direct = !Array.isArray(storedLines) && !!storedLines.direct; // Buy Now: the bag stays as it is
+    const lineItems = Array.isArray(storedLines) ? storedLines : storedLines.items;
     const address = JSON.parse(pending.address);
 
     let userId = pending.user_id;
@@ -130,7 +145,7 @@ router.post('/razorpay/verify', async (req, res) => {
       customer = user;
     } else {
       customer = must(await supabase.from('users').select('id, name, email').eq('id', userId).maybeSingle(), 'verify:customer');
-      afterInsertWithinTx = async () => {
+      if (!direct) afterInsertWithinTx = async () => {
         must(await supabase.from('cart_items').delete().eq('user_id', userId), 'verify:clearCartItems');
         must(await supabase.from('cart_meta').delete().eq('user_id', userId), 'verify:clearCartMeta');
       };

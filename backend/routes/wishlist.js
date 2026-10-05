@@ -1,5 +1,5 @@
 const express = require('express');
-const { supabase, must, getProducts } = require('../utils/db');
+const { supabase, must, getProductsByIds, getProductsFullByIds } = require('../utils/db');
 const { requireAuth } = require('../middleware/auth');
 const { toProductApiShape } = require('../utils/shape');
 
@@ -15,7 +15,7 @@ const toApiShape = toProductApiShape;
 // being compared against).
 async function shapedWishlist(userId) {
   const rows = must(await supabase.from('wishlist_items').select('*').eq('user_id', userId), 'shapedWishlist');
-  const products = await getProducts();
+  const products = await getProductsFullByIds(rows.map(r => r.product_id));
   return rows
     .map(row => {
       const product = products.find(p => p.id === row.product_id);
@@ -26,6 +26,17 @@ async function shapedWishlist(userId) {
     })
     .filter(Boolean);
 }
+
+// Just the number for the header badge.
+router.get('/count', async (req, res) => {
+  try {
+    const { count } = await supabase.from('wishlist_items').select('*', { count: 'exact', head: true }).eq('user_id', req.userId);
+    res.json({ count: count || 0 });
+  } catch (err) {
+    console.error('GET /wishlist/count failed:', err);
+    res.status(500).json({ message: 'Something went wrong on the server.' });
+  }
+});
 
 router.get('/', async (req, res) => {
   try {
@@ -41,7 +52,7 @@ router.post('/', async (req, res) => {
     const { productId } = req.body;
     if (!productId) return res.status(400).json({ message: 'productId is required.' });
 
-    const product = (await getProducts()).find(p => p.id === Number(productId));
+    const [product] = await getProductsFullByIds([Number(productId)]);
     must(await supabase.from('wishlist_items').upsert({
       user_id: req.userId, product_id: Number(productId),
       price_at_add: product ? product.price : null, last_known_stock: product ? product.stock : null
@@ -59,7 +70,7 @@ router.post('/merge', async (req, res) => {
   try {
     const { productIds } = req.body;
     if (Array.isArray(productIds)) {
-      const products = await getProducts();
+      const products = await getProductsByIds(productIds);
       const rows = productIds.map(id => {
         const product = products.find(p => p.id === Number(id));
         return { user_id: req.userId, product_id: Number(id), price_at_add: product ? product.price : null, last_known_stock: product ? product.stock : null };

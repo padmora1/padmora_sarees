@@ -9,6 +9,7 @@
 <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
 <title>My Account — Padmora Sarees by Yashi</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fxjlgsatgajagzqdokbe.supabase.co" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -112,8 +113,11 @@
 <script src="js/cursor.js"></script>
 <script src="js/guard.js"></script>
 <script>
+  const ACCOUNT_TABS = ['profile','address','orders','returns','security'];
   function switchTab(tab){
     if(tab === 'logout'){ logout(); return; }
+    // keep the open tab in the address so a refresh (or the confirmation page's "View Order") lands on it
+    try{ history.replaceState(null, '', '#' + tab); }catch(e){ /* ignore */ }
     document.querySelectorAll('.account-nav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
     ['profile','address','orders','returns','security'].forEach(t=>{
       document.getElementById('panel-'+t).style.display = (t===tab) ? 'block' : 'none';
@@ -123,6 +127,11 @@
     if(tab === 'returns') loadReturns();
   }
   document.querySelectorAll('.account-nav button').forEach(b=>b.addEventListener('click', ()=>switchTab(b.dataset.tab)));
+  window.addEventListener('hashchange', () => {
+    const t = (location.hash || '').replace(/^#/, '');
+    const current = document.querySelector('.account-nav button.active');
+    if(ACCOUNT_TABS.includes(t) && !(current && current.dataset.tab === t)) switchTab(t);
+  });
 
   async function loadProfile(){
     try{
@@ -710,7 +719,11 @@
     });
   }
 
-  if(requireLogin()) loadProfile();
+  if(requireLogin()){
+    loadProfile();
+    const wanted = (location.hash || '').replace(/^#/, '');
+    if(ACCOUNT_TABS.includes(wanted) && wanted !== 'profile') switchTab(wanted);
+  }
 </script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { supabase, must, getProducts, getVariantById, getPrimaryImagesByVariantIds } = require('../utils/db');
+const { supabase, must, getProductsByIds, getVariantsByIds, getPrimaryImagesByVariantIds } = require('../utils/db');
 const { requireAuth } = require('../middleware/auth');
 const { resolveCoupon, computeOrderTotals } = require('../utils/pricing');
 const { computeStatus, buildTimeline, isCancellable, CANCEL_REASONS } = require('../utils/orderStatus');
@@ -73,12 +73,17 @@ async function shapeOrder(order) {
 // name, and color always come from the server; a client can only say
 // "this product/variant, this quantity."
 async function resolvePricedLineItems(rawItems) {
-  const products = await getProducts();
+  const [products, variants] = await Promise.all([
+    getProductsByIds(rawItems.map(i => i.product_id)),
+    getVariantsByIds(rawItems.map(i => i.variant_id).filter(Boolean))
+  ]);
+  const productById = new Map(products.map(p => [p.id, p]));
+  const variantById = new Map(variants.map(v => [v.id, v]));
   const lineItems = [];
   for (const item of rawItems) {
-    const product = products.find(p => p.id === item.product_id);
+    const product = productById.get(item.product_id);
     if (!product) continue;
-    const variant = item.variant_id ? await getVariantById(item.variant_id) : null;
+    const variant = item.variant_id ? variantById.get(item.variant_id) || null : null;
     const stock = variant ? variant.stock : product.stock;
     const price = variant ? variant.price : product.price;
     const colorLabel = variant ? variant.color_name : item.color;

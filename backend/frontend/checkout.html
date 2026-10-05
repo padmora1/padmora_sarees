@@ -59,6 +59,17 @@
           <p style="font-size:13.5px;color:var(--ink-soft);margin:0;">You'll pay securely on Razorpay's checkout — UPI, cards, or netbanking, whichever you prefer. We never see or store your payment details.</p>
         </div>
 
+        <div class="co-items" id="coItems"></div>
+
+        <div class="co-coupon" id="coCoupon">
+          <div class="co-coupon-row" id="coCouponForm">
+            <input type="text" id="coCouponInput" placeholder="Promo code" maxlength="40" autocomplete="off" style="text-transform:uppercase;">
+            <button type="button" class="btn btn-outline btn-sm" id="coCouponApply">Apply</button>
+          </div>
+          <div class="co-coupon-applied" id="coCouponApplied" style="display:none;"><span id="coCouponAppliedText"></span><button type="button" id="coCouponRemove">Remove</button></div>
+          <div class="form-error" id="coCouponError"></div>
+        </div>
+
         <div class="summary-card" style="position:static;">
           <div class="summary-row"><span>Subtotal</span><span id="coSubtotal">₹0</span></div>
           <div class="summary-row" id="coDiscountRow" style="display:none;"><span>Discount</span><span id="coDiscount">−₹0</span></div>
@@ -78,11 +89,12 @@
           <div class="order-confirm-id-badge">
             <span class="order-confirm-id-label">Order ID</span>
             <span class="order-confirm-id-value" id="orderId">#ZR00000</span>
+            <button type="button" class="order-confirm-copy" id="copyOrderId" aria-label="Copy order ID">Copy</button>
           </div>
           <div class="order-confirm-items" id="orderConfirmItems"></div>
           <p id="guestTrackNote" style="display:none;color:var(--ink-soft);font-size:12.5px;margin-top:4px;">Track it anytime at Track Order using this Order ID and the email or phone you gave us.</p>
           <div style="display:flex;gap:12px;justify-content:center;margin-top:26px;flex-wrap:wrap;">
-            <a href="/account" class="btn btn-outline" id="viewOrderLink">View Order</a>
+            <a href="/account#orders" class="btn btn-outline" id="viewOrderLink">View Order</a>
             <a href="/shop" class="btn btn-primary">Continue Shopping</a>
           </div>
         </div>
@@ -101,6 +113,9 @@
 <script>
   let cart = { items: [], subtotal: 0, discount: 0, total: 0, coupon: null };
   let savedAddresses = [];
+  // Buy Now: checkout of one saree, chosen on the product page, with the bag left untouched.
+  let buyNowItem = null;
+  let checkoutPaid = false;
 
   function fillAddressForm(a){
     const [first, ...rest] = (a.name || '').split(' ');
@@ -164,14 +179,26 @@
       }
     }
     errBox.classList.remove('show');
+    renderCheckoutSummary();
+    goToStep(2);
+  });
+
+
+  // What is being paid for - every saree with its picture, colour, quantity and price - plus the totals.
+  function renderCheckoutSummary(){
+    document.getElementById('coItems').innerHTML = cart.items.map(i => `
+      <div class="co-item">
+        <span class="co-item-thumb" style="background:${photoBg(i.imageUrl, i.color)};"></span>
+        <span class="co-item-info"><strong>${escHTML(i.product ? i.product.name : '')}</strong><small>${escHTML(i.colorName || '')} · Qty ${i.qty}</small></span>
+        <span class="co-item-price">${money((i.product ? i.product.price : 0) * i.qty)}</span>
+      </div>`).join('');
     document.getElementById('coSubtotal').textContent = money(cart.subtotal);
-    if(cart.discount > 0){
-      document.getElementById('coDiscountRow').style.display = 'flex';
-      document.getElementById('coDiscount').textContent = '−' + money(cart.discount);
-    }
+    const discRow = document.getElementById('coDiscountRow');
+    discRow.style.display = cart.discount > 0 ? 'flex' : 'none';
+    document.getElementById('coDiscount').textContent = '−' + money(cart.discount || 0);
     document.getElementById('coShipping').textContent = cart.shippingFee > 0 ? money(cart.shippingFee) : 'Free';
+    const taxRow = document.getElementById('coTaxRow');
     if(cart.taxAmount > 0){
-      const taxRow = document.getElementById('coTaxRow');
       taxRow.style.display = 'flex';
       const label = document.getElementById('coTaxLabel');
       if(cart.taxInclusive){
@@ -179,13 +206,72 @@
         taxRow.style.fontSize = '12px';
         label.textContent = `Includes ${cart.taxLabel || 'GST'} (${cart.taxRate}%)`;
       }else{
+        taxRow.style.color = ''; taxRow.style.fontSize = '';
         label.textContent = `${cart.taxLabel || 'GST'} (${cart.taxRate}%)`;
       }
       document.getElementById('coTax').textContent = money(cart.taxAmount);
+    }else{
+      taxRow.style.display = 'none';
     }
     document.getElementById('coTotal').textContent = money(cart.total);
     document.getElementById('toStep3').textContent = 'Pay ' + money(cart.total);
-    goToStep(2);
+    // coupon box
+    const applied = !!cart.coupon;
+    document.getElementById('coCouponForm').style.display = applied ? 'none' : 'flex';
+    document.getElementById('coCouponApplied').style.display = applied ? 'flex' : 'none';
+    if(applied) document.getElementById('coCouponAppliedText').textContent = `${cart.coupon} applied — you save ${money(cart.discount)}`;
+  }
+
+  // Applies / removes a promo code for this checkout. Buy Now prices the one saree again with the code; a normal
+  // checkout uses the bag's own coupon, exactly like the Bag page does.
+  async function setCheckoutCoupon(code){
+    const errBox = document.getElementById('coCouponError');
+    errBox.classList.remove('show'); errBox.textContent = '';
+    try{
+      if(buyNowItem){
+        const q = await checkoutQuote([buyNowItem], code || null);
+        if(code && q.couponError){ errBox.textContent = q.couponError; errBox.classList.add('show'); return; }
+        cart = q;
+      }else if(code){
+        cart = await cartApplyCoupon(code);
+      }else{
+        cart = await cartRemoveCoupon();
+      }
+      renderCheckoutSummary();
+    }catch(e){ errBox.textContent = e.message; errBox.classList.add('show'); }
+  }
+  document.getElementById('coCouponApply').addEventListener('click', () => {
+    const code = document.getElementById('coCouponInput').value.trim().toUpperCase();
+    if(!code){ const eb = document.getElementById('coCouponError'); eb.textContent = 'Enter a promo code.'; eb.classList.add('show'); return; }
+    setCheckoutCoupon(code);
+  });
+  document.getElementById('coCouponInput').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); document.getElementById('coCouponApply').click(); } });
+  document.getElementById('coCouponRemove').addEventListener('click', () => setCheckoutCoupon(null));
+
+  // Names for Razorpay's payment window, so the customer sees what they are paying for.
+  function paymentDescription(){
+    const names = cart.items.map(i => (i.product ? i.product.name : '') + (i.qty > 1 ? ' × ' + i.qty : ''));
+    if(!names.length) return 'Order payment';
+    const text = names.length === 1 ? names[0] : names[0] + ' + ' + (names.length - 1) + ' more';
+    return text.length > 120 ? text.slice(0, 117) + '…' : text;
+  }
+
+  // Copy the order ID (without the #) so it can be pasted straight into Track Order.
+  document.getElementById('copyOrderId').addEventListener('click', async () => {
+    const btn = document.getElementById('copyOrderId');
+    const id = document.getElementById('orderId').textContent.replace('#', '').trim();
+    let ok = false;
+    try{ await navigator.clipboard.writeText(id); ok = true; }
+    catch(e){
+      try{
+        const t = document.createElement('textarea'); t.value = id; t.setAttribute('readonly', ''); t.style.cssText = 'position:fixed;opacity:0;';
+        document.body.appendChild(t); t.select(); ok = document.execCommand('copy'); t.remove();
+      }catch(e2){ ok = false; }
+    }
+    btn.textContent = ok ? 'Copied ✓' : 'Press and hold to copy';
+    btn.classList.toggle('copied', ok);
+    if(ok) toast('Order ID copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2200);
   });
 
   function currentAddress(){
@@ -199,16 +285,18 @@
     };
   }
 
-  function showConfirmedOrder(order, { isGuest }){
+  function showConfirmedOrder(order, { isGuest, fromRefresh }){
+    checkoutPaid = true;
     if(isGuest){
-      setGuestCart([]);
-      setGuestCoupon(null);
+      // a Buy Now purchase never touched the guest's bag, so the bag stays as it was
+      if(!buyNowItem){ setGuestCart([]); setGuestCoupon(null); }
       document.getElementById('viewOrderLink').href = '/track-order?id=' + encodeURIComponent(order.id);
       document.getElementById('guestTrackNote').style.display = 'block';
     }else{
-      document.getElementById('viewOrderLink').href = '/account';
+      document.getElementById('viewOrderLink').href = '/account#orders';
       document.getElementById('guestTrackNote').style.display = 'none';
     }
+    clearBuyNow();
     document.getElementById('orderId').textContent = '#' + order.id;
     // Each saree thumbnail rises in with its own slight delay (set via CSS
     // custom property, animation itself defined in css/style.css) — a small
@@ -216,13 +304,19 @@
     document.getElementById('orderConfirmItems').innerHTML = (order.items || []).map((it, i) => `
       <div class="order-confirm-item" style="--order-item-delay:${0.15 + i * 0.12}s;">
         ${it.imageUrl
-          ? `<img src="${it.imageUrl}" alt="${it.name}">`
+          ? `<img src="${escHTML(it.imageUrl)}" alt="${escHTML(it.name)}">`
           : `<span class="order-confirm-item-empty">${LOTUS_GLYPH_SVG}</span>`}
-        <span class="order-confirm-item-name">${it.name}${it.color ? ' — ' + it.color : ''}</span>
+        <span class="order-confirm-item-name">${escHTML(it.name)}${it.color ? ' — ' + escHTML(it.color) : ''}${it.qty > 1 ? ' × ' + it.qty : ''}</span>
       </div>`).join('');
+    document.querySelectorAll('.checkout-steps .step').forEach(el => el.style.display = '');
     goToStep(3);
+    // A refresh of this page keeps showing the confirmation instead of an empty bag
+    try{
+      sessionStorage.setItem('padmora_last_order', JSON.stringify({ id: order.id, guest: !!isGuest, items: (order.items || []).map(it => ({ name: it.name, color: it.color, qty: it.qty, imageUrl: it.imageUrl || null })) }));
+      history.replaceState(null, '', '/checkout?order=' + encodeURIComponent(order.id));
+    }catch(e){ /* ignore */ }
     refreshBadgeCounts();
-    fireConfetti();
+    if(!fromRefresh) setTimeout(fireConfetti, 250);
   }
 
   // Razorpay's widget collects the actual payment details itself (UPI/card/
@@ -242,10 +336,12 @@
     try{
       let session;
       if(loggedIn){
-        session = await apiFetch('/payments/razorpay/order', { method:'POST', body: JSON.stringify({ address, giftNote, couponCode: cart.coupon }) });
+        const body = { address, giftNote, couponCode: cart.coupon };
+        if(buyNowItem) body.items = [buyNowItem];   // Buy Now: pay for this one saree only, leave the bag alone
+        session = await apiFetch('/payments/razorpay/order', { method:'POST', body: JSON.stringify(body) });
       }else{
         const email = document.getElementById('guestEmail').value.trim();
-        const items = cart.items.map(i => ({ productId: i.productId, variantId: i.variantId, qty: i.qty }));
+        const items = (buyNowItem ? [buyNowItem] : cart.items).map(i => ({ productId: i.productId, variantId: i.variantId, qty: i.qty }));
         session = await apiFetch('/payments/razorpay/guest-order', { method:'POST', body: JSON.stringify({ address, giftNote, couponCode: cart.coupon, items, email }) });
       }
 
@@ -256,8 +352,8 @@
         currency: session.currency,
         order_id: session.razorpayOrderId,
         name: 'Padmora by Yashi',
-        description: 'Order payment',
-        image: '/images/padmora-lotus.png',
+        description: paymentDescription(),
+        image: '/images/padmora-lotus-sm.png',
         prefill: {
           name: address.name.trim(),
           email: loggedIn ? (user && user.email || '') : document.getElementById('guestEmail').value.trim(),
@@ -265,9 +361,13 @@
         },
         theme: { color: '#AD3B5C' },
         handler: async function(response){
+          if(checkoutPaid) return;
           try{
             const { order } = await apiFetch('/payments/razorpay/verify', { method:'POST', body: JSON.stringify(response) });
-            if(loggedIn && document.getElementById('saveAddress').checked){
+            // Save the address once, and only if it is not already one of the saved ones (the server also refuses duplicates)
+            const norm = v => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            const alreadySaved = savedAddresses.some(a => norm(a.line1) === norm(address.line1) && norm(a.city) === norm(address.city) && String(a.pincode).trim() === String(address.pincode).trim());
+            if(loggedIn && document.getElementById('saveAddress').checked && !alreadySaved){
               apiFetch('/addresses', { method:'POST', body: JSON.stringify({ label:'Home', ...address }) }).catch(()=>{});
             }
             showConfirmedOrder(order, { isGuest: !loggedIn });
@@ -305,8 +405,31 @@
       document.getElementById('saveAddressField').style.display = 'none';
       document.getElementById('guestAccountNudge').style.display = 'block';
     }
+    // Refreshing right after paying keeps showing the confirmation
+    const params = new URLSearchParams(location.search);
+    if(params.get('order')){
+      try{
+        const last = JSON.parse(sessionStorage.getItem('padmora_last_order') || 'null');
+        if(last && last.id === params.get('order')){ showConfirmedOrder(last, { isGuest: last.guest, fromRefresh: true }); return; }
+      }catch(e){ /* fall through to the normal page */ }
+    }
     try{
-      cart = await cartGet();
+      if(params.get('buy') === 'now' && getBuyNow()){
+        buyNowItem = getBuyNow();
+        try{
+          cart = await checkoutQuote([buyNowItem], null);
+        }catch(e){
+          document.querySelector('main .container').innerHTML = `
+            <div class="empty-state">
+              <p>${escHTML(e.message)}</p>
+              <a href="/product?id=${buyNowItem.productId}" class="btn btn-primary" style="margin-top:16px;">Back to the saree</a>
+            </div>`;
+          return;
+        }
+      }else{
+        clearBuyNow();   // a normal bag checkout: forget any old Buy Now choice
+        cart = await cartGet();
+      }
       if(!cart.items.length){
         document.querySelector('main .container').innerHTML = `
           <div class="empty-state">

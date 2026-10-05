@@ -13,6 +13,7 @@
 <meta property="og:title" content="Padmora Sarees by Yashi">
 <meta property="og:description" content="Handloom and heritage sarees sourced directly from India's weaving communities, with honest loom-to-you provenance on every piece.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fxjlgsatgajagzqdokbe.supabase.co" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <style>
@@ -133,9 +134,9 @@
 <div id="site-header"></div>
 
 <main>
-  <section class="home-hero" id="heroSection" style="display:none;"></section>
+  <section class="home-hero" id="heroSection"><div class="home-hero-fallback"></div></section>
 
-  <div class="rangoli" id="rangoliDivider" aria-hidden="true" style="display:none;">
+  <div class="rangoli" id="rangoliDivider" aria-hidden="true">
     <span class="rangoli-line left"></span>
     <span class="rangoli-motif"><svg viewBox="0 0 160 48" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
       <g transform="translate(80 24)">
@@ -155,7 +156,7 @@
     </div>
     <div class="cat-rail-wrap" id="catRailWrap">
       <button class="reel-scroll-btn left" id="catScrollLeft" aria-label="Scroll left">‹</button>
-      <div class="container"><div class="cat-rail" id="catRail"></div></div>
+      <div class="container"><div class="cat-rail" id="catRail"><span class="cat-item sk" aria-hidden="true"><div class="cat-swatch"><div class="cat-swatch-inner"></div></div><strong>&nbsp;</strong></span><span class="cat-item sk" aria-hidden="true"><div class="cat-swatch"><div class="cat-swatch-inner"></div></div><strong>&nbsp;</strong></span><span class="cat-item sk" aria-hidden="true"><div class="cat-swatch"><div class="cat-swatch-inner"></div></div><strong>&nbsp;</strong></span><span class="cat-item sk" aria-hidden="true"><div class="cat-swatch"><div class="cat-swatch-inner"></div></div><strong>&nbsp;</strong></span></div></div>
       <button class="reel-scroll-btn right" id="catScrollRight" aria-label="Scroll right">›</button>
     </div>
   </section>
@@ -202,50 +203,81 @@
   // With no image uploaded yet it falls back to the brand gradient so the
   // button still shows rather than leaving a blank gap under the header.
   function escAttr(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
-  async function renderHero(){
+  // The hero (and the Shop by Weave row below) are painted from the copy remembered on this device the instant the
+  // page opens - so a refresh never shows a half-built page first - and then refreshed from the server; the page only
+  // changes again if the admin has changed something since the last visit.
+  const HERO_CACHE = 'padmora_home_hero';
+  function paintHero(h){
     const section = document.getElementById('heroSection');
+    const divider = document.getElementById('rangoliDivider');
+    if(!h || h.active === false){ section.style.display = 'none'; divider.style.display = 'none'; return; }
+    const desktop = h.desktopImage || h.mobileImage || '';
+    const link = escAttr(h.ctaLink || '/shop');
+    const label = escAttr(h.ctaText || 'Shop All Sarees');
+    const media = desktop
+      ? `<picture>${h.mobileImage ? `<source media="(max-width:760px)" srcset="${escAttr(h.mobileImage)}">` : ''}<img class="home-hero-img" src="${escAttr(desktop)}" alt="${escAttr(h.altText || 'Padmora sarees')}" fetchpriority="high" decoding="async"></picture>`
+      : `<div class="home-hero-fallback"></div>`;
+    section.innerHTML = `<a class="home-hero-link" href="${link}" aria-label="${label}">${media}<span class="home-hero-btn"><span>${label}</span><i><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></i></span></a>`;
+    section.style.display = '';
+    divider.style.display = '';
+  }
+  async function renderHero(){
+    let cached = null;
+    try{ cached = localStorage.getItem(HERO_CACHE); }catch(e){ /* private mode */ }
+    if(cached){ try{ paintHero(JSON.parse(cached)); }catch(e){ /* bad copy: wait for the server */ } }
     try{
       const {hero: h} = await apiFetch('/content/hero');
-      if(!h || h.active === false){ section.style.display = 'none'; return; }
-      const desktop = h.desktopImage || h.mobileImage || '';
-      const link = escAttr(h.ctaLink || '/shop');
-      const label = escAttr(h.ctaText || 'Shop All Sarees');
-      const media = desktop
-        ? `<picture>${h.mobileImage ? `<source media="(max-width:760px)" srcset="${escAttr(h.mobileImage)}">` : ''}<img class="home-hero-img" src="${escAttr(desktop)}" alt="${escAttr(h.altText || 'Padmora sarees')}"></picture>`
-        : `<div class="home-hero-fallback"></div>`;
-      section.innerHTML = `<a class="home-hero-link" href="${link}" aria-label="${label}">${media}<span class="home-hero-btn"><span>${label}</span><i><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></i></span></a>`;
-      section.style.display = '';
-      document.getElementById('rangoliDivider').style.display = '';
-    }catch(e){ section.style.display = 'none'; }
+      const fresh = JSON.stringify(h || null);
+      if(fresh !== cached){
+        paintHero(h);
+        try{ localStorage.setItem(HERO_CACHE, fresh); }catch(e){ /* ignore */ }
+      }
+    }catch(e){
+      if(!cached){ document.getElementById('heroSection').style.display = 'none'; document.getElementById('rangoliDivider').style.display = 'none'; }
+    }
   }
 
   // Admin-managed (Catalog → Fabrics) — add a fifth fabric from admin and it
   // shows up here with no frontend changes.
+  const WEAVE_CACHE = 'padmora_home_weaves';
+  function paintCatRail(allFabrics, sec){
+    const section = document.getElementById('weaveSection');
+    if(sec.enabled === false){ section.style.display = 'none'; return; }
+    section.style.display = '';
+    const setText = (id, text) => { const el = document.getElementById(id); if(!el) return; el.textContent = text || ''; el.hidden = !text; };
+    document.getElementById('weaveTitle').textContent = sec.title || 'Shop by Weave';
+    setText('weaveEyebrow', sec.eyebrow); setText('weaveSub', sec.subtitle);
+    const hidden = new Set(sec.hiddenFabricIds || []), order = sec.order || [];
+    const fabrics = allFabrics.filter(f => !hidden.has(f.id))
+      .sort((a, b) => { const ia = order.indexOf(a.id), ib = order.indexOf(b.id); return (ia === -1 ? 1e6 : ia) - (ib === -1 ? 1e6 : ib); });
+    const rail = document.getElementById('catRail');
+    // A fabric with no products yet (admin added the taxonomy entry ahead
+    // of stocking it) would just lead to an empty shop grid — hide it from
+    // this clickable rail until there's something to actually show.
+    rail.innerHTML = fabrics.filter(f=>f.productCount > 0).map(f=>`
+      <a class="cat-item" href="/shop?fabric=${encodeURIComponent(f.name)}">
+        <div class="cat-swatch"><div class="cat-swatch-inner" style="background:${photoBg(f.thumbnail || f.heroImage, f.swatch)};"></div></div>
+        <strong>${escHTML(f.name)}</strong>
+      </a>`).join('');
+    // Only show scroll arrows once there's actually more to scroll to —
+    // 4 or fewer fabrics fit the row exactly and need no affordance.
+    requestAnimationFrame(()=>{ updateCatArrows(); nudgeCatRail(); });
+  }
+  // Admin-managed: the weaves under Catalog → Fabrics, and the heading / visibility / order under
+  // Storefront → Shop by Weave.
   async function renderCatRail(){
+    let cached = null;
+    try{ cached = localStorage.getItem(WEAVE_CACHE); }catch(e){ /* private mode */ }
+    if(cached){ try{ const c = JSON.parse(cached); paintCatRail(c.fabrics, c.sec); }catch(e){ /* wait for the server */ } }
     try{
-      // The heading, visibility, which weaves show and their order are edited in Admin → Storefront → Shop by Weave.
-      const [{fabrics: allFabrics}, secRes] = await Promise.all([apiFetch('/fabrics'), apiFetch('/content/weave-section').catch(() => null)]);
+      const [{fabrics}, secRes] = await Promise.all([apiFetch('/fabrics'), apiFetch('/content/weave-section').catch(() => null)]);
       const sec = (secRes && secRes.section) || {};
-      if(sec.enabled === false){ document.getElementById('weaveSection').style.display = 'none'; return; }
-      const setText = (id, text) => { const el = document.getElementById(id); if(!el) return; el.textContent = text || ''; el.hidden = !text; };
-      if(sec.title) document.getElementById('weaveTitle').textContent = sec.title;
-      setText('weaveEyebrow', sec.eyebrow); setText('weaveSub', sec.subtitle);
-      const hidden = new Set(sec.hiddenFabricIds || []), order = sec.order || [];
-      const fabrics = allFabrics.filter(f => !hidden.has(f.id))
-        .sort((a, b) => { const ia = order.indexOf(a.id), ib = order.indexOf(b.id); return (ia === -1 ? 1e6 : ia) - (ib === -1 ? 1e6 : ib); });
-      const rail = document.getElementById('catRail');
-      // A fabric with no products yet (admin added the taxonomy entry ahead
-      // of stocking it) would just lead to an empty shop grid — hide it from
-      // this clickable rail until there's something to actually show.
-      rail.innerHTML = fabrics.filter(f=>f.productCount > 0).map(f=>`
-        <a class="cat-item" href="/shop?fabric=${encodeURIComponent(f.name)}">
-          <div class="cat-swatch"><div class="cat-swatch-inner" style="background:${photoBg(f.thumbnail || f.heroImage, f.swatch)};"></div></div>
-          <strong>${f.name}</strong>
-        </a>`).join('');
-      // Only show scroll arrows once there's actually more to scroll to —
-      // 4 or fewer fabrics fit the row exactly and need no affordance.
-      requestAnimationFrame(()=>{ updateCatArrows(); nudgeCatRail(); });
-    }catch(e){ /* leave rail empty if the backend is unreachable */ }
+      const fresh = JSON.stringify({ fabrics, sec });
+      if(fresh !== cached){
+        paintCatRail(fabrics, sec);
+        try{ localStorage.setItem(WEAVE_CACHE, fresh); }catch(e){ /* ignore */ }
+      }
+    }catch(e){ /* keep whatever is shown if the backend is unreachable */ }
   }
 
   function reelCardHTML(p){

@@ -46,7 +46,18 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ message: 'Enter a valid phone number.' });
     }
 
-    const count = (await supabase.from('addresses').select('*', { count: 'exact', head: true }).eq('user_id', req.userId)).count || 0;
+    // Saving the same address twice (for example "save this address" ticked at checkout while the form was filled
+    // from an address that is already saved) must not create a second copy: hand back the existing one.
+    const norm = v => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const digits = v => String(v || '').replace(/\D/g, '').slice(-10);   // +91 / 0 prefixes do not make a different number
+    const existingList = await listAddresses(req.userId);
+    const same = existingList.find(a =>
+      norm(a.line1) === norm(line1) && norm(a.city) === norm(city) && String(a.pincode).trim() === String(pincode).trim() &&
+      norm(a.name) === norm(name) && norm(a.state) === norm(state) && digits(a.phone) === digits(phone)
+    );
+    if (same) return res.json({ addresses: existingList, id: same.id, duplicate: true });
+
+    const count = existingList.length;
     if (count >= 5) {
       return res.status(400).json({ message: 'You can save up to 5 addresses. Delete one to add another.' });
     }

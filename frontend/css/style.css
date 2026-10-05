@@ -175,9 +175,11 @@ body::after{right:0;transform:scaleX(-1);}
    over), and does nothing on the admin dashboard, whose shorter header isn't
    worth a second placeholder for. */
 #site-header:empty{
-  min-height:calc(38px + 68px);
-  background:linear-gradient(to bottom, var(--maroon-deep) 0 38px, rgba(250,245,236,0.96) 38px 100%);
+  min-height:114px;   /* the real top bar (35px) + header (79px), so nothing jumps when they appear */
+  background:linear-gradient(to bottom, var(--maroon-deep) 0 35px, rgba(250,245,236,0.96) 35px 100%);
 }
+@media (max-width:760px){ #site-header:empty{ min-height:98px; background:linear-gradient(to bottom, var(--maroon-deep) 0 35px, rgba(250,245,236,0.96) 35px 100%); } }
+@media (max-width:429px){ #site-header:empty{ min-height:117px; background:linear-gradient(to bottom, var(--maroon-deep) 0 54px, rgba(250,245,236,0.96) 54px 100%); } }
 
 /* Once components.js fills this mount div, collapse it out of the box tree
    entirely so .topbar and .site-header become direct flex items of <body>
@@ -418,6 +420,18 @@ body::after{right:0;transform:scaleX(-1);}
 .order-review-btn:hover{background:var(--maroon);color:#fff;}
 .order-reviewed{font-size:11.5px;color:var(--teal,#2f7d62);margin-left:8px;}
 .order-review-form{margin:8px 0 12px;padding:14px;background:var(--ivory,#FFF0E6);border-radius:4px;}
+.co-items{margin:18px 0 12px;border:1px solid rgba(173,59,92,0.14);border-radius:8px;background:#fff;}
+.co-item{display:flex;align-items:center;gap:12px;padding:10px 12px;}
+.co-item + .co-item{border-top:1px solid rgba(173,59,92,0.1);}
+.co-item-thumb{width:48px;height:62px;border-radius:4px;flex-shrink:0;background-size:cover !important;background-position:center !important;}
+.co-item-info{flex:1;min-width:0;} .co-item-info strong{display:block;font-size:13.5px;font-weight:500;line-height:1.3;} .co-item-info small{font-size:12px;color:var(--ink-soft);}
+.co-item-price{font-size:13.5px;font-weight:600;color:var(--maroon-deep);white-space:nowrap;}
+.co-coupon{margin:0 0 14px;}
+.co-coupon-row{display:flex;gap:8px;} .co-coupon-row input{flex:1;min-width:0;padding:10px 12px;border:1px solid rgba(173,59,92,0.25);border-radius:4px;font:inherit;font-size:13px;background:#fff;}
+.co-coupon-applied{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:4px;background:rgba(58,140,80,0.1);color:#2E7D45;font-size:13px;}
+.co-coupon-applied button{font:inherit;font-size:12px;color:var(--maroon);text-decoration:underline;}
+.order-confirm-copy{margin:6px 0 0;padding:5px 12px;border-radius:999px;border:1px solid var(--maroon);background:#fff;color:var(--maroon);font:inherit;font-size:12px;cursor:pointer;transition:background .2s ease,color .2s ease;}
+.order-confirm-copy:hover,.order-confirm-copy.copied{background:var(--maroon);color:#fff;}
 .return-photo-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
 .return-photo-actions .btn[disabled]{opacity:.55;cursor:not-allowed;}
 .return-photo-count{font-size:12px;color:var(--ink-soft);}
@@ -980,6 +994,11 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 .cat-swatch{width:100%;aspect-ratio:1;border-radius:50%;margin-bottom:12px;border:2px solid var(--gold-soft);padding:5px;}
 .cat-swatch-inner{width:100%;height:100%;border-radius:50%;}
 .cat-item strong{font-size:13px;font-weight:500;}
+/* placeholders shown for the first moments of a page load, so the weave row never looks empty */
+.cat-item.sk .cat-swatch-inner{background:rgba(173,59,92,0.08);animation:skPulse 1.3s ease-in-out infinite;}
+.cat-item.sk strong{opacity:0;}
+@keyframes skPulse{0%,100%{opacity:.55;}50%{opacity:1;}}
+@media (prefers-reduced-motion:reduce){ .cat-item.sk .cat-swatch-inner{animation:none;} }
 .cat-rail-wrap .reel-scroll-btn{display:none;}
 .cat-rail-wrap.has-overflow .reel-scroll-btn{display:flex;}
 /* Small, quiet arrows on phones as well (they only show when there is more to scroll to, and each hides at its own end). */

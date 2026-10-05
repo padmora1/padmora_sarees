@@ -13,6 +13,7 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/products');
 const cartRoutes = require('./routes/cart');
+const checkoutRoutes = require('./routes/checkout');
 const wishlistRoutes = require('./routes/wishlist');
 const orderRoutes = require('./routes/orders');
 const reviewRoutes = require('./routes/reviews');
@@ -67,6 +68,12 @@ app.use((req, res, next) => {
   next();
 });
 
+// Gzip text responses (HTML, JS, CSS, JSON): the pages shrink to roughly a quarter on the wire, which is most of
+// the load time on a phone. If the package is ever missing the site still works, just uncompressed.
+let compression = null;
+try { compression = require('compression'); } catch (e) { console.warn('[server] "compression" is not installed - responses will not be gzipped (run npm install).'); }
+if (compression) app.use(compression());
+
 app.use(cors());
 app.use(express.json());
 
@@ -74,6 +81,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
+app.use('/api/checkout', checkoutRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/products/:productId(\\d{1,9})/reviews', reviewRoutes);
@@ -150,7 +158,14 @@ app.get('/', (req, res, next) => {
   res.sendFile(path.join(FRONTEND_DIR, 'admin.html'));
 });
 
-app.use(express.static(FRONTEND_DIR));
+// Pages, scripts and styles are always revalidated (cheap 304 when unchanged, so a deploy shows up straight away);
+// pictures and fonts rarely change and are the heavy part, so the browser may keep them for a day.
+app.use(express.static(FRONTEND_DIR, {
+  setHeaders(res, filePath) {
+    if (/\.(png|jpe?g|webp|gif|svg|ico|woff2?|ttf)$/i.test(filePath)) res.setHeader('Cache-Control', 'public, max-age=86400');
+    else res.setHeader('Cache-Control', 'no-cache');
+  }
+}));
 
 // Admin-uploaded variant images/video, served back out at /uploads/<file>
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

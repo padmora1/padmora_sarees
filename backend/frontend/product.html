@@ -14,6 +14,7 @@
 <meta property="og:description" id="ogDescription" content="Handloom and heritage sarees, sourced directly from India's weaving communities.">
 <meta property="og:image" id="ogImage" content="">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fxjlgsatgajagzqdokbe.supabase.co" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -372,7 +373,6 @@
   // colour is already in the bag, "Pre Book" when sold out). These need the shopper's wishlist and bag to
   // draw themselves, so they are fetched together and the grids are redrawn after every change.
   let wishlistedIds = new Set();
-  let cartQtyByVariant = {};
   const recLists = { related: [], other: [] };
 
   function productCardHTML(p){
@@ -382,10 +382,10 @@
     const badgeLabel = p.badge==='sale'?'Sale':p.badge==='new'?'New':p.badge==='bestseller'?'Bestseller':'';
     const isWished = wishlistedIds.has(p.id);
     const soldOut = p.stock <= 0;
-    const defaultVariant = (p.variants && (p.variants.find(v=>v.isDefault) || p.variants[0])) || null;
-    const cartLine = defaultVariant ? cartQtyByVariant[defaultVariant.id] : null;
+    const defaultVariant = defaultVariantOf(p);
+    const cartQty = defaultVariant ? cardCart.qty(defaultVariant.id) : 0;
     return `
-    <div class="product-card ${soldOut?'sold-out':''}">
+    <div class="product-card ${soldOut?'sold-out':''}" data-pid="${p.id}" data-qty="${cartQty}">
       <a href="/product?id=${p.id}" class="product-media" style="background:${productBg(p)};display:block;">
         ${soldOut ? `<div class="sold-out-ribbon"><span class="ribbon-lotus">${LOTUS_GLYPH_SVG}</span>Sold Out</div>` : (badgeLabel ? `<span class="product-badge ${p.badge}">${badgeLabel}</span>` : '')}
         <button class="wishlist-toggle ${isWished?'active':''}" aria-label="${isWished?'Remove from wishlist':'Add to wishlist'}" onclick="event.preventDefault();quickWish(${p.id}, this);">
@@ -397,14 +397,7 @@
         </button>
         ${soldOut
           ? `<span class="quick-add">Pre Book</span>`
-          : `<div class="quick-actions">
-              ${cartLine && cartLine.qty > 0
-                ? `<div class="card-qty-stepper">
-                    <button type="button" onclick="event.preventDefault();cardChangeQty('${cartLine.itemId}', -1);">−</button><span>${cartLine.qty}</span><button type="button" onclick="event.preventDefault();cardChangeQty('${cartLine.itemId}', 1);">+</button>
-                  </div>`
-                : `<button type="button" onclick="event.preventDefault();quickAddToCart(${p.id}, ${defaultVariant ? defaultVariant.id : 'null'}, '${(defaultVariant ? defaultVariant.colorName : p.swatch || '').replace(/'/g, "\\'")}', this);">Add to Cart</button>`}
-              <button type="button" onclick="event.preventDefault();openQuickView(${p.id});">Quick View</button>
-            </div>`}
+          : `<div class="quick-actions">${cardActionsInner(p)}</div>`}
       </a>
       <div class="product-info">
         <div class="product-fabric">${p.fabric}</div>
@@ -419,18 +412,16 @@
 
   async function loadRecState(){
     try{
-      const [wishData, cart] = await Promise.all([wishlistGet(), cartGet()]);
+      const [wishData] = await Promise.all([wishlistGet(), cardCart.load()]);
       wishlistedIds = new Set(wishData.products.map(x => x.id));
-      cartQtyByVariant = {};
-      cart.items.forEach(i => { if(i.variantId) cartQtyByVariant[i.variantId] = { itemId: i.id, qty: i.qty }; });
     }catch(e){ /* the cards still work without it: no filled hearts, no steppers */ }
   }
   function renderRecs(){
+    registerCardProducts(recLists.related); registerCardProducts(recLists.other);
     const rel = document.getElementById('relatedGrid'), oth = document.getElementById('otherWeavesGrid');
     if(rel) rel.innerHTML = recLists.related.map(productCardHTML).join('');
     if(oth) oth.innerHTML = recLists.other.map(productCardHTML).join('');
   }
-  async function refreshRecs(){ await loadRecState(); renderRecs(); }
 
   async function quickWish(id, btn){
     const nowActive = !wishlistedIds.has(id);
@@ -439,33 +430,6 @@
       else{ await wishlistRemove(id); wishlistedIds.delete(id); toast('Removed from wishlist'); }
       if(btn){ btn.classList.toggle('active', nowActive); btn.setAttribute('aria-label', nowActive ? 'Remove from wishlist' : 'Add to wishlist'); }
       refreshBadgeCounts();
-    }catch(e){ toast(e.message, 'error'); }
-  }
-
-  async function quickAddToCart(productId, variantId, color){
-    try{
-      await cartAdd(productId, 1, color, variantId);
-      refreshBadgeCounts();
-      toast('Added to bag');
-      refreshRecs();
-    }catch(e){ toast(e.message, 'error'); }
-  }
-
-  async function cardChangeQty(itemId, delta){
-    try{
-      const cart = await cartGet();
-      const item = cart.items.find(i => i.id === itemId);
-      if(!item){ refreshRecs(); return; }
-      const newQty = item.qty + delta;
-      if(newQty <= 0){
-        await cartRemoveItem(itemId);
-      }else{
-        if(item.product && newQty > item.product.stock){ toast(`Only ${item.product.stock} left in stock.`); return; }
-        const updated = await cartUpdateQty(itemId, newQty);
-        if(updated.message) toast(updated.message);
-      }
-      refreshBadgeCounts();
-      refreshRecs();
     }catch(e){ toast(e.message, 'error'); }
   }
 
@@ -601,6 +565,7 @@
 
     document.getElementById('pdWish').addEventListener('click', wishCurrent);
     document.getElementById('pdBuyNow').addEventListener('click', buyNow);
+    bindCartControlStepperOnce();
 
     renderVariantDetails();
     refreshWishButtonLabel();
@@ -664,17 +629,24 @@
     </div>`;
   }
 
+  // The bag controls under the price: "Add to Bag" until this colour is in the bag, then a live  -  qty  +  stepper.
+  // They read cardCart (the local, instantly-updated picture of the bag), so a tap shows its result at once.
+  let bagLoaded = false;
   async function syncCartControls(){
+    if(!bagLoaded){
+      try{ await cardCart.load(); }catch(e){ /* fall through to Add to Bag */ }
+      bagLoaded = true;
+    }
+    drawCartControls();
+  }
+
+  function drawCartControls(){
     const mainWrap = document.getElementById('pdCartControl');
     const stickyWrap = document.getElementById('stickyCartControl');
-    // The "pick how many to add" selector above only means anything before
-    // there's an Add to Bag button to submit it to — once this variant is
-    // already in the cart, that selector does nothing (there's no add
-    // action left for it to feed into) and just reads as a second, dead
-    // quantity control sitting next to the real one. Hide it in that case;
-    // the live cart-line stepper below becomes the only quantity control.
+    // The "pick how many to add" selector only means anything before there's an Add to Bag button to submit it
+    // to — once this colour is in the bag the live stepper below is the only quantity control.
     const preAddQty = document.getElementById('pdPreAddQty');
-    if(!mainWrap) return;
+    if(!mainWrap || !selectedVariant) return;
 
     const buyNowBtn = document.getElementById('pdBuyNow');
     if(selectedVariant.stock <= 0){
@@ -690,13 +662,8 @@
     }
     if(buyNowBtn) buyNowBtn.style.display = '';
 
-    let line = null;
-    try{
-      const cart = await cartGet();
-      line = cart.items.find(i => i.productId === currentProduct.id && i.variantId === selectedVariant.id) || null;
-    }catch(e){ /* fall through to Add to Bag */ }
-
-    if(!line){
+    const inBag = cardCart.qty(selectedVariant.id);
+    if(!inBag){
       mainWrap.innerHTML = addToCartButtonHTML('pdAddCart');
       stickyWrap.innerHTML = addToCartButtonHTML('stickyAddCart');
       document.getElementById('pdAddCart').addEventListener('click', addCurrentToCart);
@@ -704,32 +671,31 @@
       if(preAddQty) preAddQty.hidden = false;
       return;
     }
-
-    mainWrap.innerHTML = qtyStepperControlHTML('pdQtyControl', line.qty);
-    stickyWrap.innerHTML = qtyStepperControlHTML('stickyQtyControl', line.qty);
-    bindCartControlStepper(line.id, line.qty);
+    mainWrap.innerHTML = qtyStepperControlHTML('pdQtyControl', inBag);
+    stickyWrap.innerHTML = qtyStepperControlHTML('stickyQtyControl', inBag);
     if(preAddQty) preAddQty.hidden = true;
   }
+  // redraw whenever the bag changes - from here, the recommended cards, quick view or the mini bag
+  cardCart.onChange(() => { if(bagLoaded) drawCartControls(); });
 
-  function bindCartControlStepper(lineId, currentQty){
-    document.querySelectorAll('[data-pd-inc]').forEach(btn=>btn.addEventListener('click', async ()=>{
-      if(currentQty >= selectedVariant.stock){
-        toast(`Only ${selectedVariant.stock} left in ${selectedVariant.colorName}.`);
-        return;
-      }
-      try{
-        const res = await cartUpdateQty(lineId, currentQty + 1);
-        if(res && res.message) toast(res.message);
-        refreshBadgeCounts(); syncCartControls();
-      }catch(e){ toast(e.message, 'error'); }
-    }));
-    document.querySelectorAll('[data-pd-dec]').forEach(btn=>btn.addEventListener('click', async ()=>{
-      try{
-        if(currentQty <= 1){ await cartRemoveItem(lineId); toast('Removed from bag'); }
-        else{ await cartUpdateQty(lineId, currentQty - 1); }
-        refreshBadgeCounts(); syncCartControls();
-      }catch(e){ toast(e.message, 'error'); }
-    }));
+  // One click handler per wrapper (the buttons inside are redrawn on every change).
+  function bindCartControlStepperOnce(){
+    ['pdCartControl', 'stickyCartControl'].forEach(id => {
+      const el = document.getElementById(id);
+      if(!el || el._stepperBound) return;
+      el._stepperBound = true;
+      el.addEventListener('click', e => {
+        if(!selectedVariant) return;
+        if(e.target.closest('[data-pd-inc]')){
+          const q = cardCart.qty(selectedVariant.id);
+          if(q >= selectedVariant.stock){ toast(`Only ${selectedVariant.stock} left in ${selectedVariant.colorName}.`); return; }
+          cardCart.change(selectedVariant.id, 1, selectedVariant.stock);
+        }else if(e.target.closest('[data-pd-dec]')){
+          if(cardCart.qty(selectedVariant.id) <= 1) toast('Removed from bag');
+          cardCart.change(selectedVariant.id, -1);
+        }
+      });
+    });
   }
 
   // Nobody writes a review from the product page: customers review a saree from Account → Order History once
@@ -780,23 +746,18 @@
     }catch(e){ /* ignore */ }
   }
 
-  async function addCurrentToCart(){
-    try{
-      await cartAdd(currentProduct.id, qty, selectedVariant.swatch, selectedVariant.id);
-      toast(currentProduct.name + ' added to bag');
-      refreshBadgeCounts();
-      syncCartControls();
-    }catch(e){ toast(e.message, 'error'); }
+  function addCurrentToCart(){
+    // instant: the stepper and the badge change at once, the server catches up in the background
+    cardCart.add(currentProduct.id, selectedVariant.id, selectedVariant.swatch, selectedVariant.stock, qty);
+    toast(currentProduct.name + ' added to bag');
   }
 
-  // Same add-to-cart as above, then straight to checkout instead of staying
-  // on the page — for someone who already knows they want this one, no
-  // detour through the bag first.
-  async function buyNow(){
-    try{
-      await cartAdd(currentProduct.id, qty, selectedVariant.swatch, selectedVariant.id);
-      window.location.href = '/checkout';
-    }catch(e){ toast(e.message, 'error'); }
+  // Buy Now: check out THIS saree (with the quantity chosen here) on its own. The bag is not touched - whatever
+  // is in it stays exactly as it was, and this purchase is never added to it.
+  function buyNow(){
+    if(qty > selectedVariant.stock){ toast(`Only ${selectedVariant.stock} left in ${selectedVariant.colorName}.`); return; }
+    setBuyNow({ productId: currentProduct.id, variantId: selectedVariant.id, qty });
+    window.location.href = '/checkout?buy=now';
   }
 
   async function wishCurrent(){

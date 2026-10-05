@@ -1,5 +1,5 @@
 const express = require('express');
-const { supabase, must, getProducts, getProductById, getVariantById, getReelProducts, logSearchQuery, getCollectionBySlug } = require('../utils/db');
+const { supabase, must, getProducts, getProductById, getProductsFullByIds, getVariantById, getReelProducts, logSearchQuery, getCollectionBySlug } = require('../utils/db');
 const { toProductApiShape } = require('../utils/shape');
 const { getUserIdIfPresent } = require('../middleware/auth');
 
@@ -145,6 +145,20 @@ router.get('/', async (req, res) => {
     res.json({ products, total });
   } catch (err) {
     console.error('GET /products failed:', err);
+    res.status(500).json({ message: 'Something went wrong on the server.' });
+  }
+});
+
+// A handful of sarees by id (sale sarees included) - what a guest's bag and wishlist need, instead of downloading
+// the whole catalogue just to look up two or three items.
+router.get('/lookup', async (req, res) => {
+  try {
+    const ids = String(req.query.ids || '').split(',').map(x => Number(x)).filter(n => Number.isInteger(n) && n > 0 && n <= 2147483647).slice(0, 30);
+    if (!ids.length) return res.json({ products: [] });
+    const rows = (await getProductsFullByIds(ids)).filter(p => p.status !== 'archived');
+    res.json({ products: rows.map(toProductApiShape) });
+  } catch (err) {
+    console.error('GET /products/lookup failed:', err);
     res.status(500).json({ message: 'Something went wrong on the server.' });
   }
 });
