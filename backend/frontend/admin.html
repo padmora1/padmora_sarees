@@ -398,8 +398,12 @@
     orderFilter = 'all';
     document.getElementById('orderSearchBox').value = '';
     switchTab('orders');
+    await loadOrders();
     openOrderId = orderId;
+    renderOrdersTable();
     await renderOrderDetail();
+    const row = document.querySelector('#ordersTable tr.order-detail-row');
+    if(row) row.previousElementSibling.scrollIntoView({ behavior:'smooth', block:'start' });
   }
 
   async function loadOverview(){
@@ -1249,7 +1253,7 @@
     const t = ordersTools, groups = t.groups();
     let rows = ordersCache.filter(o => AdminLists.inRange(o.placedAt, t.state.from, t.state.to) && AdminLists.matches(groups, [
       o.id, o.customerName, o.customerEmail, o.address && o.address.name, o.address && o.address.city, o.address && o.address.state, o.address && o.address.pincode,
-      o.status, o.couponCode, o.total, o.items.map(i => i.name + ' ' + (i.color || '')).join(' ')
+      o.status, o.couponCode, o.total, o.items.map(i => i.name + ' ' + (i.color || '') + ' ' + (i.sku || '')).join(' ')
     ].join(' ')));
     const by = { new: (x, y) => new Date(y.placedAt) - new Date(x.placedAt), old: (x, y) => new Date(x.placedAt) - new Date(y.placedAt), high: (x, y) => y.total - x.total, low: (x, y) => x.total - y.total };
     return rows.sort(by[t.state.sort] || by.new);
@@ -1258,9 +1262,9 @@
     const rows = visibleOrders();
     if(!rows.length){ toast('Nothing to export for this search and date range.', 'error'); return; }
     AdminLists.downloadCsv('padmora-orders-' + new Date().toISOString().slice(0,10) + '.csv',
-      ['Order ID','Placed at','Customer','E-mail','Status','Payment','Items','Subtotal','Discount','Shipping','Total','Coupon','City','State','Pincode'],
+      ['Order ID','Placed at','Customer','E-mail','Status','Payment','Items (colour, SKU, qty)','Units','Subtotal','Discount','Shipping','Total','Coupon','City','State','Pincode'],
       rows.map(o => [o.id, new Date(o.placedAt).toLocaleString('en-IN'), o.customerName, o.customerEmail, o.status, o.payment || '',
-        o.items.map(i => `${i.name}${i.color ? ' (' + i.color + ')' : ''} x${i.qty}`).join('; '),
+        o.items.map(i => `${i.name}${i.color ? ' (' + i.color + ')' : ''}${i.sku ? ' [' + i.sku + ']' : ''} x${i.qty}`).join('; '), o.items.reduce((n, i) => n + i.qty, 0),
         o.subtotal, o.discount, o.shippingFee, o.total, o.couponCode || '', o.address && o.address.city || '', o.address && o.address.state || '', o.address && o.address.pincode || '']));
     toast(rows.length + ' order' + (rows.length === 1 ? '' : 's') + ' exported');
   }
@@ -1279,8 +1283,9 @@
     }catch(e){ toast(e.message, 'error'); }
   }
 
-  function renderOrdersTable(){
+  function renderOrdersTable(opts){
     ensureOrdersTools();
+    const keptDetail = document.querySelector('#ordersTable tr.order-detail-row');   // an open order stays open under its row
     const orders = visibleOrders();
     const groups = ordersTools.groups();
     const hl = text => AdminLists.highlight(text, groups);
@@ -1293,9 +1298,9 @@
     document.getElementById('ordersTable').innerHTML = `
       <thead><tr><th><input type="checkbox" id="selectAllOrders" aria-label="Select all"></th><th>Order</th><th>Date</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead>
       <tbody>${orders.length ? orders.map(o=>`
-        <tr>
+        <tr data-order-row="${escHTML(o.id)}" class="${openOrderId === o.id ? 'is-open' : ''}">
           <td><input type="checkbox" class="order-select-box" data-select-order="${escHTML(o.id)}" ${selectedOrderIds.has(o.id)?'checked':''}></td>
-          <td>#${hl(o.id)}</td>
+          <td class="order-id-cell ${o.viewedAt === null ? 'unviewed' : ''}" ${o.viewedAt === null ? 'title="Not opened yet"' : ''}>#${hl(o.id)}</td>
           <td style="white-space:nowrap;font-size:12.5px;">${AdminLists.fmtDate(o.placedAt)}<br><span style="font-size:11px;color:var(--ink-soft);">${new Date(o.placedAt).toLocaleTimeString('en-IN', {hour:'numeric', minute:'2-digit'})}</span></td>
           <td>${hl(o.customerName)}<br><span style="font-size:11px;color:var(--ink-soft);">${hl(o.customerEmail)}</span></td>
           <td style="font-size:12.5px;">${o.items.map(i=>`${hl(i.name)}${i.color?' ('+escHTML(i.color)+')':''} ×${i.qty}`).join('<br>')}</td>
@@ -1308,7 +1313,7 @@
             </select>${o.manualStatus?'<span class="manual-override-flag">Override</span>':''}`}
             ${o.cancelRequestStatus === 'Requested' ? '<br><span class="order-status" style="background:var(--gold);color:#fff;">Cancellation Requested</span>' : ''}
           </td>
-          <td><button class="btn btn-sm btn-outline" data-view-order="${escHTML(o.id)}">View</button></td>
+          <td><button class="btn btn-sm btn-outline" data-view-order="${escHTML(o.id)}">${openOrderId === o.id ? 'Close' : 'View'}</button></td>
         </tr>`).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--ink-soft);padding:24px;">${ordersCache.length ? 'No orders match this search and date range.' : 'No orders in this status.'}</td></tr>`}</tbody>`;
 
     document.querySelectorAll('[data-order-status]').forEach(sel=>sel.addEventListener('change', async ()=>{
@@ -1319,9 +1324,18 @@
       }catch(e){ toast(e.message, 'error'); }
     }));
     document.querySelectorAll('[data-view-order]').forEach(btn=>btn.addEventListener('click', ()=>{
-      openOrderId = btn.dataset.viewOrder;
-      renderOrderDetail();
+      const id = btn.dataset.viewOrder;
+      if(openOrderId === id){ openOrderId = null; renderOrderDetail(); renderOrdersTable(); return; }   // "Close"
+      openOrderId = id;
+      renderOrdersTable();
+      renderOrderDetail().then(() => {
+        const row = document.querySelector('#ordersTable tr.order-detail-row');
+        if(row) row.previousElementSibling.scrollIntoView({ behavior:'smooth', block:'start' });
+      });
     }));
+    // put an open order's details back directly under its row
+    const openRow = openOrderId ? [...document.querySelectorAll('#ordersTable tr[data-order-row]')].find(r => r.dataset.orderRow === openOrderId) : null;
+    if(openRow && keptDetail) openRow.after(keptDetail);
     document.querySelectorAll('[data-select-order]').forEach(box=>box.addEventListener('change', ()=>{
       if(box.checked) selectedOrderIds.add(box.dataset.selectOrder);
       else selectedOrderIds.delete(box.dataset.selectOrder);
@@ -1336,14 +1350,36 @@
     updateSelectedSlipUI();
   }
 
+  // Where the open order's details are drawn: a row of its own right under that order in the list; if the order is not
+  // in the list at the moment (a filter or date range hides it), the old place below the table.
+  function orderDetailHost(){
+    const table = document.getElementById('ordersTable'), fallback = document.getElementById('orderDetail');
+    let tr = table.querySelector('tr.order-detail-row');
+    const row = openOrderId ? [...table.querySelectorAll('tr[data-order-row]')].find(r => r.dataset.orderRow === openOrderId) : null;
+    if(!row){ if(tr) tr.remove(); return fallback; }
+    if(!tr){
+      tr = document.createElement('tr'); tr.className = 'order-detail-row';
+      tr.innerHTML = '<td colspan="8"><div class="order-detail-body"></div></td>';
+    }
+    if(tr.previousElementSibling !== row) row.after(tr);
+    fallback.style.display = 'none';
+    return tr.querySelector('.order-detail-body');
+  }
+
   async function renderOrderDetail(){
-    const wrap = document.getElementById('orderDetail');
-    if(!openOrderId){ wrap.style.display = 'none'; return; }
+    const table = document.getElementById('ordersTable');
+    if(!openOrderId){
+      table.querySelectorAll('tr.order-detail-row').forEach(r => r.remove());
+      document.getElementById('orderDetail').style.display = 'none';
+      return;
+    }
+    const wrap = orderDetailHost();
     wrap.style.display = 'block';
     wrap.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading order…</div>`;
 
     try{
       const {order: o} = await adminApiFetch('/admin/orders/' + openOrderId);
+      markOrderViewed(o.id);
       wrap.innerHTML = `
         <div class="editor-card">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -1372,7 +1408,7 @@
                   ${i.imageUrl
                     ? `<a href="${i.imageUrl}" target="_blank" rel="noopener"><img src="${i.imageUrl}" alt="${escHTML(i.name)}" class="order-line-thumb"></a>`
                     : `<span class="order-line-thumb order-line-thumb-empty">${LOTUS_GLYPH_SVG}</span>`}
-                  <span>${escHTML(i.name)}${i.color?' — '+i.color:''} × ${i.qty} — ${money(i.price*i.qty)}</span>
+                  <span class="order-line-text"><strong>${escHTML(i.name)}</strong><br><span class="order-line-meta">${i.color ? 'Colour: <b>' + escHTML(i.color) + '</b> · ' : ''}SKU: <b>${escHTML(i.sku || '—')}</b> · Qty: <b>${i.qty}</b> · ${money(i.price*i.qty)}</span></span>
                 </div>`).join('')}
             </div>
             <div class="detail-block">
@@ -1432,7 +1468,7 @@
           </div>`}
         </div>`;
 
-      document.getElementById('closeOrderDetail').addEventListener('click', ()=>{ openOrderId = null; renderOrderDetail(); });
+      document.getElementById('closeOrderDetail').addEventListener('click', ()=>{ openOrderId = null; renderOrderDetail(); renderOrdersTable(); });
       document.getElementById('printPackingSlip').addEventListener('click', ()=>{
         window.open('/packing-slip?id=' + encodeURIComponent(o.id), '_blank');
       });
@@ -1479,6 +1515,16 @@
         }catch(e){ toast(e.message, 'error'); }
       });
     }catch(e){ toast(e.message, 'error'); }
+  }
+
+  // The first time an order is opened, tell the server (so every admin sees it as seen) and un-bold it in the list.
+  function markOrderViewed(id){
+    const o = ordersCache.find(x => x.id === id);
+    if(o && o.viewedAt !== null) return;   // already seen (or the server has no such record to keep)
+    if(o) o.viewedAt = new Date().toISOString();
+    const cell = [...document.querySelectorAll('#ordersTable tr[data-order-row]')].find(r => r.dataset.orderRow === id);
+    if(cell){ const c = cell.querySelector('.order-id-cell'); if(c){ c.classList.remove('unviewed'); c.removeAttribute('title'); } }
+    adminApiFetch('/admin/orders/' + encodeURIComponent(id) + '/viewed', { method:'POST' }).catch(() => { if(o) o.viewedAt = null; });
   }
 
   // ---- Returns & Refunds ----
