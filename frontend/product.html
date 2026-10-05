@@ -496,7 +496,7 @@
         <div class="pd-grid">
           <div class="pd-media" id="pdMedia"></div>
           <div class="pd-info">
-            <div class="product-fabric">${p.fabric} · ${p.occasion}</div>
+            <div class="product-fabric">${p.fabric}</div>
             <h1>${p.name}</h1>
             <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews} reviews)</div>
             <div class="product-price" style="margin-top:10px;" id="pdPrice"></div>
@@ -518,7 +518,10 @@
               <span><strong>Length:</strong> 6.3m + 0.8m blouse</span>
               <span><strong>Wash:</strong> Dry clean only</span>
               <span><strong>Delivery:</strong> 4-7 business days</span>
+              ${p.loomType ? `<span><strong>Craft:</strong> ${escapeHtml(p.loomType)}</span>` : ''}
+              ${p.weaverName ? `<span><strong>Weaver:</strong> ${escapeHtml(p.weaverName)}${p.weaverRegion ? ', ' + escapeHtml(p.weaverRegion) : ''}</span>` : ''}
             </div>
+            ${occasionList(p.occasion).length ? `<div class="pd-occasions"><strong>Occasions:</strong>${occasionList(p.occasion).map(o => `<a class="occ-chip" href="/shop?occasion=${encodeURIComponent(o)}">${escapeHtml(o)}</a>`).join('')}</div>` : ''}
             <div class="pd-actions">
               <div id="pdCartControl"></div>
               <button class="btn btn-primary" id="pdBuyNow">Buy Now</button>
@@ -702,9 +705,18 @@
     wrap.innerHTML = `<p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:20px;text-align:center;">Reviews are written by customers after their order has been delivered.</p>`;
   }
 
+  // "Wedding, Festive" -> ['Wedding', 'Festive']: one saree can suit several occasions.
+  function occasionList(v){ return String(v || '').split(',').map(x => x.trim()).filter(Boolean); }
+
+  // ---- Reviews: cards, a strip of customer photos, and a window (modal) on this same page to read one properly ----
+  let reviewData = [];
+  const fmtReviewDate = d => new Date(d).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
+  const starsText = n => '★'.repeat(n) + '☆'.repeat(5 - n);
+
   async function loadReviews(){
     try{
       const {reviews} = await apiFetch(`/products/${productId}/reviews`);
+      reviewData = reviews;
       document.getElementById('reviewSummary').innerHTML = `
         <span class="big-rating">${currentProduct.rating.toFixed(1)}</span>
         <div><span class="stars">★★★★★</span><br><span style="font-size:12.5px;color:var(--ink-soft);">${currentProduct.reviews} reviews</span></div>`;
@@ -713,23 +725,120 @@
         list.innerHTML = `<p style="font-size:13.5px;color:var(--ink-soft);">No reviews yet.</p>`;
         return;
       }
-      list.innerHTML = reviews.map(r=>`
-        <div class="review-card">
+      const allPhotos = [];
+      reviews.forEach((r, ri) => (r.photos || []).forEach((u, pi) => allPhotos.push({ u, ri, pi })));
+      const strip = allPhotos.length ? `
+        <div class="rv-photo-strip-wrap"><p class="rv-strip-title">Photos from customers (${allPhotos.length})</p>
+          <div class="rv-photo-strip">${allPhotos.slice(0, 14).map(x => `<button type="button" class="rv-strip-thumb" data-open-review="${x.ri}" data-open-photo="${x.pi}" aria-label="Open review photo"><img src="${escapeHtml(x.u)}" alt="Customer photo" loading="lazy" decoding="async"></button>`).join('')}</div></div>` : '';
+      list.innerHTML = strip + reviews.map((r, ri) => `
+        <div class="review-card review-card-open" role="button" tabindex="0" data-open-review="${ri}" aria-label="Read the full review by ${escapeHtml(r.userName)}">
           <div class="review-card-head">
             <strong>${escapeHtml(r.userName)}</strong>
             ${r.verified ? '<span class="verified-tag">Verified Purchase</span>' : ''}
-            <span style="color:var(--ink-soft);font-size:12px;">${new Date(r.createdAt).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span>
+            <span style="color:var(--ink-soft);font-size:12px;">${fmtReviewDate(r.createdAt)}</span>
           </div>
-          <span class="stars">${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</span>
+          <span class="stars">${starsText(r.rating)}</span>
           ${r.title ? `<p style="font-weight:600;color:var(--ink);margin-top:6px;">${escapeHtml(r.title)}</p>` : ''}
-          <p>${escapeHtml(r.body)}</p>
-          ${r.adminReply ? `<div style="margin-top:10px;padding:10px 12px;background:var(--ivory-deep);border-radius:4px;border-left:2px solid var(--maroon);">
-            <p style="font-size:11px;font-weight:600;color:var(--maroon);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px;">Response from Padmora</p>
-            <p style="font-size:13px;">${escapeHtml(r.adminReply)}</p>
-          </div>` : ''}
+          <p class="review-text-clamp">${escapeHtml(r.body)}</p>
+          ${(r.photos || []).length ? `<div class="review-thumbs">${r.photos.slice(0, 4).map((u, pi) => `<span class="review-thumb"><img src="${escapeHtml(u)}" alt="" loading="lazy" decoding="async">${pi === 3 && r.photos.length > 4 ? `<span class="review-thumb-more">+${r.photos.length - 3}</span>` : ''}</span>`).join('')}</div>` : ''}
+          <span class="review-readmore">Read full review${(r.photos || []).length ? ' &amp; photos' : ''} →</span>
         </div>`).join('');
     }catch(e){ /* ignore */ }
   }
+
+  // The window that opens on this page: photos you can swipe through, the rating, the whole review, and the reply.
+  let rvModal = null, rvIndex = 0, rvPhoto = 0, rvOpener = null;
+  function closeReviewModal(){
+    if(!rvModal) return;
+    rvModal.remove(); rvModal = null;
+    document.body.classList.remove('rv-modal-open');
+    document.removeEventListener('keydown', rvKey);
+    if(rvOpener && rvOpener.focus) rvOpener.focus();
+  }
+  function rvKey(e){
+    if(!rvModal) return;
+    if(e.key === 'Escape') closeReviewModal();
+    else if(e.key === 'ArrowRight') rvScroll(1);
+    else if(e.key === 'ArrowLeft') rvScroll(-1);
+    else if(e.key === 'Tab'){
+      const f = [...rvModal.querySelectorAll('button, [href]')].filter(x => !x.disabled && x.offsetParent !== null);
+      if(!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+      else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+    }
+  }
+  function rvScroll(dir){
+    const track = rvModal && rvModal.querySelector('.rv-track');
+    if(track) track.scrollBy({ left: dir * track.clientWidth, behavior: 'smooth' });
+  }
+  function renderReviewModalBody(){
+    const r = reviewData[rvIndex];
+    const photos = r.photos || [];
+    rvModal.querySelector('.rv-modal-content').innerHTML = `
+      ${photos.length ? `<div class="rv-gallery">
+        <div class="rv-track" tabindex="0" aria-label="Review photos">${photos.map((u, i) => `<div class="rv-slide"><img src="${escapeHtml(u)}" alt="Photo ${i + 1} of ${photos.length} from ${escapeHtml(r.userName)}" decoding="async"></div>`).join('')}</div>
+        ${photos.length > 1 ? `<button type="button" class="rv-nav rv-prev" aria-label="Previous photo">‹</button><button type="button" class="rv-nav rv-next" aria-label="Next photo">›</button>` : ''}
+        <span class="rv-counter" aria-live="polite">1 / ${photos.length}</span>
+      </div>` : ''}
+      <div class="rv-body">
+        <div class="rv-rating"><span class="stars" aria-hidden="true">${starsText(r.rating)}</span><strong>${r.rating}.0</strong><span class="rv-outof">out of 5</span></div>
+        ${r.title ? `<h3 class="rv-title">${escapeHtml(r.title)}</h3>` : ''}
+        <div class="rv-who"><strong>${escapeHtml(r.userName)}</strong>${r.verified ? '<span class="verified-tag">Verified Purchase</span>' : ''}<span>${fmtReviewDate(r.createdAt)}</span></div>
+        <p class="rv-text">${escapeHtml(r.body)}</p>
+        ${r.adminReply ? `<div class="rv-reply"><p class="rv-reply-label">Response from Padmora</p><p>${escapeHtml(r.adminReply)}</p></div>` : ''}
+      </div>`;
+    const track = rvModal.querySelector('.rv-track');
+    if(track){
+      const counter = rvModal.querySelector('.rv-counter');
+      const idx = () => Math.min(photos.length - 1, Math.round(track.scrollLeft / Math.max(1, track.clientWidth)));
+      track.addEventListener('scroll', () => { rvPhoto = idx(); counter.textContent = (rvPhoto + 1) + ' / ' + photos.length; }, { passive: true });
+      if(rvPhoto > 0) track.scrollLeft = rvPhoto * track.clientWidth;
+      const prev = rvModal.querySelector('.rv-prev'), next = rvModal.querySelector('.rv-next');
+      if(prev) prev.addEventListener('click', () => rvScroll(-1));
+      if(next) next.addEventListener('click', () => rvScroll(1));
+    }
+    rvModal.querySelector('[data-rv-pos]').textContent = (rvIndex + 1) + ' of ' + reviewData.length;
+    rvModal.querySelector('[data-rv-step="-1"]').disabled = rvIndex === 0;
+    rvModal.querySelector('[data-rv-step="1"]').disabled = rvIndex === reviewData.length - 1;
+    rvModal.querySelector('.rv-modal-scroll').scrollTop = 0;
+  }
+  function openReviewModal(index, photoIndex, opener){
+    if(!reviewData[index]) return;
+    if(!rvModal){
+      rvOpener = opener || document.activeElement;
+      rvModal = document.createElement('div');
+      rvModal.className = 'rv-modal';
+      rvModal.innerHTML = `
+        <div class="rv-backdrop" data-rv-close></div>
+        <div class="rv-dialog" role="dialog" aria-modal="true" aria-label="Customer review">
+          <div class="rv-modal-head"><span class="rv-modal-title">Customer review</span><button type="button" class="rv-close" data-rv-close aria-label="Close review">×</button></div>
+          <div class="rv-modal-scroll"><div class="rv-modal-content"></div></div>
+          <div class="rv-modal-foot"><button type="button" class="btn btn-sm btn-outline" data-rv-step="-1">‹ Previous review</button><span data-rv-pos></span><button type="button" class="btn btn-sm btn-outline" data-rv-step="1">Next review ›</button></div>
+        </div>`;
+      document.body.appendChild(rvModal);
+      document.body.classList.add('rv-modal-open');
+      rvModal.addEventListener('click', e => {
+        if(e.target.closest('[data-rv-close]')) return closeReviewModal();
+        const step = e.target.closest('[data-rv-step]');
+        if(step){ rvIndex += Number(step.dataset.rvStep); rvPhoto = 0; renderReviewModalBody(); }
+      });
+      document.addEventListener('keydown', rvKey);
+    }
+    rvIndex = index; rvPhoto = photoIndex || 0;
+    renderReviewModalBody();
+    rvModal.querySelector('.rv-close').focus();
+  }
+  document.addEventListener('click', e => {
+    const t = e.target.closest('[data-open-review]');
+    if(t && document.getElementById('reviewsList') && document.getElementById('reviewsList').contains(t)){
+      openReviewModal(Number(t.dataset.openReview), Number(t.dataset.openPhoto || 0), t);
+    }
+  });
+  document.addEventListener('keydown', e => {
+    const t = e.target.closest && e.target.closest('.review-card-open');
+    if(t && (e.key === 'Enter' || e.key === ' ')){ e.preventDefault(); openReviewModal(Number(t.dataset.openReview), 0, t); }
+  });
 
   async function refreshWishButtonLabel(){
     try{

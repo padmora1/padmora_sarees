@@ -2,6 +2,8 @@ const express = require('express');
 const { supabase, must, getProductById } = require('../utils/db');
 const { requireAuth } = require('../middleware/auth');
 const { computeStatus } = require('../utils/orderStatus');
+const { uploadReturnPhotos } = require('../middleware/upload');
+const { saveUpload, isCustomerPhotoUrl } = require('../utils/storage');
 
 // Mounted at /api/products/:productId/reviews with mergeParams so req.params.productId is available.
 const router = express.Router({ mergeParams: true });
@@ -10,7 +12,8 @@ function shapeReview(r) {
   return {
     id: r.id, userName: r.user_name, rating: r.rating, title: r.title, body: r.body,
     verified: !!r.verified, featured: !!r.featured, createdAt: r.created_at,
-    adminReply: r.admin_reply || null, repliedAt: r.replied_at || null
+    adminReply: r.admin_reply || null, repliedAt: r.replied_at || null,
+    photos: Array.isArray(r.photos) ? r.photos : []
   };
 }
 
@@ -33,6 +36,31 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Photos for a review are taken by the customer on the review form and uploaded ahead of the review itself (same
+// idea as return photos): they come back as URLs, which POST / below then checks and stores with the review.
+const MAX_REVIEW_PHOTOS = 5;
+function uploadPhotos(req, res, next) {
+  uploadReturnPhotos.array('photos', MAX_REVIEW_PHOTOS)(req, res, (err) => {
+    if (err) return res.status(400).json({ message: err.message || 'Upload failed.' });
+    next();
+  });
+}
+router.post('/photos', requireAuth, uploadPhotos, async (req, res) => {
+  if (!req.files || !req.files.length) return res.status(400).json({ message: 'No photos uploaded.' });
+  try {
+    const save = Promise.all(req.files.map(f => saveUpload(f, 'review-')));
+    const urls = await Promise.race([
+      save,
+      new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error('storage timeout'), { timedOut: true })), 40000))
+    ]);
+    res.status(201).json({ urls });
+  } catch (err) {
+    console.error('POST /reviews/photos failed:', err);
+    if (err.timedOut) return res.status(504).json({ message: 'Saving the photo took too long. Please try again.' });
+    res.status(502).json({ message: 'The photos could not be saved. Please try again in a moment.' });
+  }
+});
+
 router.post('/', requireAuth, async (req, res) => {
   try {
     const productId = Number(req.params.productId);
@@ -40,7 +68,9 @@ router.post('/', requireAuth, async (req, res) => {
     if (!product) return res.status(404).json({ message: 'Saree not found.' });
 
     const rating = Number(req.body.rating);
-    const { title, body } = req.body;
+    const { title, body, photoUrls } = req.body;
+    const photos = Array.isArray(photoUrls) ? photoUrls.filter(u => isCustomerPhotoUrl(u, 'review-')) : [];
+    if (photos.length > MAX_REVIEW_PHOTOS) return res.status(400).json({ message: `Up to ${MAX_REVIEW_PHOTOS} photos per review.` });
     if (!rating || rating < 1 || rating > 5) {
       return res.status(400).json({ message: 'Please choose a star rating from 1 to 5.' });
     }
@@ -73,16 +103,11 @@ router.post('/', requireAuth, async (req, res) => {
 
     must(await supabase.from('reviews').insert({
       product_id: productId, user_id: req.userId, user_name: user.name, rating, title: (title || '').toString().trim().slice(0, 120),
-      body: body.trim().slice(0, 2000), verified: true, created_at: new Date().toISOString()
+      body: body.trim().slice(0, 2000), verified: true, created_at: new Date().toISOString(),
+      photos, status: 'pending'   // shown on the product page only after an admin approves it
     }), 'postReview:insert');
 
-    const updatedProduct = await getProductById(productId);
-    const rows = await publishedReviews(productId);
-    res.status(201).json({
-      reviews: rows.map(shapeReview),
-      rating: updatedProduct.rating,
-      reviewsCount: updatedProduct.reviews_count
-    });
+    res.status(201).json({ pending: true, message: 'Thank you! Your review will appear on the product page once we have approved it.' });
   } catch (err) {
     console.error('POST /reviews failed:', err);
     res.status(500).json({ message: 'Something went wrong on the server.' });

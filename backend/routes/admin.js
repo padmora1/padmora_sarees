@@ -15,6 +15,7 @@ const { saveUpload, removeUpload } = require('../utils/storage');
 const { toProductApiShape } = require('../utils/shape');
 const { DEFAULT_FOOTER, validateFooter } = require('../utils/footerConfig');
 const { sanitizeRich } = require('../utils/richText');
+const { splitOccasions, normalizeOccasions } = require('../utils/occasions');
 const { DEFAULT_ANNOUNCEMENT, DEFAULT_WEAVE_SECTION, validateAnnouncement, validateWeaveSection } = require('../utils/homeSections');
 const { runBackup, listBackups, BACKUP_DIR } = require('../utils/backup');
 const { RETURN_REASONS } = require('../utils/returns');
@@ -228,9 +229,9 @@ router.get('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
 router.post('/products', asyncRoute(async (req, res) => {
   const { name: rawName, fabric: rawFabric, occasion: rawOccasion, price, mrp, salePercent, badge, swatch, desc, stock: rawStock, weaverName, weaverRegion, loomType,
           colorName: rawColor, lowStockThreshold: rawLow, colors } = req.body;
-  const name = cleanText(rawName, 120), fabric = cleanText(rawFabric, 80), occasion = cleanText(rawOccasion, 80);
+  const name = cleanText(rawName, 120), fabric = cleanText(rawFabric, 80), occasion = normalizeOccasions(rawOccasion);
   if (!name || !fabric || !occasion || price === undefined || price === null || price === '') {
-    return res.status(400).json({ message: 'Name, fabric, occasion and price are required (name up to 120 characters).' });
+    return res.status(400).json({ message: 'Name, fabric, at least one occasion (up to 8) and price are required (name up to 120 characters).' });
   }
   const onSale = badge === 'sale';
   // Stock left empty means "the usual 20"; a typed 0 is a real answer (sold out) and must be kept.
@@ -295,9 +296,11 @@ router.put('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   if (!existing) return res.status(404).json({ message: 'Product not found.' });
 
   const { name, fabric, occasion, badge, desc, weaverName, weaverRegion, loomType, status } = req.body;
+  const occasionText = occasion === undefined ? undefined : normalizeOccasions(occasion);
+  if (occasion !== undefined && !occasionText) return res.status(400).json({ message: 'Choose at least one occasion (up to 8).' });
   if (name !== undefined && !cleanText(name, 120)) return res.status(400).json({ message: 'Name can\'t be blank (up to 120 characters).' });
   must(await supabase.from('products').update({
-    name: name !== undefined ? name.trim() : existing.name, fabric: fabric ?? existing.fabric, occasion: occasion ?? existing.occasion,
+    name: name !== undefined ? name.trim() : existing.name, fabric: fabric ?? existing.fabric, occasion: occasionText ?? existing.occasion,
     badge: badge !== undefined ? badge : existing.badge, description: desc === undefined || desc === null ? existing.description : sanitizeRich(desc),
     weaver_name: weaverName ?? existing.weaver_name, weaver_region: weaverRegion ?? existing.weaver_region,
     loom_type: loomType ?? existing.loom_type, status: status ?? existing.status ?? 'active'
@@ -1599,7 +1602,7 @@ router.put('/occasions/:id(\\d{1,9})', asyncRoute(async (req, res) => {
 router.delete('/occasions/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('occasions').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'deleteOccasion:lookup');
   if (!existing) return res.status(404).json({ message: 'Occasion not found.' });
-  const inUse = (await supabase.from('products').select('*', { count: 'exact', head: true }).eq('occasion', existing.name)).count || 0;
+  const inUse = must(await supabase.from('products').select('occasion'), 'deleteOccasion:inUse').filter(p => splitOccasions(p.occasion).includes(existing.name)).length;
   if (inUse > 0) {
     must(await supabase.from('occasions').update({ active: false }).eq('id', existing.id), 'deleteOccasion:deactivate');
     return res.json({ message: `${inUse} product(s) still use "${existing.name}" — deactivated instead of deleted.`, deactivated: true });
@@ -2151,7 +2154,8 @@ router.get('/reviews', asyncRoute(async (req, res) => {
     reviews: rows.map(r => ({
       id: r.id, productId: r.product_id, productName: nameById[r.product_id] || '', userName: r.user_name,
       rating: r.rating, title: r.title, body: r.body, verified: !!r.verified, featured: !!r.featured,
-      status: r.status, createdAt: r.created_at, adminReply: r.admin_reply, repliedAt: r.replied_at
+      status: r.status, createdAt: r.created_at, adminReply: r.admin_reply, repliedAt: r.replied_at,
+      photos: Array.isArray(r.photos) ? r.photos : []
     }))
   });
 }));
@@ -2202,7 +2206,9 @@ router.put('/reviews/:id(\\d{1,9})', asyncRoute(async (req, res) => {
 }));
 
 router.delete('/reviews/:id(\\d{1,9})', asyncRoute(async (req, res) => {
+  const old = must(await supabase.from('reviews').select('photos').eq('id', Number(req.params.id)).maybeSingle(), 'deleteReview:lookup');
   must(await supabase.from('reviews').delete().eq('id', Number(req.params.id)), 'deleteReview');
+  for (const url of (old && Array.isArray(old.photos) ? old.photos : [])) await removeUpload(url);   // best effort
   await record(req, 'deleted', 'review', req.params.id);
   res.json({ message: 'Review deleted.' });
 }));

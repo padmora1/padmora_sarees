@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const { splitOccasions } = require('./occasions');
 const { createClient } = require('@supabase/supabase-js');
 
 // Defensive — server.js already loads backend/.env before requiring any
@@ -243,7 +244,7 @@ async function getOccasions({ activeOnly = true } = {}) {
   const rows = must(await query, 'getOccasions');
   const products = must(await supabase.from('products').select('occasion').neq('status', 'archived'), 'getOccasions:counts');
   const countMap = {};
-  products.forEach(p => { countMap[p.occasion] = (countMap[p.occasion] || 0) + 1; });
+  products.forEach(p => splitOccasions(p.occasion).forEach(name => { countMap[name] = (countMap[name] || 0) + 1; }));
   return rows.map(o => ({ ...o, productCount: countMap[o.name] || 0 }));
 }
 

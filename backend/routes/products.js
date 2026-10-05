@@ -1,6 +1,7 @@
 const express = require('express');
 const { supabase, must, getProducts, getProductById, getProductsFullByIds, getVariantById, getReelProducts, logSearchQuery, getCollectionBySlug } = require('../utils/db');
 const { toProductApiShape } = require('../utils/shape');
+const { splitOccasions } = require('../utils/occasions');
 const { getUserIdIfPresent } = require('../middleware/auth');
 
 const router = express.Router();
@@ -87,7 +88,8 @@ router.get('/', async (req, res) => {
     }
     if (occasion) {
       const occasions = occasion.split(',');
-      products = products.filter(p => occasions.includes(p.occasion));
+      // a saree can suit several occasions - it shows when ANY of the chosen ones is one of its own
+      products = products.filter(p => splitOccasions(p.occasion).some(o => occasions.includes(o)));
     }
     if (color) {
       // Case-insensitive: admins type swatch keys by hand ("Maroon" vs "maroon").
