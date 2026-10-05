@@ -671,6 +671,18 @@ async function attachOrderExtras(orders) {
   return orders.map(o => ({ ...o, customer_name: userById[o.user_id]?.name, customer_email: userById[o.user_id]?.email }));
 }
 
+// Each order line's product code (SKU) - looked up live from its colour, in one query for any number of orders.
+async function attachSkus(orders) {
+  const ids = [...new Set(orders.flatMap(o => o.items.map(i => i.variantId)).filter(Boolean))];
+  const skuById = {};
+  for (let i = 0; i < ids.length; i += 200) {
+    const rows = must(await supabase.from('product_variants').select('id, sku').in('id', ids.slice(i, i + 200)), 'attachSkus');
+    rows.forEach(r => { skuById[r.id] = r.sku; });
+  }
+  orders.forEach(o => o.items.forEach(i => { i.sku = skuById[i.variantId] || ''; }));
+  return orders;
+}
+
 async function shapeAdminOrder(o, { full } = {}) {
   const items = must(await supabase.from('order_items').select('*').eq('order_id', o.id), 'shapeAdminOrder:items');
   const imageByVariant = await getPrimaryImagesByVariantIds(items.map(li => li.variant_id));
@@ -700,7 +712,8 @@ async function shapeAdminOrder(o, { full } = {}) {
     cancelRequestedAt: o.cancel_requested_at,
     cancelAdminNote: o.cancel_admin_note,
     address: { name: o.address_name, city: o.address_city, state: o.address_state, pincode: o.address_pincode },
-    placedAt: o.placed_at
+    placedAt: o.placed_at,
+    viewedAt: o.admin_viewed_at
   };
   if (!full) return base;
   const notifications = must(
@@ -711,6 +724,7 @@ async function shapeAdminOrder(o, { full } = {}) {
   const fabrics = productIds.length ? must(await supabase.from('products').select('id, fabric').in('id', productIds), 'shapeAdminOrder:fabrics') : [];
   const fabricById = Object.fromEntries(fabrics.map(p => [p.id, p.fabric]));
   base.items.forEach(li => { li.fabric = fabricById[li.productId] || ''; });
+  await attachSkus([base]);
   return {
     ...base,
     customerPhone: o.address_phone,
@@ -733,7 +747,7 @@ async function shapeAdminOrder(o, { full } = {}) {
 router.get('/orders', asyncRoute(async (req, res) => {
   const orders = await attachOrderExtras(must(await supabase.from('orders').select('*').order('placed_at', { ascending: false }), 'listOrders'));
 
-  let shaped = await Promise.all(orders.map(o => shapeAdminOrder(o)));
+  let shaped = await attachSkus(await Promise.all(orders.map(o => shapeAdminOrder(o))));
   const { status } = req.query;
   if (status && status !== 'all') {
     shaped = shaped.filter(o => o.status.toLowerCase() === String(status).toLowerCase());
@@ -747,18 +761,20 @@ router.get('/orders', asyncRoute(async (req, res) => {
 router.get('/orders/export.csv', asyncRoute(async (req, res) => {
   const orders = await attachOrderExtras(must(await supabase.from('orders').select('*').order('placed_at', { ascending: false }), 'exportOrders'));
   const orderIds = orders.map(o => o.id);
-  const allItems = orderIds.length ? must(await supabase.from('order_items').select('order_id, name, color, qty').in('order_id', orderIds), 'exportOrders:items') : [];
+  const allItems = orderIds.length ? must(await supabase.from('order_items').select('order_id, name, color, qty, variant_id').in('order_id', orderIds), 'exportOrders:items') : [];
+  const skuOf = (await attachSkus([{ items: allItems.map(i => ({ variantId: i.variant_id })) }]))[0].items;
+  allItems.forEach((i, k) => { i.sku = skuOf[k].sku; });
   const itemsByOrder = {};
   allItems.forEach(i => (itemsByOrder[i.order_id] || (itemsByOrder[i.order_id] = [])).push(i));
 
-  const header = ['orderId', 'placedAt', 'customerName', 'customerEmail', 'status', 'payment', 'items', 'subtotal', 'discount', 'shippingFee', 'taxAmount', 'total'];
+  const header = ['orderId', 'placedAt', 'customerName', 'customerEmail', 'status', 'payment', 'items', 'units', 'subtotal', 'discount', 'shippingFee', 'total'];
   const rows = [];
   for (const o of orders) {
     const items = itemsByOrder[o.id] || [];
-    const itemsSummary = items.map(i => `${i.name}${i.color ? ' (' + i.color + ')' : ''} x${i.qty}`).join('; ');
+    const itemsSummary = items.map(i => `${i.name}${i.color ? ' (' + i.color + ')' : ''}${i.sku ? ' [' + i.sku + ']' : ''} x${i.qty}`).join('; ');
     rows.push([
       o.id, o.placed_at, o.customer_name, o.customer_email, await computeStatus(o), o.payment,
-      itemsSummary, o.subtotal, o.discount, o.shipping_fee, o.tax_amount, o.total
+      itemsSummary, items.reduce((n, i) => n + i.qty, 0), o.subtotal, o.discount, o.shipping_fee, o.total
     ]);
   }
   const csv = [header.join(',')]
@@ -790,6 +806,13 @@ router.get('/orders/:id', asyncRoute(async (req, res) => {
   if (!order) return res.status(404).json({ message: 'Order not found.' });
   const [o] = await attachOrderExtras([order]);
   res.json({ order: await shapeAdminOrder(o, { full: true }) });
+}));
+
+// The first time any admin opens an order, remember it - the Orders list shows unopened orders in bold.
+router.post('/orders/:id/viewed', asyncRoute(async (req, res) => {
+  const upd = await supabase.from('orders').update({ admin_viewed_at: new Date().toISOString() }).eq('id', req.params.id).is('admin_viewed_at', null);
+  if (upd.error) throw new Error(upd.error.message);
+  res.json({ ok: true });
 }));
 
 router.put('/orders/:id/status', asyncRoute(async (req, res) => {
