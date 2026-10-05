@@ -619,10 +619,10 @@ async function shrinkPhoto(file, maxSide, quality) {
 }
 
 // One photo -> the server, with upload progress (0-100) and a 60 second limit.
-function _postReturnPhoto(file, onPercent) {
+function _postReturnPhoto(file, onPercent, path) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', API_BASE + '/returns/photos');
+    xhr.open('POST', API_BASE + (path || '/returns/photos'));
     const token = getToken();
     if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
     xhr.timeout = 60000;
@@ -646,20 +646,25 @@ function _postReturnPhoto(file, onPercent) {
 // Uploads every photo that is not on the server yet and returns { urls } in order. A photo that already
 // uploaded is remembered on the File (_url), so pressing Submit again after a failure only re-sends the rest.
 // onProgress(doneCount, total, percentOfCurrent)
-async function returnUploadPhotos(files, onProgress) {
+async function returnUploadPhotos(files, onProgress, path) {
   const list = Array.from(files);
   _startLoading();
   try {
     for (let i = 0; i < list.length; i++) {
       if (list[i]._url) continue;
       if (onProgress) onProgress(i, list.length, 0);
-      list[i]._url = await _postReturnPhoto(list[i], pct => onProgress && onProgress(i, list.length, pct));
+      list[i]._url = await _postReturnPhoto(list[i], pct => onProgress && onProgress(i, list.length, pct), path);
     }
     if (onProgress) onProgress(list.length, list.length, 100);
     return { urls: list.map(f => f._url) };
   } finally {
     _endLoading();
   }
+}
+
+// Review photos use the same uploader, pointed at the review endpoint of that saree.
+function reviewUploadPhotos(productId, files, onProgress) {
+  return returnUploadPhotos(files, onProgress, '/products/' + productId + '/reviews/photos');
 }
 
 const TOAST_ICONS = {

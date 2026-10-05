@@ -77,7 +77,7 @@
                   <div class="form-field"><label>Fabric * <button type="button" class="info-tip" data-tip="The weave or cloth, for example Maheshwari, Ajrakh or Paithani. Customers can filter the shop by fabric, so pick one from the suggestions to keep the spelling the same." aria-label="The weave or cloth, for example Maheshwari, Ajrakh or Paithani. Customers can filter the shop by fabric, so pick one from the suggestions to keep the spelling the same.">i</button></label><input type="text" id="npFabric" list="fabricSuggestions" maxlength="80" placeholder="e.g. Maheshwari" autocomplete="off"></div>
                 </div>
                 <div class="form-row-2">
-                  <div class="form-field"><label>Occasion * <button type="button" class="info-tip" data-tip="When this saree is usually worn (Wedding, Festive…). Used by the Occasion filter and by Find My Saree." aria-label="When this saree is usually worn (Wedding, Festive…). Used by the Occasion filter and by Find My Saree.">i</button></label><select class="admin-input" style="width:100%;" id="npOccasion"></select></div>
+                  <div class="form-field"><label>Occasions * <button type="button" class="info-tip" data-tip="Tick every occasion this saree suits (Wedding, Festive…). A saree can have several. They power the Occasion filter and Find My Saree, and show on the product page." aria-label="Tick every occasion this saree suits (Wedding, Festive…). A saree can have several. They power the Occasion filter and Find My Saree, and show on the product page.">i</button></label><div class="occ-checks" id="npOccasion"></div></div>
                   <div class="form-field"><label>Badge <button type="button" class="info-tip" data-tip="A small tag on the saree card. “Sale” also shows the crossed-out original price and the % off." aria-label="A small tag on the saree card. “Sale” also shows the crossed-out original price and the % off.">i</button></label>
                     <select id="npBadge"><option value="">None</option><option value="new">New</option><option value="bestseller">Bestseller</option><option value="sale">Sale</option></select>
                   </div>
@@ -496,12 +496,22 @@
     return `<option value="">${escHTML(blankLabel)}</option>${extra}` +
       list.map(v => `<option value="${escHTML(v)}"${v === cur ? ' selected' : ''}>${escHTML(v)}</option>`).join('');
   }
-  const occasionOptionsHTML = cur => optionsHTML(occasionNames, cur, 'Select occasion');
+  // A saree can suit several occasions: tick every one that fits. A value saved earlier that is not in the Catalog
+  // list stays ticked and labelled "(current)", so opening and saving a product never silently drops it.
+  const splitOccasions = v => String(v == null ? '' : v).split(',').map(x => x.trim()).filter(Boolean);
+  function occasionChecksHTML(selected){
+    const sel = new Set(splitOccasions(selected).map(x => x.toLowerCase()));
+    const extra = splitOccasions(selected).filter(x => !occasionNames.some(n => n.toLowerCase() === x.toLowerCase()));
+    const box = (name, tag) => `<label class="occ-check"><input type="checkbox" value="${escHTML(name)}" ${sel.has(name.toLowerCase()) ? 'checked' : ''}><span>${escHTML(name)}${tag || ''}</span></label>`;
+    if(!occasionNames.length && !extra.length) return '<span class="occ-empty">Add occasions under Catalog → Occasions first.</span>';
+    return occasionNames.map(n => box(n)).concat(extra.map(n => box(n, ' (current)'))).join('');
+  }
+  const readOccasionChecks = el => [...el.querySelectorAll('input[type="checkbox"]:checked')].map(i => i.value);
   const loomOptionsHTML = cur => optionsHTML(LOOM_TYPES, cur, 'Select loom type');
   const regionOptionsHTML = cur => optionsHTML(INDIAN_STATES, cur, 'Select state');
   function fillAddProductDropdowns(){
     const set = (id, html) => { const el = document.getElementById(id); if(el) el.innerHTML = html; };
-    set('npOccasion', occasionOptionsHTML(''));
+    set('npOccasion', occasionChecksHTML(''));
     set('npLoomType', loomOptionsHTML(''));
     set('npWeaverRegion', regionOptionsHTML(''));
   }
@@ -780,7 +790,7 @@
         <div class="form-field"><label>Fabric</label><input type="text" id="egFabric" list="fabricSuggestions" value="${escHTML(p.fabric)}" autocomplete="off"></div>
       </div>
       <div class="form-row-2">
-        <div class="form-field"><label>Occasion</label><select class="admin-input" style="width:100%;" id="egOccasion">${occasionOptionsHTML(p.occasion)}</select></div>
+        <div class="form-field"><label>Occasions (tick all that fit)</label><div class="occ-checks" id="egOccasion">${occasionChecksHTML(p.occasion)}</div></div>
         <div class="form-field"><label>Badge</label>
           <select id="egBadge">
             <option value="" ${!p.badge?'selected':''}>None</option>
@@ -813,7 +823,7 @@
         const btn = document.getElementById('egSave'); btn.disabled = true; btn.textContent = 'Saving…';
         const {product} = await adminApiFetch('/admin/products/' + p.id, { method:'PUT', body: JSON.stringify({
           name: document.getElementById('egName').value, fabric: document.getElementById('egFabric').value,
-          occasion: document.getElementById('egOccasion').value, badge: document.getElementById('egBadge').value,
+          occasion: readOccasionChecks(document.getElementById('egOccasion')), badge: document.getElementById('egBadge').value,
           desc: document.getElementById('egDesc').value, weaverName: document.getElementById('egWeaverName').value,
           weaverRegion: document.getElementById('egWeaverRegion').value, loomType: document.getElementById('egLoomType').value,
           status: document.getElementById('egStatus').value
@@ -1048,10 +1058,11 @@
     ctl.focusName();
   }
   function resetAddProductForm(){
-    ['npName','npFabric','npOccasion','npDesc','npWeaverName','npWeaverRegion','npLoomType']
+    ['npName','npFabric','npDesc','npWeaverName','npWeaverRegion','npLoomType']
       .forEach(id => { document.getElementById(id).value = ''; });
     document.getElementById('npDesc')._rich.set('');
     document.getElementById('npBadge').value = '';
+    document.getElementById('npOccasion').innerHTML = occasionChecksHTML('');
     document.getElementById('npStatus').textContent = '';
     buildAddProductColours();
   }
@@ -1106,7 +1117,7 @@
     const sale = npOnSale();
     if(!document.getElementById('npName').value.trim()){ toast('Enter the saree name.', 'error'); return; }
     if(!document.getElementById('npFabric').value.trim()){ toast('Enter the fabric.', 'error'); return; }
-    if(!document.getElementById('npOccasion').value){ toast('Choose the occasion.', 'error'); return; }
+    if(!readOccasionChecks(document.getElementById('npOccasion')).length){ toast('Tick at least one occasion.', 'error'); return; }
     if(!main.colorName){ toast('Enter the main colour name.', 'error'); npMain.focusName(); return; }
     if(!main.price){ toast('Enter the price.', 'error'); return; }
     for(const [i, c] of extras.entries()){
@@ -1121,7 +1132,7 @@
         body: JSON.stringify({
           name: document.getElementById('npName').value,
           fabric: document.getElementById('npFabric').value,
-          occasion: document.getElementById('npOccasion').value,
+          occasion: readOccasionChecks(document.getElementById('npOccasion')),
           colorName: main.colorName, swatch: main.swatch,
           price: main.price, salePercent: sale ? main.salePercent : undefined,
           stock: main.stock, lowStockThreshold: main.lowStockThreshold,
@@ -3246,7 +3257,7 @@
   }
 
   // ==== Reviews moderation ====
-  let reviewFilter = 'all';
+  let reviewFilter = 'pending';   // what needs a decision comes first
   const REVIEW_FILTERS = ['all','pending','published','rejected'];
 
   // ---- Reviews list ----
@@ -3307,6 +3318,7 @@
             <td>${'★'.repeat(r.rating)}${'☆'.repeat(5-r.rating)}</td>
             <td style="font-size:12px;max-width:220px;">
               ${r.title?`<strong>${hl(r.title)}</strong><br>`:''}${hl(r.body)}
+              ${(r.photos && r.photos.length) ? `<div class="return-photo-preview" style="margin-top:8px;">${r.photos.map(u => `<a href="${escHTML(u)}" target="_blank" rel="noopener"><img src="${escHTML(u)}" alt="Customer photo" class="return-photo-thumb" loading="lazy"></a>`).join('')}</div>` : ''}
               ${r.adminReply ? `<div style="margin-top:6px;padding:6px 8px;background:var(--ivory-deep);border-radius:3px;"><strong style="font-size:10.5px;color:var(--maroon);text-transform:uppercase;">Your reply</strong><br>${escHTML(r.adminReply)}</div>`
                 : `<div style="margin-top:6px;"><textarea class="admin-input" id="revReply-${r.id}" rows="2" style="width:100%;font-size:12px;" placeholder="Reply to this review…"></textarea><button class="btn btn-sm btn-outline" data-rev-reply="${r.id}" style="margin-top:4px;">Send Reply</button></div>`}
             </td>

@@ -535,7 +535,7 @@ async function openQuickView(productId) {
         <div class="quick-view-grid">
           <div class="quick-view-media" style="${primaryImage ? `background-image:url('${primaryImage.url}');background-size:cover;background-position:center;` : `background:${swatchBg(selected.swatch)};`}"></div>
           <div class="quick-view-info">
-            <div class="product-fabric">${p.fabric} · ${p.occasion}</div>
+            <div class="product-fabric">${p.fabric}</div>
             <h3>${p.name}</h3>
             <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews})</div>
             <div class="product-price" style="margin:8px 0;">

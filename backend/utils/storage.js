@@ -48,6 +48,14 @@ function isReturnPhotoUrl(u) {
   return u.startsWith(base + 'return-') && /^[\w.-]+$/.test(u.slice(base.length));
 }
 
+// Same check for any prefix ('return-', 'review-'): the URL must be one this server handed out for that kind of photo.
+function isCustomerPhotoUrl(u, prefix) {
+  if (typeof u !== 'string' || !/^[\w-]+$/.test(prefix)) return false;
+  if (u.startsWith('/uploads/' + prefix) && /^[\w.-]+$/.test(u.slice('/uploads/'.length))) return true;
+  const base = publicBase();
+  return u.startsWith(base + prefix) && /^[\w.-]+$/.test(u.slice(base.length));
+}
+
 // Best-effort delete of a file we stored — never lets a missing file turn a successful
 // database change into an error.
 async function removeUpload(url) {
@@ -63,4 +71,4 @@ async function removeUpload(url) {
   } catch (_) { /* ignore */ }
 }
 
-module.exports = { saveUpload, removeUpload, isReturnPhotoUrl, publicBase, BUCKET };
+module.exports = { saveUpload, removeUpload, isReturnPhotoUrl, isCustomerPhotoUrl, publicBase, BUCKET };
