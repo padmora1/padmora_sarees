@@ -47,7 +47,7 @@ async function isWithinReturnWindow(order) {
 
 // Refund = what the customer actually paid for the returned lines (their
 // share of the discount is given back proportionally too — never refund
-// more than they paid), plus their proportional share of tax, plus the
+// more than they paid; prices already include any tax), plus the
 // full shipping fee ONLY when every line in the order is being returned
 // AND the return is our fault. A customer who simply changed their mind
 // already received the benefit of shipping; a customer who got the wrong
@@ -56,8 +56,7 @@ function computeReturnRefund(order, returnedLines, allItemsReturned, reasonCateg
   const itemsValue = returnedLines.reduce((sum, l) => sum + l.price * l.qty, 0);
   const proportion = order.subtotal > 0 ? itemsValue / order.subtotal : 0;
   const discountShare = Math.round((order.discount || 0) * proportion);
-  const taxShare = Math.round((order.tax_amount || 0) * proportion);
-  let refund = itemsValue - discountShare + taxShare;
+  let refund = itemsValue - discountShare;
   if (reasonCategory === 'seller_fault' && allItemsReturned) {
     refund += Math.round(order.shipping_fee || 0);
   }

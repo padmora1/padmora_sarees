@@ -76,7 +76,6 @@
           <div class="summary-row"><span>Subtotal</span><span id="coSubtotal">₹0</span></div>
           <div class="summary-row" id="coDiscountRow" style="display:none;"><span>Discount</span><span id="coDiscount">−₹0</span></div>
           <div class="summary-row"><span>Shipping</span><span id="coShipping">Free</span></div>
-          <div class="summary-row" id="coTaxRow" style="display:none;"><span id="coTaxLabel">GST</span><span id="coTax">₹0</span></div>
           <div class="summary-row total"><span>Total Payable</span><span id="coTotal">₹0</span></div>
         </div>
         <div class="form-error" id="payError"></div>
@@ -213,22 +212,6 @@
     discRow.style.display = cart.discount > 0 ? 'flex' : 'none';
     document.getElementById('coDiscount').textContent = '−' + money(cart.discount || 0);
     document.getElementById('coShipping').textContent = cart.shippingFee > 0 ? money(cart.shippingFee) : 'Free';
-    const taxRow = document.getElementById('coTaxRow');
-    if(cart.taxAmount > 0){
-      taxRow.style.display = 'flex';
-      const label = document.getElementById('coTaxLabel');
-      if(cart.taxInclusive){
-        taxRow.style.color = 'var(--ink-soft)';
-        taxRow.style.fontSize = '12px';
-        label.textContent = `Includes ${cart.taxLabel || 'GST'} (${cart.taxRate}%)`;
-      }else{
-        taxRow.style.color = ''; taxRow.style.fontSize = '';
-        label.textContent = `${cart.taxLabel || 'GST'} (${cart.taxRate}%)`;
-      }
-      document.getElementById('coTax').textContent = money(cart.taxAmount);
-    }else{
-      taxRow.style.display = 'none';
-    }
     document.getElementById('coTotal').textContent = money(cart.total);
     document.getElementById('toStep3').textContent = 'Pay ' + money(cart.total);
     // coupon box
@@ -302,7 +285,7 @@
   }
   function estimateTotals(){
     cart.subtotal = cart.items.reduce((sum, i) => sum + (i.product ? i.product.price * i.qty : 0), 0);
-    cart.total = Math.max(0, cart.subtotal - (cart.discount || 0)) + (cart.shippingFee || 0) + (cart.taxInclusive === false ? (cart.taxAmount || 0) : 0);
+    cart.total = Math.max(0, cart.subtotal - (cart.discount || 0)) + (cart.shippingFee || 0);
   }
   function queueCheckoutOp(op, rollback){
     coPending++;

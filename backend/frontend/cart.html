@@ -79,10 +79,6 @@
           <div class="summary-row"><span>Subtotal</span><span>${money(cart.subtotal)}</span></div>
           ${cart.discount > 0 ? `<div class="summary-row"><span>Discount ${cart.coupon ? '(' + cart.coupon + ')' : ''}</span><span>−${money(cart.discount)}</span></div>` : ''}
           <div class="summary-row"><span>Shipping</span><span>${cart.shippingFee > 0 ? money(cart.shippingFee) : 'Free'}</span></div>
-          ${cart.taxAmount > 0 ? (cart.taxInclusive
-            ? `<div class="summary-row" style="color:var(--ink-soft);font-size:12px;"><span>Includes ${cart.taxLabel || 'GST'} (${cart.taxRate}%)</span><span>${money(cart.taxAmount)}</span></div>`
-            : `<div class="summary-row"><span>${cart.taxLabel || 'GST'} (${cart.taxRate}%)</span><span>${money(cart.taxAmount)}</span></div>`
-          ) : ''}
           <div class="summary-row total"><span>Total</span><span>${money(cart.total)}</span></div>
           <a href="/checkout" class="btn btn-primary btn-block" style="margin-top:16px;justify-content:center;">Proceed to Checkout</a>
         </div>
@@ -112,7 +108,7 @@
   }
   function recomputeTotals(){
     cart.subtotal = cart.items.reduce((sum, i) => sum + (i.product ? i.product.price * i.qty : 0), 0);
-    cart.total = Math.max(0, cart.subtotal - (cart.discount || 0)) + (cart.shippingFee || 0) + (cart.taxInclusive === false ? (cart.taxAmount || 0) : 0);
+    cart.total = Math.max(0, cart.subtotal - (cart.discount || 0)) + (cart.shippingFee || 0);
     if(typeof setCartBadge === 'function') setCartBadge(cart.items.reduce((sum, i) => sum + i.qty, 0));
   }
 

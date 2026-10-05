@@ -57,36 +57,20 @@ async function recordCouponUsage(code, userId, orderId) {
   );
 }
 
-// Single source of truth for shipping + tax math — used by both the cart
-// preview (GET /cart) and the real order placement (POST /orders), so what
-// a shopper sees in their bag is exactly what they're charged at checkout.
-// Shipping is waived once the post-coupon amount clears the free-shipping
-// threshold.
+// Single source of truth for shipping math - used by both the cart preview (GET /cart) and the real order
+// placement (POST /orders), so what a shopper sees in their bag is exactly what they're charged at checkout.
+// Shipping is waived once the post-coupon amount clears the free-shipping threshold.
 //
-// Tax has two modes, set via tax_settings.inclusive (default true):
-//   - Inclusive (default): the product price shown everywhere already
-//     includes GST — taxAmount is the portion of taxableAmount that's GST,
-//     back-calculated rather than added, so the checkout total never comes
-//     out higher than the price the customer already saw on the product
-//     page. Shown to the customer purely as a transparency breakdown.
-//   - Exclusive (the old, pre-existing behaviour, still fully supported for
-//     a store that needs to switch back): GST is computed on top of
-//     taxableAmount and added into the total, same as before this change.
+// Tax: every price in the store already includes GST, so nothing is ever added on top and no tax line is shown.
+// The fields below stay in the response (always zero) only so older saved data and pages keep reading cleanly.
 async function computeOrderTotals(subtotal, discount) {
   const shippingSettings = await getSetting('shipping_settings', { fee: 0, freeShippingThreshold: 0 });
-  const taxSettings = await getSetting('tax_settings', { enabled: false, gstRate: 0, inclusive: true });
 
   const taxableAmount = Math.max(0, subtotal - discount);
   const shippingFee = taxableAmount >= (shippingSettings.freeShippingThreshold || 0) ? 0 : (shippingSettings.fee || 0);
-  const taxRate = taxSettings.enabled ? (taxSettings.gstRate || 0) : 0;
-  const inclusive = taxSettings.inclusive !== false; // defaults true when unset, e.g. a store that never touched this setting
+  const total = taxableAmount + shippingFee;
 
-  const taxAmount = inclusive
-    ? Math.round(taxableAmount * (taxRate / (100 + taxRate)) || 0)
-    : Math.round(taxableAmount * (taxRate / 100));
-  const total = inclusive ? (taxableAmount + shippingFee) : (taxableAmount + shippingFee + taxAmount);
-
-  return { shippingFee, taxAmount, taxRate, taxLabel: taxSettings.label || 'GST', taxInclusive: inclusive, total };
+  return { shippingFee, taxAmount: 0, taxRate: 0, taxLabel: 'GST', taxInclusive: true, total };
 }
 
 module.exports = { resolveCoupon, recordCouponUsage, computeOrderTotals };
