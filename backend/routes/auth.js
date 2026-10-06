@@ -20,12 +20,31 @@ function signToken(userId, tokenVersion) {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// An Indian mobile number: 10 digits starting 6-9, with or without +91 / 91 / 0 in front. Stored as "+91XXXXXXXXXX".
-function normalizePhone(raw) {
-  let d = String(raw || '').replace(/\D/g, '');
-  if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
-  if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
-  return /^[6-9]\d{9}$/.test(d) ? '+91' + d : null;
+// A mobile number from anywhere. It can arrive as "+44 7911 123456" (with its own + code) or as a country code ("44") plus
+// the number. India (+91) keeps its strict rule (10 digits starting 6-9); any other country needs 5-13 digits after the
+// code (the international maximum is 15 digits in all). Stored as "+<code><number>" with no spaces. With no code at all the
+// number is taken to be Indian, as before.
+function normalizePhone(raw, countryCode) {
+  const text = String(raw || '').trim();
+  let cc = String(countryCode || '').replace(/\D/g, '');
+  let national;
+  if (text.startsWith('+') || text.startsWith('00')) {
+    const all = text.replace(/\D/g, '').replace(/^00/, '');
+    if (all.length < 8 || all.length > 15) return null;
+    // split the code off: India (91) is the one we know the exact shape of; otherwise use the code given, else 1-3 digits
+    if (all.startsWith('91') && all.length === 12) { cc = '91'; national = all.slice(2); }
+    else if (cc && all.startsWith(cc)) national = all.slice(cc.length);
+    else return all.length >= 8 && all.length <= 15 && !all.startsWith('91') ? '+' + all : null;
+  } else {
+    if (!cc) cc = '91';
+    national = text.replace(/\D/g, '');
+    if (national.startsWith(cc) && cc === '91' && national.length === 12) national = national.slice(2);
+    if (cc === '91' && national.length === 11 && national.startsWith('0')) national = national.slice(1);
+    else if (cc !== '91') national = national.replace(/^0+/, '');
+  }
+  if (!/^\d{1,3}$/.test(cc)) return null;
+  if (cc === '91') return /^[6-9]\d{9}$/.test(national) ? '+91' + national : null;
+  return /^\d{5,13}$/.test(national) && (cc + national).length <= 15 ? '+' + cc + national : null;
 }
 
 function publicUser(row) {
@@ -71,11 +90,11 @@ async function emailCode({ to, code, purpose, name }) {
 // ---------------------------------------------------------------------------------------------------------------
 router.post('/register/start', async (req, res) => {
   try {
-    const { name, email, phone } = req.body || {};
+    const { name, email, phone, countryCode } = req.body || {};
     const cleanName = String(name || '').trim();
     if (cleanName.length < 2 || cleanName.length > 80) return res.status(400).json({ message: 'Enter your full name.' });
     if (!EMAIL_RE.test(String(email || '').trim())) return res.status(400).json({ message: 'Enter a valid email address.' });
-    if (!normalizePhone(phone)) return res.status(400).json({ message: 'Enter a valid 10-digit mobile number.' });
+    if (!normalizePhone(phone, countryCode)) return res.status(400).json({ message: String(countryCode || '91').replace(/\D/g, '') === '91' ? 'Enter a valid 10-digit Indian mobile number.' : 'Enter a valid mobile number for the country you chose.' });
 
     const ip = clientIp(req);
     const ipKey = 'codes:ip:' + ip;
@@ -100,9 +119,9 @@ router.post('/register/start', async (req, res) => {
 
 router.post('/register/verify', async (req, res) => {
   try {
-    const { name, email, phone, code } = req.body || {};
+    const { name, email, phone, code, countryCode } = req.body || {};
     const cleanName = String(name || '').trim();
-    const cleanPhone = normalizePhone(phone);
+    const cleanPhone = normalizePhone(phone, countryCode);
     if (cleanName.length < 2 || !EMAIL_RE.test(String(email || '').trim()) || !cleanPhone || !String(code || '').trim()) {
       return res.status(400).json({ message: 'Name, email, mobile number and code are all required.' });
     }
@@ -217,13 +236,13 @@ router.get('/me', requireAuth, async (req, res) => {
 
 router.put('/me', requireAuth, async (req, res) => {
   try {
-    const { name, phone, address } = req.body;
+    const { name, phone, address, countryCode } = req.body;
     const user = must(await supabase.from('users').select('*').eq('id', req.userId).maybeSingle(), 'updateMe:lookup');
     if (!user) return res.status(404).json({ message: 'User not found.' });
     let newPhone = user.phone;
     if (phone !== undefined) {
-      newPhone = String(phone).trim() === '' ? '' : normalizePhone(phone);
-      if (newPhone === null) return res.status(400).json({ message: 'Enter a valid 10-digit mobile number.' });
+      newPhone = String(phone).trim() === '' ? '' : normalizePhone(phone, countryCode);
+      if (newPhone === null) return res.status(400).json({ message: 'Enter a valid mobile number (with its country code if it is not an Indian number, e.g. +44 7911 123456).' });
     }
 
     const updated = must(await supabase.from('users').update({
