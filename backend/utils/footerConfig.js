@@ -5,6 +5,7 @@ const DEFAULT_FOOTER = {
   columns: [
     { title: 'Customer Care', links: [
       { label: 'Track Order', url: '/track-order' },
+      { label: 'Order Inquiry', url: '/order-inquiry' },
       { label: 'Policies', url: '/policies' },
       { label: 'FAQ', url: '/faq' },
       { label: 'Contact Us', url: '/contact' }

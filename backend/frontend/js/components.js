@@ -332,7 +332,7 @@ function initFooter() {
   const FOOTER_DEFAULT = {
     tagline: 'Bringing handloom weavers and heritage crafts directly to your wardrobe — one drape at a time.',
     columns: [
-      { title: 'Customer Care', links: [{ label: 'Track Order', url: '/track-order' }, { label: 'Policies', url: '/policies' }, { label: 'FAQ', url: '/faq' }, { label: 'Contact Us', url: '/contact' }] },
+      { title: 'Customer Care', links: [{ label: 'Track Order', url: '/track-order' }, { label: 'Order Inquiry', url: '/order-inquiry' }, { label: 'Policies', url: '/policies' }, { label: 'FAQ', url: '/faq' }, { label: 'Contact Us', url: '/contact' }] },
       { title: 'Company', links: [{ label: 'About Padmora', url: '/about' }] }
     ],
     bottomLeft: '© 2026 Padmora. All rights reserved.',

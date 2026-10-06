@@ -59,6 +59,7 @@ router.get('/robots.txt', (req, res) => {
     `Disallow: /register\n` +
     `Disallow: /forgot-password\n` +
     `Disallow: /track-order\n` +
+    `Disallow: /order-inquiry\n` +
     `Disallow: /packing-slip\n\n` +
     `Sitemap: ${base}/sitemap.xml\n`
   );
