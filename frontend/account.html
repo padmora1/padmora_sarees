@@ -34,8 +34,8 @@
           <button class="active" data-tab="profile">Profile</button>
           <button data-tab="address">Addresses</button>
           <button data-tab="orders">Order History</button>
-          <button data-tab="returns">Returns</button>
-          <button data-tab="security">Security</button>
+          <button data-tab="returns">Order Inquiries</button>
+          <button data-tab="security">Sign-in</button>
           <button data-tab="logout">Log Out</button>
         </nav>
 
@@ -87,20 +87,15 @@
           </div>
 
           <div id="panel-returns" style="display:none;">
-            <h2>Returns &amp; Refunds</h2>
-            <p style="font-size:13px;color:var(--ink-soft);margin-top:-8px;margin-bottom:18px;">Delivered an order you need to send back? Request it from that order in <a href="#" data-goto-orders style="color:var(--maroon);text-decoration:underline;">Order History</a> — every request you've submitted shows up here as it's processed.</p>
+            <h2>Order Inquiries</h2>
+            <p style="font-size:13px;color:var(--ink-soft);margin-top:-8px;margin-bottom:18px;">Something wrong with a delivered saree? Open <a href="#" data-goto-orders style="color:var(--maroon);text-decoration:underline;">Order History</a> and press <strong>Order Inquiry</strong> on that order. Your inquiries and their status are listed here.</p>
             <div id="returnsList"><div class="loading-state"><span class="zari-spinner"></span>Loading…</div></div>
           </div>
 
           <div id="panel-security" style="display:none;">
-            <h2>Change Password</h2>
-            <div class="form-error" id="securityError"></div>
-            <form id="securityForm">
-              <div class="form-field"><label>Current Password</label><input type="password" id="sCurrentPassword" name="current-password" autocomplete="current-password" required></div>
-              <div class="form-field"><label>New Password</label><input type="password" id="sNewPassword" name="new-password" autocomplete="new-password" placeholder="At least 6 characters" required minlength="6"></div>
-              <div class="form-field"><label>Confirm New Password</label><input type="password" id="sConfirmPassword" name="confirm-new-password" autocomplete="new-password" required minlength="6"></div>
-              <button type="submit" class="btn btn-primary">Change Password</button>
-            </form>
+            <h2>How you sign in</h2>
+            <p style="font-size:14px;line-height:1.7;color:var(--ink-soft);max-width:520px;">There is no password on your Padmora account to remember or lose. Each time you log in, we e-mail a 6-digit code to <strong id="signinEmail"></strong>, and the code logs you in. Keep your e-mail account private &mdash; anyone who can read it can log in.</p>
+            <p style="font-size:13px;color:var(--ink-soft);margin-top:14px;">Need to change the e-mail address on your account? <a href="/contact" style="color:var(--maroon);text-decoration:underline;">Contact us</a>.</p>
           </div>
         </div>
       </div>
@@ -114,6 +109,7 @@
 <script src="js/components.js"></script>
 <script src="js/cursor.js"></script>
 <script src="js/guard.js"></script>
+<script src="js/order-inquiry.js"></script>
 <script>
   const ACCOUNT_TABS = ['profile','address','orders','returns','security'];
   function switchTab(tab){
@@ -136,6 +132,7 @@
   });
 
   async function loadProfile(){
+    try{ const u = getStoredUser(); if(u && u.email) document.getElementById('signinEmail').textContent = u.email; }catch(e){ /* ignore */ }
     try{
       const { user } = await apiFetch('/auth/me');
       setStoredUser(user);
@@ -159,31 +156,6 @@
       setStoredUser(user);
       toast('Profile updated');
     }catch(err){ toast(err.message, 'error'); }
-  });
-
-  document.getElementById('securityForm').addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const errBox = document.getElementById('securityError');
-    errBox.classList.remove('show');
-    const newPassword = document.getElementById('sNewPassword').value;
-    const confirmPassword = document.getElementById('sConfirmPassword').value;
-    if(newPassword !== confirmPassword){
-      errBox.textContent = 'New passwords do not match.';
-      errBox.classList.add('show');
-      return;
-    }
-    try{
-      const { token } = await apiFetch('/auth/change-password', {
-        method: 'PUT',
-        body: JSON.stringify({ currentPassword: document.getElementById('sCurrentPassword').value, newPassword })
-      });
-      setToken(token); // keeps this tab's own session working — every other device now needs a fresh login
-      document.getElementById('securityForm').reset();
-      toast('Password changed');
-    }catch(err){
-      errBox.textContent = err.message;
-      errBox.classList.add('show');
-    }
   });
 
   let currentAddresses = [];
@@ -268,11 +240,17 @@
     }catch(err){ toast(err.message, 'error'); }
   });
 
-  const RETURN_STATUS_LABEL = {
-    Requested: 'Return requested — awaiting review', Approved: 'Return approved — ship it back to us',
-    Rejected: 'Return request rejected', Received: 'Received — refund being processed',
-    Refunded: 'Refunded'
-  };
+  // The one-line status shown under a delivered order that has an inquiry.
+  function inquiryLine(o){
+    const i = o.inquiry || {};
+    const n = i.maxAttempts ? ` (${i.attempt || i.attemptsUsed} of ${i.maxAttempts})` : '';
+    if(o.returnStatus === 'Rejected'){
+      return i.finalRejected ? 'Inquiry not approved — this was the final decision'
+        : i.eligible ? 'Inquiry not approved — you have one more chance: press Order Inquiry' : 'Inquiry not approved';
+    }
+    return ({ Requested: 'Inquiry sent' + n + ' — waiting for our team to review it', Approved: 'Inquiry approved — please ship the saree(s) back to us',
+      Received: 'We received your saree(s) — refund being processed', Refunded: 'Refunded' })[o.returnStatus] || o.returnStatus;
+  }
 
   const CANCEL_REASONS = [
     { key: 'wrong_choice', label: 'Chose the wrong colour' },
@@ -308,114 +286,25 @@
           <div class="order-item-row" style="font-weight:600;color:var(--ink);border-top:1px solid rgba(173,59,92,0.1);margin-top:8px;padding-top:8px;">
             <span>Total</span><span>${money(o.total)}</span>
           </div>
-          ${o.returnStatus ? `<p style="font-size:12.5px;color:var(--maroon);margin-top:10px;">↩ ${RETURN_STATUS_LABEL[o.returnStatus] || o.returnStatus}</p>` : ''}
+          ${o.returnStatus ? `<p style="font-size:12.5px;color:var(--maroon);margin-top:10px;">↩ ${inquiryLine(o)}</p>` : ''}
           ${o.cancelRequestStatus === 'Requested' ? `<p style="font-size:12.5px;color:var(--maroon);margin-top:10px;">⏳ Cancellation requested — pending review</p>`
             : o.cancelRequestStatus === 'Rejected' ? `<p style="font-size:12.5px;color:var(--ink-soft);margin-top:10px;">Cancellation request rejected${o.cancelAdminNote ? ': '+o.cancelAdminNote : ''}</p>` : ''}
           <div class="order-actions">
             ${o.status !== 'Cancelled' ? `<a href="/track-order?id=${o.id}" class="order-action-btn track"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 7h11v8H3z"/><path d="M14 10h4l3 3v2h-7z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17.5" cy="18" r="1.6"/></svg>Track Order</a>` : ''}
             ${o.cancellable && o.cancelRequestStatus !== 'Requested' ? `<button type="button" class="order-action-btn cancel" data-cancel="${o.id}"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg>Cancel Order</button>` : `${o.status !== 'Cancelled' && o.status !== 'Confirmed' && o.status !== 'Packed' ? `<span class="order-locked-note">Shipped — can no longer be cancelled</span>` : ''}`}
-            ${o.canRequestReturn ? `<button type="button" class="order-action-btn return" data-return="${o.id}"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>Return / Refund</button>` : ''}
+            ${o.status === 'Delivered' ? `<button type="button" class="order-action-btn return" data-inquiry="${o.id}"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"/><path d="M12 17h.01"/></svg>Order Inquiry</button>` : ''}
           </div>
-          <div id="returnForm-${o.id}"></div>
           <div id="cancelForm-${o.id}"></div>
         </div>`).join('');
       document.querySelectorAll('[data-cancel]').forEach(el=>el.addEventListener('click', ()=>openCancelForm(el.dataset.cancel)));
       document.querySelectorAll('[data-review-item]').forEach(el=>el.addEventListener('click', ()=>openReviewForm(el.dataset.reviewOrder, el.dataset.reviewItem)));
-      document.querySelectorAll('[data-return]').forEach(el=>el.addEventListener('click', ()=>openReturnForm(el.dataset.return)));
+      document.querySelectorAll('[data-inquiry]').forEach(el=>el.addEventListener('click', ()=>OrderInquiry.open({ order: lastOrders.find(x => x.id === el.dataset.inquiry), onDone: loadOrders })));
     }catch(e){
       box.innerHTML = `<p style="color:var(--ink-soft);">Could not load orders.</p>`;
     }
   }
 
-  // ---- Return photos: camera only ----
-  // The customer can only TAKE a photo here (no gallery / file picker). On phones the input's `capture`
-  // attribute opens the camera app straight away; on a computer a small webcam window is used instead. Each
-  // photo is shrunk right away, kept in this list (max 5) and shown as a thumbnail with a remove button.
-  const MAX_RETURN_PHOTOS = 5;
-  const retPhotos = {}; // orderId -> [File]
   const isTouchDevice = () => (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-  function renderRetPhotos(orderId){
-    const list = retPhotos[orderId] || [];
-    const box = document.getElementById('retPhotoPreview-' + orderId);
-    const count = document.getElementById('retPhotoCount-' + orderId);
-    const take = document.getElementById('retTake-' + orderId);
-    if(!box) return;
-    box.innerHTML = '';
-    list.forEach((file, i) => {
-      if(!file._preview) file._preview = URL.createObjectURL(file);
-      const item = document.createElement('div');
-      item.className = 'return-photo-item';
-      const img = document.createElement('img');
-      img.src = file._preview; img.alt = 'Photo ' + (i + 1); img.className = 'return-photo-thumb';
-      const rm = document.createElement('button');
-      rm.type = 'button'; rm.className = 'return-photo-remove'; rm.setAttribute('aria-label', 'Remove photo ' + (i + 1)); rm.textContent = '×';
-      rm.addEventListener('click', () => {
-        URL.revokeObjectURL(file._preview);
-        retPhotos[orderId].splice(i, 1);
-        renderRetPhotos(orderId);
-      });
-      item.appendChild(img); item.appendChild(rm); box.appendChild(item);
-    });
-    if(count) count.textContent = list.length + ' of ' + MAX_RETURN_PHOTOS + ' photos';
-    if(take) take.disabled = list.length >= MAX_RETURN_PHOTOS;
-  }
-
-  async function addRetPhoto(orderId, rawFile){
-    const errorBox = document.getElementById('retError-' + orderId);
-    const take = document.getElementById('retTake-' + orderId);
-    errorBox.classList.remove('show'); errorBox.textContent = '';
-    if(!rawFile) return;
-    if((retPhotos[orderId] || []).length >= MAX_RETURN_PHOTOS){ errorBox.textContent = 'You can add up to ' + MAX_RETURN_PHOTOS + ' photos.'; errorBox.classList.add('show'); return; }
-    const label = take ? take.textContent : '';
-    if(take){ take.disabled = true; take.textContent = 'Preparing photo…'; }
-    try{
-      const small = await shrinkPhoto(rawFile);
-      (retPhotos[orderId] = retPhotos[orderId] || []).push(small);
-      renderRetPhotos(orderId);
-    }catch(e){
-      errorBox.textContent = e.message; errorBox.classList.add('show');
-    }finally{
-      if(take){ take.textContent = label; take.disabled = (retPhotos[orderId] || []).length >= MAX_RETURN_PHOTOS; }
-    }
-  }
-
-  // Webcam window for computers: live picture + Take photo. Nothing can be picked from files.
-  async function openWebcam(orderId){
-    const errorBox = document.getElementById('retError-' + orderId);
-    errorBox.classList.remove('show'); errorBox.textContent = '';
-    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      errorBox.textContent = 'This device has no camera we can use. Please open this page on your phone to take the photo.'; errorBox.classList.add('show'); return;
-    }
-    let stream;
-    try{
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-    }catch(e){
-      errorBox.textContent = 'We could not open the camera. Allow camera access in your browser, or open this page on your phone to take the photo.'; errorBox.classList.add('show'); return;
-    }
-    const modal = document.createElement('div');
-    modal.className = 'cam-modal'; modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-label', 'Take a photo');
-    modal.innerHTML = '<div class="cam-box"><video class="cam-video" autoplay playsinline muted></video><div class="cam-actions"><button type="button" class="btn btn-primary btn-sm" data-cam="shoot">Take photo</button><button type="button" class="btn btn-sm" data-cam="cancel">Cancel</button></div></div>';
-    document.body.appendChild(modal);
-    const video = modal.querySelector('video');
-    video.srcObject = stream;
-    const close = () => { stream.getTracks().forEach(t => t.stop()); modal.remove(); document.removeEventListener('keydown', onKey); };
-    const onKey = e => { if(e.key === 'Escape') close(); };
-    document.addEventListener('keydown', onKey);
-    modal.addEventListener('click', async e => {
-      const b = e.target.closest('[data-cam]');
-      if(!b) return;
-      if(b.dataset.cam === 'cancel') return close();
-      if(!video.videoWidth) return;
-      const c = document.createElement('canvas');
-      c.width = video.videoWidth; c.height = video.videoHeight;
-      c.getContext('2d').drawImage(video, 0, 0);
-      close();
-      const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
-      if(blob) addRetPhoto(orderId, new File([blob], 'photo.jpg', { type: 'image/jpeg' }));
-    });
-    modal.querySelector('[data-cam="shoot"]').focus();
-  }
 
   // Webcam window for computers, used by the review form: live picture + Take photo; nothing can be picked from files.
   async function openWebcamFor(onFile, showError){
@@ -444,19 +333,6 @@
       if(blob) onFile(new File([blob], 'photo.jpg', { type: 'image/jpeg' }));
     });
     modal.querySelector('[data-cam="shoot"]').focus();
-  }
-
-  function setupReturnPhotos(orderId){
-    retPhotos[orderId] = [];
-    const input = document.getElementById('retPhotos-' + orderId);
-    const take = document.getElementById('retTake-' + orderId);
-    take.addEventListener('click', () => { if(isTouchDevice()) input.click(); else openWebcam(orderId); });
-    input.addEventListener('change', () => {
-      const f = input.files && input.files[0];
-      input.value = ''; // so taking the next photo fires again
-      if(f) addRetPhoto(orderId, f);
-    });
-    renderRetPhotos(orderId);
   }
 
   // ---- Write a review (delivered orders only; shown under the item it is about) ----
@@ -549,189 +425,24 @@
     });
   }
 
-  // ---- Return / Refund request (expands inline under the order card) ----
-  async function openReturnForm(orderId){
-    const mount = document.getElementById('returnForm-' + orderId);
-    if(!mount) return;
-    if(mount.innerHTML){ mount.innerHTML = ''; return; } // toggle closed if already open
-
-    const order = lastOrders.find(o => o.id === orderId);
-    mount.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Checking eligibility…</div>`;
-    let elig;
-    try{ elig = await returnEligibility(orderId); }
-    catch(e){ mount.innerHTML = `<p style="color:var(--maroon);font-size:13px;">${e.message}</p>`; return; }
-    if(!elig.eligible){
-      const msg = elig.reason === 'window_closed' ? `The ${elig.policy.windowDays}-day return window for this order has closed.`
-        : elig.reason === 'already_requested' ? 'A return request already exists for this order.'
-        : 'This order isn\'t eligible for return.';
-      mount.innerHTML = `<p style="color:var(--ink-soft);font-size:13px;">${msg}</p>`;
-      return;
-    }
-
-    const reasonOptions = elig.reasons.map(r => `<option value="${r.key}" data-category="${r.category}">${r.label}</option>`).join('');
-    const itemRows = order.items.map(li => `
-      <label class="return-item-row">
-        <input type="checkbox" data-ret-item="${li.id}" data-ret-price="${li.price}" checked>
-        <span class="return-item-name">${li.name}${li.color ? ' — ' + li.color : ''}</span>
-        <span class="return-item-qty">Qty
-          <select data-ret-qty="${li.id}">${Array.from({length: li.qty}, (_, i) => `<option value="${i+1}" ${i+1===li.qty?'selected':''}>${i+1}</option>`).join('')}</select>
-          / ${li.qty}
-        </span>
-      </label>`).join('');
-
-    mount.innerHTML = `
-      <div class="return-request-panel">
-        <h4>Request a Return / Refund</h4>
-        <p style="font-size:12px;color:var(--ink-soft);">Select the item(s) you're returning, tell us why, and how you'd like the refund.</p>
-
-        <div class="return-item-list">${itemRows}</div>
-
-        <div class="form-field"><label>Reason</label>
-          <select id="retReason-${orderId}">${reasonOptions}</select>
-        </div>
-        <div class="form-field"><label>Anything else we should know? (optional unless "Other")</label>
-          <textarea id="retDetail-${orderId}" rows="2" placeholder="e.g. the pallu has a small tear near the border"></textarea>
-        </div>
-
-        <div class="form-field">
-          <label id="retPhotoLabel-${orderId}">Photos (optional)</label>
-          <input type="file" id="retPhotos-${orderId}" accept="image/*" capture="environment" hidden>
-          <div class="return-photo-actions">
-            <button type="button" class="btn btn-sm btn-outline" id="retTake-${orderId}"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:6px;"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Take a photo</button>
-            <span class="return-photo-count" id="retPhotoCount-${orderId}">0 of 5 photos</span>
-          </div>
-          <p style="font-size:11.5px;color:var(--ink-soft);margin-top:4px;">Take a clear photo of the issue with your camera (up to 5). Photos are taken here, not picked from your gallery.</p>
-          <div class="return-photo-preview" id="retPhotoPreview-${orderId}"></div>
-        </div>
-
-        <div class="form-field"><label>Refund method</label>
-          <select id="retMethod-${orderId}">
-            ${order.payment !== 'COD' ? '<option value="original">Refund to original payment method</option>' : ''}
-            <option value="bank_transfer">Bank transfer / UPI</option>
-            <option value="store_credit">Store credit (fastest — a coupon for your next order)</option>
-          </select>
-        </div>
-        <div class="form-field" id="retAccountWrap-${orderId}" style="display:none;">
-          <label>UPI ID or Account number + IFSC</label>
-          <input type="text" id="retAccount-${orderId}" placeholder="yourname@okhdfcbank or 1234567890 / HDFC0001234">
-        </div>
-
-        <div class="form-error" id="retError-${orderId}"></div>
-        <div style="display:flex;gap:10px;margin-top:6px;">
-          <button type="button" class="btn btn-primary btn-sm" id="retSubmit-${orderId}">Submit Request</button>
-          <button type="button" class="btn btn-sm" id="retCancel-${orderId}">Cancel</button>
-        </div>
-      </div>`;
-
-    const methodSelect = document.getElementById('retMethod-' + orderId);
-    const accountWrap = document.getElementById('retAccountWrap-' + orderId);
-    methodSelect.addEventListener('change', () => {
-      accountWrap.style.display = methodSelect.value === 'bank_transfer' ? 'block' : 'none';
-    });
-
-    // Photos are only required when the claim is "you sent the wrong/damaged
-    // thing" — a plain change-of-mind doesn't need proof of anything. The
-    // label flips live as the shopper switches reasons.
-    const reasonSelect = document.getElementById('retReason-' + orderId);
-    const photoLabel = document.getElementById('retPhotoLabel-' + orderId);
-    const updatePhotoLabel = () => {
-      const category = reasonSelect.selectedOptions[0]?.dataset.category;
-      photoLabel.textContent = category === 'seller_fault' ? 'Photos (required — please attach evidence)' : 'Photos (optional)';
-    };
-    reasonSelect.addEventListener('change', updatePhotoLabel);
-    updatePhotoLabel();
-
-    setupReturnPhotos(orderId);
-
-    document.getElementById('retCancel-' + orderId).addEventListener('click', () => { mount.innerHTML = ''; });
-    document.getElementById('retSubmit-' + orderId).addEventListener('click', () => submitReturnRequest(orderId));
-  }
-
-  async function submitReturnRequest(orderId){
-    const errorBox = document.getElementById('retError-' + orderId);
-    errorBox.classList.remove('show'); errorBox.textContent = '';
-
-    const items = Array.from(document.querySelectorAll(`[data-ret-item]`))
-      .filter(cb => cb.checked)
-      .map(cb => ({
-        orderItemId: Number(cb.dataset.retItem),
-        qty: Number(document.querySelector(`[data-ret-qty="${cb.dataset.retItem}"]`).value)
-      }));
-    if(!items.length){
-      errorBox.textContent = 'Select at least one item to return.'; errorBox.classList.add('show'); return;
-    }
-
-    const reasonSelect = document.getElementById('retReason-' + orderId);
-    const reasonCategory = reasonSelect.selectedOptions[0]?.dataset.category;
-    const photoFiles = retPhotos[orderId] || [];
-
-    if(reasonCategory === 'seller_fault' && !photoFiles.length){
-      errorBox.textContent = 'Add at least one photo showing the issue — it helps us process your claim faster.';
-      errorBox.classList.add('show');
-      return;
-    }
-
-    const payload = {
-      orderId,
-      items,
-      reason: reasonSelect.value,
-      reasonDetail: document.getElementById('retDetail-' + orderId).value,
-      refundMethod: document.getElementById('retMethod-' + orderId).value,
-      refundAccountDetail: document.getElementById('retAccount-' + orderId) ? document.getElementById('retAccount-' + orderId).value : ''
-    };
-
-    // Lock the form while it works, and always unlock it again - whatever happens, the page never stays stuck.
-    const submitBtn = document.getElementById('retSubmit-' + orderId);
-    const takeBtn = document.getElementById('retTake-' + orderId);
-    const idleLabel = submitBtn.textContent;
-    const setBusy = (text) => { submitBtn.disabled = true; if(takeBtn) takeBtn.disabled = true; submitBtn.textContent = text; };
-    const setIdle = () => { submitBtn.disabled = false; submitBtn.textContent = idleLabel; if(takeBtn) takeBtn.disabled = photoFiles.length >= MAX_RETURN_PHOTOS; };
-    try{
-      setBusy(photoFiles.length ? 'Uploading photos…' : 'Sending request…');
-      if(photoFiles.length){
-        const { urls } = await returnUploadPhotos(photoFiles, (done, total, pct) => {
-          setBusy(done >= total ? 'Sending request…' : 'Uploading ' + (done + 1) + '/' + total + ' · ' + pct + '%');
-        });
-        payload.photoUrls = urls;
-      }
-      setBusy('Sending request…');
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 45000);
-      try{
-        await returnCreate(payload, ctl.signal);
-      }catch(err){
-        if(err && err.name === 'AbortError') throw new Error('This is taking too long. Check your connection, then press Submit again - your photos are already uploaded.');
-        throw err;
-      }finally{
-        clearTimeout(timer);
-      }
-      (retPhotos[orderId] || []).forEach(f => f._preview && URL.revokeObjectURL(f._preview));
-      delete retPhotos[orderId];
-      toast('Return request submitted — we\'ll review it shortly');
-      loadOrders();
-    }catch(e){
-      errorBox.textContent = e.message || 'Something went wrong. Please try again.'; errorBox.classList.add('show');
-      setIdle();
-    }
-  }
-
   async function loadReturns(){
     const box = document.getElementById('returnsList');
     try{
       const { returns } = await returnsGet();
       if(!returns.length){
-        box.innerHTML = `<p style="color:var(--ink-soft);font-size:13px;">No return requests yet.</p>`;
+        box.innerHTML = `<p style="color:var(--ink-soft);font-size:13px;">No inquiries yet.</p>`;
         return;
       }
+      const label = { Requested: 'Waiting for review', Approved: 'Approved — ship it back', Received: 'Received — refund in progress', Refunded: 'Refunded', Rejected: 'Not approved' };
       box.innerHTML = returns.map(r => `
         <div class="order-card">
           <div class="order-card-head">
-            <span>Order #${r.orderId} · ${new Date(r.requestedAt).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'})}</span>
-            <span class="order-status ${r.status==='Rejected'?'cancelled':''}">${r.status}</span>
+            <span>Order #${r.orderId} · Inquiry ${r.attempt || 1} of 2 · ${new Date(r.requestedAt).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'})}</span>
+            <span class="order-status ${r.status==='Rejected'?'cancelled':''}">${label[r.status] || r.status}</span>
           </div>
-          <p style="font-size:12.5px;color:var(--ink-soft);margin:6px 0;">${r.reasonLabel}${r.reasonDetail ? ' — “' + r.reasonDetail + '”' : ''}</p>
-          ${r.items.map(li=>`<div class="order-item-row"><span>${li.name}${li.color ? ' — '+li.color : ''} × ${li.qty}</span><span>${money(li.price*li.qty)}</span></div>`).join('')}
-          ${r.photos && r.photos.length ? `<div class="return-photo-preview">${r.photos.map(p=>`<a href="${p.url}" target="_blank" rel="noopener"><img src="${p.url}" alt="Return photo" class="return-photo-thumb"></a>`).join('')}</div>` : ''}
+          <p style="font-size:12.5px;color:var(--ink-soft);margin:6px 0;">${escHTML(r.reasonLabel)}${r.reasonDetail ? ' — “' + escHTML(r.reasonDetail) + '”' : ''}</p>
+          ${r.items.map(li=>`<div class="order-item-row"><span>${escHTML(li.name)}${li.color ? ' — '+escHTML(li.color) : ''} × ${li.qty}</span><span>${money(li.price*li.qty)}</span></div>`).join('')}
+          ${r.photos && r.photos.length ? `<div class="return-photo-preview">${r.photos.map(p=>`<a href="${p.url}" target="_blank" rel="noopener"><img src="${p.url}" alt="Photo you sent" class="return-photo-thumb"></a>`).join('')}</div>` : ''}
           <div class="order-item-row" style="font-weight:600;color:var(--ink);border-top:1px solid rgba(173,59,92,0.1);margin-top:8px;padding-top:8px;">
             <span>${r.status === 'Refunded' ? 'Refunded' : 'Estimated refund'}</span><span>${money(r.finalRefundAmount ?? r.computedRefundAmount)}</span>
           </div>
@@ -739,7 +450,7 @@
           ${r.adminNote ? `<p style="font-size:12.5px;color:var(--ink-soft);margin-top:8px;background:rgba(173,59,92,0.05);padding:8px 10px;border-radius:6px;">Note from our team: ${escHTML(r.adminNote)}</p>` : ''}
         </div>`).join('');
     }catch(e){
-      box.innerHTML = `<p style="color:var(--ink-soft);">Could not load return requests.</p>`;
+      box.innerHTML = `<p style="color:var(--ink-soft);">Could not load your inquiries.</p>`;
     }
   }
 

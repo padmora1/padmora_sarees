@@ -40,6 +40,7 @@
       <div id="orderPicker"></div>
       <div id="trackResult"></div>
       <div id="guestCancelBox"></div>
+      <div id="inquiryBox"></div>
     </div>
   </section>
 </main>
@@ -50,6 +51,7 @@
 <script src="js/components.js"></script>
 <script src="js/cursor.js"></script>
 <script src="js/guard.js"></script>
+<script src="js/order-inquiry.js"></script>
 <script>
   const STAGE_ICONS = {
     'Confirmed': '<path d="M5 13l4 4L19 7"/>',
@@ -236,6 +238,22 @@
     }
   }
 
+  // Delivered orders get an "Order Inquiry" button here too: a guest opens it with the private link token the lookup
+  // just returned (they proved the e-mail or phone); a logged-in customer opens it with their account.
+  function renderInquiryBox(order, inquiryToken){
+    const el = document.getElementById('inquiryBox');
+    if(order.status !== 'Delivered'){ el.innerHTML = ''; return; }
+    const i = order.inquiry || {};
+    el.innerHTML = `
+      <div class="summary-card" style="position:static;margin-top:22px;">
+        <h3 style="font-size:15px;margin-bottom:6px;">Something not right with your saree?</h3>
+        <p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">${i.eligible ? 'Tell us what is wrong and send 3 photos. You have ' + (i.secondChance ? 'one more chance' : 'until ' + (i.deadline ? new Date(i.deadline).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'}) : 'the return window closes')) + '.' : (order.returnStatus ? 'Your inquiry status: ' + order.returnStatus + '.' : 'The inquiry window for this order has closed.')}</p>
+        ${i.eligible || order.returnStatus ? `<button type="button" class="btn btn-primary btn-sm" id="inqBtn">Order Inquiry</button>` : ''}
+      </div>`;
+    const b = document.getElementById('inqBtn');
+    if(b) b.addEventListener('click', () => OrderInquiry.open(inquiryToken ? { token: inquiryToken, onDone: () => loadOrder(order.id, { silent:true, contact: guestContact }) } : { order, onDone: () => loadOrder(order.id, { silent:true }) }));
+  }
+
   async function loadOrder(id, {silent, contact} = {}){
     if(contact) guestContact = contact;
     if(!silent) document.getElementById('trackResult').innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Looking up your order…</div>`;
@@ -246,8 +264,9 @@
       const path = isLoggedIn()
         ? '/orders/' + encodeURIComponent(id)
         : '/orders/guest/' + encodeURIComponent(id) + '?contact=' + encodeURIComponent(contact || '');
-      const { order } = await apiFetch(path);
+      const { order, inquiryToken } = await apiFetch(path);
       renderTracker(order);
+      renderInquiryBox(order, inquiryToken);
       updateGuestCancelBox(order);
       history.replaceState(null, '', '/track-order?id=' + encodeURIComponent(id));
       if(pollTimer) clearInterval(pollTimer);

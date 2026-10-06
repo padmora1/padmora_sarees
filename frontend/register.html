@@ -23,46 +23,38 @@
     <div class="container">
       <div class="auth-shell">
         <h1>Create Your Account</h1>
-        <p class="sub">Join Padmora for a faster checkout and order tracking.</p>
+        <p class="sub" id="regSub">No password to remember &mdash; we confirm your e-mail with a 6-digit code.</p>
         <div class="form-error" id="formError"></div>
-        <form id="registerForm">
+
+        <form id="detailsForm">
           <div class="form-field">
             <label>Full Name</label>
-            <input type="text" id="name" name="name" autocomplete="name" placeholder="Ananya Sharma" required>
+            <input type="text" id="name" name="name" autocomplete="name" placeholder="Ananya Sharma" required maxlength="80">
           </div>
           <div class="form-field">
             <label>Email Address</label>
             <input type="email" id="email" name="email" autocomplete="email" placeholder="you@example.com" required>
-            <span class="field-hint" id="emailHint"></span>
+            <span class="field-hint">We send the confirmation code here, and your order updates.</span>
           </div>
           <div class="form-field">
-            <label>Password</label>
-            <div class="password-field">
-              <input type="password" id="password" name="new-password" autocomplete="new-password" placeholder="At least 6 characters" required minlength="6">
-              <button type="button" class="password-toggle" id="togglePassword" aria-label="Show password">Show</button>
-            </div>
-            <div class="strength-meter" id="strengthMeter"><span></span></div>
+            <label>Mobile Number</label>
+            <div class="phone-row"><select id="countryCode" class="cc-select" name="country-code" aria-label="Country code"><option value="91" selected>+91 India</option><option value="61">+61 Australia</option><option value="973">+973 Bahrain</option><option value="880">+880 Bangladesh</option><option value="1">+1 Canada</option><option value="86">+86 China</option><option value="45">+45 Denmark</option><option value="33">+33 France</option><option value="49">+49 Germany</option><option value="852">+852 Hong Kong</option><option value="62">+62 Indonesia</option><option value="353">+353 Ireland</option><option value="972">+972 Israel</option><option value="39">+39 Italy</option><option value="81">+81 Japan</option><option value="254">+254 Kenya</option><option value="965">+965 Kuwait</option><option value="60">+60 Malaysia</option><option value="960">+960 Maldives</option><option value="230">+230 Mauritius</option><option value="977">+977 Nepal</option><option value="31">+31 Netherlands</option><option value="64">+64 New Zealand</option><option value="234">+234 Nigeria</option><option value="47">+47 Norway</option><option value="968">+968 Oman</option><option value="92">+92 Pakistan</option><option value="63">+63 Philippines</option><option value="974">+974 Qatar</option><option value="7">+7 Russia</option><option value="966">+966 Saudi Arabia</option><option value="65">+65 Singapore</option><option value="27">+27 South Africa</option><option value="82">+82 South Korea</option><option value="34">+34 Spain</option><option value="94">+94 Sri Lanka</option><option value="46">+46 Sweden</option><option value="41">+41 Switzerland</option><option value="66">+66 Thailand</option><option value="971">+971 United Arab Emirates</option><option value="44">+44 United Kingdom</option><option value="1">+1 United States</option></select><input type="tel" id="phone" name="phone" autocomplete="tel-national" inputmode="numeric" placeholder="98765 43210" required maxlength="16"></div>
+            <span class="field-hint">For delivery updates. Choose your country code, then type the number without it.</span>
           </div>
-          <button type="submit" class="btn btn-primary btn-block" style="justify-content:center;">Create Account</button>
+          <button type="submit" class="btn btn-primary btn-block" id="sendBtn" style="justify-content:center;">Send me a code</button>
         </form>
 
-        <!-- Shown only when this email already has guest orders on file
-             (registerForm's response comes back with requiresVerification)
-             — same name/email/password already typed, just an ownership
-             check before we attach a password to that existing record.
-             autocomplete="one-time-code" keeps the browser from mistaking
-             this for a username field next to a password form. -->
-        <form id="verifyForm" style="display:none;" autocomplete="off">
-          <p class="sub" style="margin-top:0;">We found previous orders under this email — enter the code we just sent to finish setting up your account.</p>
+        <form id="codeForm" style="display:none;" autocomplete="off">
+          <div class="code-sent" id="codeSent"></div>
           <div class="form-field">
-            <label>Verification Code</label>
-            <input type="text" id="verifyCode" name="otp" autocomplete="one-time-code" inputmode="numeric" maxlength="6" placeholder="123456" required>
+            <label>6-digit code</label>
+            <input type="text" id="code" class="code-input" name="otp" autocomplete="one-time-code" inputmode="numeric" maxlength="6" placeholder="••••••" required>
           </div>
-          <button type="submit" class="btn btn-primary btn-block" style="justify-content:center;">Verify &amp; Create Account</button>
-          <p class="form-note"><a href="#" id="resendVerifyLink">Didn't get a code? Send again</a></p>
+          <button type="submit" class="btn btn-primary btn-block" id="verifyBtn" style="justify-content:center;">Confirm &amp; Create Account</button>
+          <div class="resend-row"><span id="resendInfo"></span><button type="button" id="resendBtn" disabled>Send a new code</button></div>
         </form>
 
-        <p class="form-note" id="loginNote">Already have an account? <a href="/login">Log in</a></p>
+        <p class="form-note">Already have an account? <a href="/login" id="toLogin">Log in</a></p>
       </div>
     </div>
   </section>
@@ -74,94 +66,58 @@
 <script src="js/components.js"></script>
 <script src="js/cursor.js"></script>
 <script>
-  let pendingClaim = null; // {name, email, password} — held only in memory while step 2 is shown
+  const redirectTo = new URLSearchParams(window.location.search).get('redirect') || '/';
+  const $ = id => document.getElementById(id);
+  const errBox = $('formError');
+  const showError = m => { errBox.innerHTML = ''; errBox.append(document.createTextNode(m)); errBox.classList.add('show'); };
+  const clearError = () => errBox.classList.remove('show');
+  let details = null, timer = null;
+  $('toLogin').href = '/login' + (location.search || '');
 
-  function showVerifyStep(){
-    document.getElementById('registerForm').style.display = 'none';
-    document.getElementById('loginNote').style.display = 'none';
-    document.getElementById('verifyForm').style.display = 'block';
+  function startCountdown(){
+    let left = 60; const btn = $('resendBtn'), info = $('resendInfo');
+    clearInterval(timer); btn.disabled = true;
+    const tick = () => { if(left <= 0){ clearInterval(timer); btn.disabled = false; info.textContent = 'Did not get it?'; return; } info.textContent = 'You can ask for a new code in ' + left + 's'; left--; };
+    tick(); timer = setInterval(tick, 1000);
   }
-
-  async function submitRegister(){
-    const errBox = document.getElementById('formError');
-    errBox.classList.remove('show');
-    const name = document.getElementById('name').value;
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    try{
-      const data = await apiFetch('/auth/register', {
-        method:'POST',
-        body: JSON.stringify({ name, email, password })
-      });
-      if(data.requiresVerification){
-        pendingClaim = { name, email, password };
-        showVerifyStep();
-        return;
-      }
-      setToken(data.token);
-      setStoredUser(data.user);
-      await mergeGuestDataIntoAccount();
-      toast('Welcome to Padmora, ' + data.user.name.split(' ')[0] + '!');
-      window.location.href = '/account';
-    }catch(err){
-      errBox.textContent = err.message;
-      errBox.classList.add('show');
-    }
+  async function sendCode(d){
+    return apiFetch('/auth/register/start', { method:'POST', body: JSON.stringify(d) });
   }
-
-  document.getElementById('registerForm').addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    await submitRegister();
-  });
-
-  document.getElementById('resendVerifyLink').addEventListener('click', async (e)=>{
-    e.preventDefault();
-    if(pendingClaim) await submitRegister();
-  });
-
-  document.getElementById('verifyForm').addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const errBox = document.getElementById('formError');
-    errBox.classList.remove('show');
+  $('detailsForm').addEventListener('submit', async e => {
+    e.preventDefault(); clearError();
+    const d = { name: $('name').value.trim(), email: $('email').value.trim(), phone: $('phone').value.trim(), countryCode: $('countryCode').value };
+    const btn = $('sendBtn'); btn.disabled = true; btn.textContent = 'Sending…';
     try{
-      const { token, user } = await apiFetch('/auth/register/verify', {
-        method:'POST',
-        body: JSON.stringify({ ...pendingClaim, code: document.getElementById('verifyCode').value.trim() })
-      });
-      setToken(token);
-      setStoredUser(user);
-      await mergeGuestDataIntoAccount();
-      toast('Welcome to Padmora, ' + user.name.split(' ')[0] + '!');
-      window.location.href = '/account';
+      await sendCode(d);
+      details = d;
+      $('detailsForm').style.display = 'none'; $('codeForm').style.display = 'block'; $('regSub').style.display = 'none';
+      $('codeSent').innerHTML = 'We e-mailed a 6-digit code to <strong></strong>. It works for 10 minutes. <button type="button" id="changeDetails">Change details</button>';
+      $('codeSent').querySelector('strong').textContent = d.email;
+      $('changeDetails').addEventListener('click', () => { $('codeForm').style.display = 'none'; $('detailsForm').style.display = 'block'; $('regSub').style.display = ''; clearInterval(timer); $('code').value = ''; clearError(); });
+      $('code').focus(); startCountdown();
     }catch(err){
-      errBox.textContent = err.message;
-      errBox.classList.add('show');
+      showError(err.message);
+      if(err.data && err.data.exists){ errBox.append(document.createTextNode(' ')); const a = document.createElement('a'); a.href = '/login' + (location.search || ''); a.textContent = 'Go to log in'; errBox.append(a); }
     }
+    btn.disabled = false; btn.textContent = 'Send me a code';
   });
-
-  document.getElementById('togglePassword').addEventListener('click', (e)=>{
-    const input = document.getElementById('password');
-    const showing = input.type === 'text';
-    input.type = showing ? 'password' : 'text';
-    e.target.textContent = showing ? 'Show' : 'Hide';
+  $('resendBtn').addEventListener('click', async () => {
+    clearError(); const b = $('resendBtn'); b.disabled = true;
+    try{ await sendCode(details); toast('A new code is on its way'); startCountdown(); }
+    catch(err){ showError(err.message); b.disabled = false; }
   });
-
-  document.getElementById('email').addEventListener('input', (e)=>{
-    const hint = document.getElementById('emailHint');
-    const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.target.value);
-    hint.textContent = (!e.target.value || valid) ? '' : 'That doesn\'t look like a valid email address.';
+  $('codeForm').addEventListener('submit', async e => {
+    e.preventDefault(); clearError();
+    const btn = $('verifyBtn'); btn.disabled = true; btn.textContent = 'Checking…';
+    try{
+      const { token, user } = await apiFetch('/auth/register/verify', { method:'POST', body: JSON.stringify({ ...details, code: $('code').value.trim() }) });
+      setToken(token); setStoredUser(user);
+      await mergeGuestDataIntoAccount();
+      toast('Welcome to Padmora, ' + String(user.name || '').split(' ')[0] + '!');
+      window.location.href = redirectTo;
+    }catch(err){ showError(err.message); btn.disabled = false; btn.textContent = 'Confirm & Create Account'; $('code').select(); }
   });
-
-  document.getElementById('password').addEventListener('input', (e)=>{
-    const val = e.target.value;
-    let score = 0;
-    if(val.length >= 6) score++;
-    if(val.length >= 10) score++;
-    if(/[0-9]/.test(val) && /[a-zA-Z]/.test(val)) score++;
-    if(/[^a-zA-Z0-9]/.test(val)) score++;
-    const meter = document.getElementById('strengthMeter');
-    meter.className = 'strength-meter' + (val ? ' level-' + score : '');
-  });
+  $('code').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6); });
 </script>
 </body>
 </html>

@@ -5,7 +5,8 @@ const { supabase, must, getProductsByIds, getVariantsByIds, getPrimaryImagesByVa
 const { requireAuth } = require('../middleware/auth');
 const { resolveCoupon, computeOrderTotals } = require('../utils/pricing');
 const { computeStatus, buildTimeline, isCancellable, CANCEL_REASONS } = require('../utils/orderStatus');
-const { isWithinReturnWindow } = require('../utils/returns');
+const { getInquiryState } = require('../utils/inquiry');
+const { inquiryToken } = require('../utils/inquiryToken');
 const { isBlocked, recordFailure } = require('../utils/attemptLimiter');
 
 const router = express.Router();
@@ -20,10 +21,10 @@ async function shapeOrder(order) {
   const items = must(await supabase.from('order_items').select('*').eq('order_id', order.id), 'shapeOrder:items');
   const imageByVariant = await getPrimaryImagesByVariantIds(items.map(li => li.variant_id));
   const status = await computeStatus(order); // may stamp delivered_at as a side effect — must run before reading it below
-  const existingReturn = must(await supabase.from('return_requests').select('id, status').eq('order_id', order.id).maybeSingle(), 'shapeOrder:return');
+  const inquiry = await getInquiryState(order, { status });   // return / refund inquiry (up to two tries per order)
+  const latestRequest = inquiry.requests[inquiry.requests.length - 1] || null;
   const cancellable = await isCancellable(order);
   const timeline = await buildTimeline(order);
-  const withinReturnWindow = await isWithinReturnWindow(order);
   // "Write a review" is offered only once the order is delivered, and only for sarees the customer has not reviewed yet.
   const productIds = [...new Set(items.map(li => li.product_id).filter(Boolean))];
   const reviewedIds = new Set(
@@ -61,9 +62,10 @@ async function shapeOrder(order) {
     cancelAdminNote: order.cancel_admin_note,
     placedAt: order.placed_at,
     deliveredAt: order.delivered_at,
-    returnStatus: existingReturn ? existingReturn.status : null,
-    returnRequestId: existingReturn ? existingReturn.id : null,
-    canRequestReturn: status === 'Delivered' && !existingReturn && withinReturnWindow
+    returnStatus: latestRequest ? latestRequest.status : null,
+    returnRequestId: latestRequest ? latestRequest.id : null,
+    canRequestReturn: inquiry.eligible,
+    inquiry: { eligible: inquiry.eligible, reason: inquiry.reason, secondChance: !!inquiry.secondChance, attempt: inquiry.attempt || inquiry.attemptsUsed, attemptsUsed: inquiry.attemptsUsed, maxAttempts: inquiry.maxAttempts, finalRejected: !!inquiry.finalRejected, activeStatus: inquiry.activeStatus || null, deadline: inquiry.deadline || null }
   };
 }
 
@@ -165,7 +167,7 @@ router.get('/guest/:id', async (req, res) => {
     if (!matchesEmail && !matchesPhone) {
       return res.status(404).json({ message: 'Order not found. Check your Order ID and the email/phone used at checkout.' });
     }
-    res.json({ order: await shapeOrder(order) });
+    res.json({ order: await shapeOrder(order), inquiryToken: inquiryToken(order.id) });
   } catch (err) {
     console.error('GET /orders/guest/:id failed:', err);
     res.status(500).json({ message: 'Something went wrong on the server.' });
