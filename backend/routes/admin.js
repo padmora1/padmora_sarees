@@ -22,6 +22,7 @@ const { RETURN_REASONS } = require('../utils/returns');
 const { sendEmail, sendOrderStatusEmail, emailConfigured, smsConfigured } = require('../utils/notify');
 const reviewReminders = require('../utils/reviewReminders');
 const { publicEmail } = require('../utils/instagramOrders');
+const profit = require('../utils/profit');
 const razorpayUtil = require('../utils/razorpay');
 const { MAX_ATTEMPTS: INQUIRY_MAX_ATTEMPTS, decisionEmail } = require('../utils/inquiry');
 const { checkWishlistAlerts } = require('../utils/wishlistAlerts');
@@ -127,7 +128,43 @@ async function takenSkus(productId) {
 // The product as the admin list shows it (with its colour count and total stock).
 function adminProductShape(row) {
   const p = toProductApiShape(row);
+  // Buying price, Final CP and margin exist only in the admin view - the storefront shape never carries them.
+  const raw = {};
+  (row.variants || []).forEach(v => { raw[v.id] = v; });
+  p.variants = p.variants.map(v => ({
+    ...v,
+    costPrice: raw[v.id] && raw[v.id].cost_price != null ? Number(raw[v.id].cost_price) : null,
+    finalCp: raw[v.id] && raw[v.id].final_cp != null ? Number(raw[v.id].final_cp) : null,
+    marginPct: raw[v.id] && raw[v.id].margin_pct != null ? Number(raw[v.id].margin_pct) : null
+  }));
   return { ...p, variantCount: p.variants.length, totalStock: p.variants.reduce((sum, v) => sum + v.stock, 0) };
+}
+
+// A colour's price when the admin types a BUYING PRICE: the shop works out Final CP and the selling price from the
+// Settings (shipping, GST, margin), so the price can never disagree with the cost. Without a buying price the colour is priced by
+// hand exactly as before (and its profit is simply not tracked). `existing` = the colour's current row, when editing.
+//  - costPrice given         -> recalculated from it (price/mrp come from the formula; for a Sale saree that is the ACTUAL price)
+//  - costPrice "" / null     -> the buying price is removed; the typed price is used
+//  - costPrice not sent      -> an already-costed colour keeps its cost and its actual price; only the sale % may change
+async function priceForColour({ costPrice, price, mrp, salePercent, onSale, existing }) {
+  const given = costPrice !== undefined;
+  const parsed = given ? profit.parseBuyingPrice(costPrice) : { empty: true };
+  if (parsed.error) return { error: parsed.error };
+  if (given && !parsed.empty) {
+    const pricing = profit.computePricing(parsed.cost, await profit.getProfitSettings());
+    const prices = resolvePrices({ onSale, price: pricing.sellingPrice, salePercent });   // the old original price must not leak into the new one
+    if (prices.error) return { error: prices.error };
+    return { price: prices.price, mrp: prices.mrp, cols: profit.variantCostColumns(pricing), pricing };
+  }
+  if (!given && existing && existing.cost_price != null) {
+    const actual = existing.mrp > existing.price ? existing.mrp : existing.price;
+    const prices = resolvePrices({ onSale, price: actual, mrp: existing.mrp, salePercent });
+    if (prices.error) return { error: prices.error };
+    return { price: prices.price, mrp: prices.mrp, cols: {}, kept: true };
+  }
+  const prices = resolvePrices({ onSale, price, mrp, salePercent });
+  if (prices.error) return { error: prices.error };
+  return { price: prices.price, mrp: prices.mrp, cols: given ? profit.variantCostColumns(null) : {} };
 }
 
 // Pricing rule: only Sale sarees carry an original price and a discount.
@@ -234,10 +271,11 @@ router.get('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
 
 router.post('/products', asyncRoute(async (req, res) => {
   const { name: rawName, fabric: rawFabric, occasion: rawOccasion, price, mrp, salePercent, badge, swatch, desc, stock: rawStock, weaverName, weaverRegion, loomType,
-          colorName: rawColor, lowStockThreshold: rawLow, colors } = req.body;
+          colorName: rawColor, lowStockThreshold: rawLow, colors, costPrice } = req.body;
   const name = cleanText(rawName, 120), fabric = cleanText(rawFabric, 80), occasion = normalizeOccasions(rawOccasion);
-  if (!name || !fabric || !occasion || price === undefined || price === null || price === '') {
-    return res.status(400).json({ message: 'Name, fabric, at least one occasion (up to 8) and price are required (name up to 120 characters).' });
+  const hasCost = costPrice !== undefined && costPrice !== null && String(costPrice).trim() !== '';
+  if (!name || !fabric || !occasion || (!hasCost && (price === undefined || price === null || price === ''))) {
+    return res.status(400).json({ message: 'Name, fabric, at least one occasion (up to 8) and the buying price are required (name up to 120 characters).' });
   }
   const onSale = badge === 'sale';
   // Stock left empty means "the usual 20"; a typed 0 is a real answer (sold out) and must be kept.
@@ -245,7 +283,7 @@ router.post('/products', asyncRoute(async (req, res) => {
   if (stock === null) return res.status(400).json({ message: 'Stock must be a whole number, 0 or more.' });
   const low = (rawLow === undefined || rawLow === null || rawLow === '') ? 10 : wholeNumber(rawLow, { min: 0, max: 100000 });
   if (low === null) return res.status(400).json({ message: '"Low-stock alert" must be a whole number, 0 or more.' });
-  const prices = resolvePrices({ onSale, price, mrp, salePercent });
+  const prices = await priceForColour({ costPrice, price, mrp, salePercent, onSale });
   if (prices.error) return res.status(400).json({ message: prices.error });
   const swatchKey = cleanSwatch(swatch) || 'maroon';
   // The first colour's name: what the admin typed, or (older pages) the shade word.
@@ -259,7 +297,7 @@ router.post('/products', asyncRoute(async (req, res) => {
       const label = `Extra colour ${i + 1}`;
       const cName = cleanText(c && c.colorName, 60);
       if (!cName) return res.status(400).json({ message: `${label}: enter the colour name (up to 60 characters).` });
-      const cPrices = resolvePrices({ onSale, price: c.price, mrp: c.mrp, salePercent: c.salePercent });
+      const cPrices = await priceForColour({ costPrice: c.costPrice, price: c.price, mrp: c.mrp, salePercent: c.salePercent, onSale });
       if (cPrices.error) return res.status(400).json({ message: `${label}: ${cPrices.error}` });
       const cStock = (c.stock === undefined || c.stock === null || c.stock === '') ? 0 : wholeNumber(c.stock);
       if (cStock === null) return res.status(400).json({ message: `${label}: stock must be a whole number, 0 or more.` });
@@ -281,17 +319,18 @@ router.post('/products', asyncRoute(async (req, res) => {
   if (rpc.error) throw new Error(rpc.error.message);
   // The extra colours go in with one insert, and the first colour's low-stock alert is set at the same time.
   const writes = [];
-  if (low !== 10) writes.push(supabase.from('product_variants').update({ low_stock_threshold: low }).eq('product_id', id));
+  const firstColumns = { ...(low !== 10 ? { low_stock_threshold: low } : {}), ...(prices.cols || {}) };
+  if (Object.keys(firstColumns).length) writes.push(supabase.from('product_variants').update(firstColumns).eq('product_id', id));
   if (extras.length) {
     writes.push(supabase.from('product_variants').insert(extras.map((c, i) => ({
       product_id: id, color_name: c.colorName, swatch: c.swatch, sku: uniqueSku(id, c.colorName, taken),
-      price: c.prices.price, mrp: c.prices.mrp, stock: c.stock, low_stock_threshold: c.low,
+      price: c.prices.price, mrp: c.prices.mrp, ...(c.prices.cols || {}), stock: c.stock, low_stock_threshold: c.low,
       description: sanitizeRich(undefined), is_default: false, sort_order: i + 1
     }))));
   }
   const results = await Promise.all(writes);
   results.forEach(r => must(r, 'createProduct:variants'));
-  await record(req, 'created', 'product', id, null, { name, fabric, price: prices.price, mrp: prices.mrp, stock, extraColours: extras.length });
+  await record(req, 'created', 'product', id, null, { name, fabric, price: prices.price, mrp: prices.mrp, buyingPrice: prices.pricing ? prices.pricing.buyingPrice : null, finalCp: prices.pricing ? prices.pricing.finalCp : null, stock, extraColours: extras.length });
 
   res.status(201).json({ product: adminProductShape(await getProductById(id)) });
 }));
@@ -377,24 +416,25 @@ router.post('/products/:id(\\d{1,9})/variants', asyncRoute(async (req, res) => {
   const product = must(await supabase.from('products').select('id, badge').eq('id', productId).maybeSingle(), 'addVariant:product');
   if (!product) return res.status(404).json({ message: 'Product not found.' });
 
-  const { colorName: rawColor, swatch, sku, price, mrp, salePercent, stock: rawStock, lowStockThreshold: rawLow } = req.body;
+  const { colorName: rawColor, swatch, sku, price, mrp, salePercent, stock: rawStock, lowStockThreshold: rawLow, costPrice } = req.body;
   const description = req.body.description !== undefined ? req.body.description : req.body.desc;
   const colorName = cleanText(rawColor, 60);
-  if (!colorName || price === undefined || price === null || price === '') {
-    return res.status(400).json({ message: 'Colour name (up to 60 characters) and price are required.' });
+  const hasCost = costPrice !== undefined && costPrice !== null && String(costPrice).trim() !== '';
+  if (!colorName || (!hasCost && (price === undefined || price === null || price === ''))) {
+    return res.status(400).json({ message: 'Colour name (up to 60 characters) and the buying price are required.' });
   }
   const stock = (rawStock === undefined || rawStock === null || rawStock === '') ? 0 : wholeNumber(rawStock);
   if (stock === null) return res.status(400).json({ message: 'Stock must be a whole number, 0 or more.' });
   const lowStockThreshold = (rawLow === undefined || rawLow === null || rawLow === '') ? 10 : wholeNumber(rawLow, { min: 0, max: 100000 });
   if (lowStockThreshold === null) return res.status(400).json({ message: '"Low stock at" must be a whole number, 0 or more.' });
-  const prices = resolvePrices({ onSale: product.badge === 'sale', price, mrp, salePercent });
+  const prices = await priceForColour({ costPrice, price, mrp, salePercent, onSale: product.badge === 'sale' });
   if (prices.error) return res.status(400).json({ message: prices.error });
   const maxSort = must(await supabase.from('product_variants').select('sort_order').eq('product_id', productId).order('sort_order', { ascending: false }).limit(1), 'addVariant:maxSort');
   const sortOrder = (maxSort[0]?.sort_order ?? -1) + 1;
   const inserted = must(await supabase.from('product_variants').insert({
     product_id: productId, color_name: colorName, swatch: cleanSwatch(swatch) || 'maroon',
     sku: cleanText(sku, 60) || uniqueSku(productId, colorName, await takenSkus(productId)),
-    price: prices.price, mrp: prices.mrp, stock, low_stock_threshold: lowStockThreshold,
+    price: prices.price, mrp: prices.mrp, ...(prices.cols || {}), stock, low_stock_threshold: lowStockThreshold,
     description: sanitizeRich(description), is_default: false, sort_order: sortOrder
   }).select().single(), 'addVariant:insert');
 
@@ -406,7 +446,7 @@ router.put('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   const existing = must(await supabase.from('product_variants').select('*').eq('id', id).maybeSingle(), 'updateVariant:lookup');
   if (!existing) return res.status(404).json({ message: 'Variant not found.' });
 
-  const { colorName, swatch, sku, price, mrp, salePercent, stock, lowStockThreshold, isDefault } = req.body;
+  const { colorName, swatch, sku, price, mrp, salePercent, stock, lowStockThreshold, isDefault, costPrice } = req.body;
   const description = req.body.description !== undefined ? req.body.description : req.body.desc;
   if (colorName !== undefined && !cleanText(colorName, 60)) return res.status(400).json({ message: 'Colour name can\'t be blank (up to 60 characters).' });
   const newStock = stock !== undefined ? wholeNumber(stock) : existing.stock;
@@ -416,12 +456,12 @@ router.put('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
 
   // Price fields follow the product's Sale tag (see resolvePrices).
   const owner = must(await supabase.from('products').select('badge').eq('id', existing.product_id).maybeSingle(), 'updateVariant:product');
-  let newPrice = existing.price, newMrp = existing.mrp;
-  if (price !== undefined) {
-    const prices = resolvePrices({ onSale: !!owner && owner.badge === 'sale', price, mrp: mrp !== undefined ? mrp : existing.mrp, salePercent });
+  let newPrice = existing.price, newMrp = existing.mrp, costCols = {}, newPricing = null;
+  if (price !== undefined || costPrice !== undefined) {
+    const prices = await priceForColour({ costPrice, price, mrp: mrp !== undefined ? mrp : existing.mrp, salePercent, onSale: !!owner && owner.badge === 'sale', existing });
     if (prices.error) return res.status(400).json({ message: prices.error });
-    newPrice = prices.price; newMrp = prices.mrp;
-  } else if (mrp !== undefined) {
+    newPrice = prices.price; newMrp = prices.mrp; costCols = prices.cols || {}; newPricing = prices.pricing || null;
+  } else if (mrp !== undefined && existing.cost_price == null) {
     newMrp = Number(mrp);
   }
 
@@ -433,7 +473,7 @@ router.put('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
     color_name: colorName !== undefined ? colorName.trim() : existing.color_name, swatch: cleanSwatch(swatch) ?? existing.swatch,
     // blank = keep the colour's code; a colour that never had one gets an automatic one
     sku: (sku !== undefined && cleanText(sku, 60)) || existing.sku || uniqueSku(existing.product_id, colorName !== undefined ? colorName : existing.color_name, await takenSkus(existing.product_id)),
-    price: newPrice, mrp: newMrp,
+    price: newPrice, mrp: newMrp, ...costCols,
     stock: newStock,
     low_stock_threshold: newLow,
     description: description === undefined || description === null ? existing.description : sanitizeRich(description),
@@ -442,8 +482,8 @@ router.put('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
 
   await syncProductMirrorFromDefaultVariant(existing.product_id);
   await record(req, 'updated', 'variant', id,
-    { price: existing.price, mrp: existing.mrp, stock: existing.stock },
-    { price: newPrice, mrp: newMrp, stock: stock ?? existing.stock });
+    { price: existing.price, mrp: existing.mrp, stock: existing.stock, buyingPrice: existing.cost_price, finalCp: existing.final_cp },
+    { price: newPrice, mrp: newMrp, stock: stock ?? existing.stock, buyingPrice: newPricing ? newPricing.buyingPrice : (costCols.cost_price !== undefined ? costCols.cost_price : existing.cost_price), finalCp: newPricing ? newPricing.finalCp : (costCols.final_cp !== undefined ? costCols.final_cp : existing.final_cp) });
   res.json({ variant: await getVariantById(id) });
 }));
 
@@ -1370,6 +1410,71 @@ router.put('/returns/:id(\\d{1,9})/refund', asyncRoute(async (req, res) => {
 
   const updated = must(await supabase.from('return_requests').select('*').eq('id', existing.id).single(), 'refundReturn:reread');
   res.json({ return: await shapeAdminReturn(updated) });
+}));
+
+// ---- Product pricing & profit ----
+// What the product form needs to show Shipping / GST / Final CP / margin / Final selling price while the admin types a buying
+// price. Not the Super Admin settings screen itself (that is /settings/profit): anyone who may edit products needs these numbers.
+router.get('/products/pricing-config', asyncRoute(async (req, res) => {
+  res.json({ settings: await profit.getProfitSettings() });
+}));
+
+router.get('/settings/profit', asyncRoute(async (req, res) => {
+  res.json({ settings: await profit.getProfitSettings(), defaults: profit.DEFAULTS });
+}));
+
+router.put('/settings/profit', asyncRoute(async (req, res) => {
+  const checked = profit.validateSettings(req.body);
+  if (checked.error) return res.status(400).json({ message: checked.error });
+  const before = await profit.getProfitSettings();
+  await setSetting('profit_settings', checked.value);
+  await record(req, 'settings updated', 'profit_settings', null, before, checked.value);
+  res.json({ settings: checked.value });
+}));
+
+// "Update prices of existing sarees": the settings only apply to a colour when it is saved. This lists what would change if
+// every colour that has a buying price were worked out again with today's settings, and (apply: true) does it.
+async function repricePlan() {
+  const settings = await profit.getProfitSettings();
+  const variants = await fetchAllRows(() => supabase.from('product_variants').select('id, product_id, color_name, price, mrp, cost_price, final_cp, margin_pct')
+    .eq('archived', false).not('cost_price', 'is', null).order('id'), 'reprice:variants');
+  const productIds = [...new Set(variants.map(v => v.product_id))];
+  const products = productIds.length ? await fetchAllByIds(productIds, c => supabase.from('products').select('id, name, badge').in('id', c).order('id'), 'reprice:products') : [];
+  const productById = Object.fromEntries(products.map(p => [p.id, p]));
+  const items = [];
+  for (const v of variants) {
+    const pricing = profit.computePricing(Number(v.cost_price), settings);
+    if (!pricing) continue;
+    const onSale = (productById[v.product_id] || {}).badge === 'sale';
+    const pct = onSale && v.mrp > v.price ? Math.round((1 - v.price / v.mrp) * 100) : 0;
+    const newMrp = pricing.sellingPrice;
+    const newPrice = pct ? Math.max(1, Math.round(newMrp * (100 - pct) / 100)) : newMrp;
+    const same = newPrice === v.price && newMrp === v.mrp && Number(v.final_cp) === pricing.finalCp && Number(v.margin_pct) === pricing.marginPct;
+    if (same) continue;
+    items.push({
+      variantId: v.id, productId: v.product_id, product: (productById[v.product_id] || {}).name || '', colour: v.color_name, buyingPrice: Number(v.cost_price),
+      oldPrice: v.price, newPrice, oldFinalCp: v.final_cp != null ? Number(v.final_cp) : null, newFinalCp: pricing.finalCp, oldMargin: v.margin_pct != null ? Number(v.margin_pct) : null, newMargin: pricing.marginPct,
+      columns: { price: newPrice, mrp: newMrp, ...profit.variantCostColumns(pricing) }
+    });
+  }
+  return { settings, items, total: variants.length };
+}
+
+router.post('/settings/profit/reprice', asyncRoute(async (req, res) => {
+  const plan = await repricePlan();
+  const shown = plan.items.map(({ columns, ...rest }) => rest);
+  if (!(req.body && req.body.apply === true)) return res.json({ total: plan.total, changes: shown.length, items: shown.slice(0, 300) });
+  for (const it of plan.items) must(await supabase.from('product_variants').update(it.columns).eq('id', it.variantId), 'reprice:update');
+  for (const pid of [...new Set(plan.items.map(i => i.productId))]) await syncProductMirrorFromDefaultVariant(pid);
+  if (plan.items.length) await record(req, 'prices recalculated', 'profit_settings', null, null, { colours: plan.items.length, settings: plan.settings });
+  res.json({ updated: plan.items.length, total: plan.total });
+}));
+
+// Net profit for the Overview (Super Admin only - see PATH_SCOPES).
+router.get('/analytics/profit', asyncRoute(async (req, res) => {
+  const range = String(req.query.range || 'all');
+  if (!['all', 'today', '7', '30', 'month'].includes(range)) return res.status(400).json({ message: 'Choose a valid period.' });
+  res.json(await profit.loadProfitReport(range));
 }));
 
 // ---- Tracking settings ----

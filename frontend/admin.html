@@ -63,6 +63,7 @@
           <div id="panel-overview">
             <h2>Overview</h2>
             <div class="stat-grid" id="statGrid"></div>
+            <div id="profitPanel" class="profit-panel" style="display:none;"></div>
             <p id="lastBackupNote" style="font-size:12px;color:var(--ink-soft);margin-top:10px;"></p>
             <h3 style="font-size:15px;margin:26px 0 12px;">Low Stock (below each variant's threshold)</h3>
             <div id="lowStockList"></div>
@@ -190,7 +191,7 @@
             <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Orders taken on Instagram — sarees that are not in your Products list. Upload a sheet and every row becomes an order numbered <strong>INS0001, INS0002…</strong> (carrying on from the last one). Customers can then track it and raise an Order Inquiry like any other order, and it appears in the Orders tab tagged <span class="src-tag ig">Instagram</span> so web and Instagram orders are packed, shipped and marked together.</p>
             <div class="editor-card" style="margin-bottom:18px;">
               <h3 style="font-family:var(--font-body);font-size:15px;margin-bottom:6px;">Upload orders</h3>
-              <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px;">One row = one order = one saree. Columns: <strong>Order Date, Customer Name, Phone, Customer Address, Product Name, Product Code, Payment Method, Price</strong> (Email, City, State, Pincode are optional). The Phone is what the customer uses to track the order. The sheet is checked first — nothing is created until every row is correct and you press Import; uploading the same sheet twice never duplicates orders.</p>
+              <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px;">One row = one order = one saree. Columns: <strong>Order Date, Customer Name, Phone, Customer Address, Product Name, Product Code, Payment Method, Price</strong> (Buying Price, Email, City, State, Pincode are optional — a Buying Price makes the order count in Net Profit). The Phone is what the customer uses to track the order. The sheet is checked first — nothing is created until every row is correct and you press Import; uploading the same sheet twice never duplicates orders.</p>
               <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
                 <button class="btn btn-outline btn-sm" id="igTplXlsx">⬇ Download Excel template (.xlsx)</button>
                 <button class="btn btn-outline btn-sm" id="igTplCsv">⬇ Download CSV template</button>
@@ -304,6 +305,10 @@
             <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Flat shipping fee, the order value that waives it, delivery regions and estimated delivery time.</p>
             <div class="admin-form" id="shippingSettingsForm"></div>
 
+            <h3 style="font-size:15px;margin:28px 0 6px;">Product pricing &amp; profit</h3>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">How a saree's price is worked out from what you pay for it. <strong>Final CP</strong> = (buying price + shipping) + GST. <strong>Selling price</strong> = Final CP + your margin on the Final CP. These numbers are used when you add or save a colour, and for the profit figures on the Overview.</p>
+            <div class="admin-form" id="profitSettingsForm"></div>
+
             <h3 style="font-size:15px;margin:28px 0 6px;">Returns &amp; Refunds Policy</h3>
             <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">How many days after delivery a customer can request a return. This is the one place that number lives — the Shipping &amp; Returns page and every eligibility check read it from here.</p>
             <div class="admin-form" id="returnPolicyForm"></div>
@@ -395,7 +400,7 @@
     if(tab==='reviews') loadReviews();
     if(tab==='analytics') renderAnalyticsTab();
     if(tab==='messages') loadMessages();
-    if(tab==='settings'){ loadStoreSettings(); loadFooterSettings(); loadShippingSettings(); loadReturnPolicySettings(); loadReviewReminderSettings(); loadSettings(); loadNotificationsLog(); loadBackups(); }
+    if(tab==='settings'){ loadStoreSettings(); loadFooterSettings(); loadShippingSettings(); loadProfitSettings(); loadReturnPolicySettings(); loadReviewReminderSettings(); loadSettings(); loadNotificationsLog(); loadBackups(); }
     if(tab==='adminusers') loadAdminUsers();
     if(tab==='activitylog') loadActivityLog();
   }
@@ -440,6 +445,162 @@
     if(row) row.previousElementSibling.scrollIntoView({ behavior:'smooth', block:'start' });
   }
 
+  // ---- Product pricing & profit ----
+  // The numbers every colour's price is worked out from (Settings -> Product pricing & profit). The product forms show the same sums
+  // live; the server repeats them when a colour is saved.
+  async function loadPricingConfig(){
+    try{ const {settings} = await adminApiFetch('/admin/products/pricing-config'); AdminColours.setConfig(settings); }
+    catch(e){ AdminColours.setConfig(null); }
+  }
+  const rupee2 = n => '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const rupeeSigned = n => (n < 0 ? '−' : '') + '₹' + Math.abs(Math.round(n)).toLocaleString('en-IN');
+
+  async function loadProfitSettings(){
+    const host = document.getElementById('profitSettingsForm');
+    try{
+      const {settings: st} = await adminApiFetch('/admin/settings/profit');
+      host.innerHTML = `
+        <div class="form-row-2">
+          <div class="form-field"><label>GST on product (%)</label><input type="number" min="0" max="100" step="0.01" class="admin-input" style="width:100%;" id="pfGst" value="${st.gstRate}"></div>
+          <div class="form-field"><label>Shipping cost per saree (₹)</label><input type="number" min="0" step="0.01" class="admin-input" style="width:100%;" id="pfShip" value="${st.shippingCost}"></div>
+        </div>
+        <p class="field-hint" style="margin:-6px 0 12px;">Shipping cost is what it costs <em>you</em> to ship one saree; it is added to the buying price. It is separate from the shipping fee customers pay at checkout (set under Shipping above).</p>
+        <div class="form-row-2">
+          <div class="form-field"><label>Margin limit — Final CP (₹)</label><input type="number" min="1" step="1" class="admin-input" style="width:100%;" id="pfLimit" value="${st.marginThreshold}"></div>
+          <div class="form-field"><label>Margin when Final CP is above the limit (%)</label><input type="number" min="0" max="1000" step="0.01" class="admin-input" style="width:100%;" id="pfAbove" value="${st.marginAbove}"></div>
+        </div>
+        <div class="form-row-2">
+          <div class="form-field"><label>Margin when Final CP is up to the limit (%)</label><input type="number" min="0" max="1000" step="0.01" class="admin-input" style="width:100%;" id="pfBelow" value="${st.marginAtOrBelow}"></div>
+          <div class="form-field"><label>Payment gateway fee (%) <span style="color:var(--ink-soft);font-weight:400;">— optional</span></label><input type="number" min="0" max="20" step="0.01" class="admin-input" style="width:100%;" id="pfFee" value="${st.gatewayFeePct}"></div>
+        </div>
+        <p class="field-hint" style="margin:-6px 0 12px;">The gateway fee is only used in the profit figures: Razorpay's cut of online payments (about 2.36% with GST). Leave it at 0 to ignore it.</p>
+
+        <div class="pf-try">
+          <div class="form-field" style="max-width:240px;"><label>Try it: buying price (₹)</label><input type="number" min="1" class="admin-input" style="width:100%;" id="pfTry" value="3000"></div>
+          <div id="pfTryOut" class="pf-try-out"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="saveProfitSettings">Save pricing &amp; profit settings</button>
+
+        <div class="pf-reprice">
+          <h4>Update prices of existing sarees</h4>
+          <p>Saving the settings above does not change sarees that are already in your shop — a colour is worked out again only when you save it. To bring every colour that has a buying price in line with the current settings in one go, preview the changes first.</p>
+          <button class="btn btn-outline btn-sm" id="pfRepricePreview">Preview price changes</button>
+          <div id="pfRepriceOut" style="margin-top:12px;"></div>
+        </div>`;
+      const read = () => ({
+        gstRate: document.getElementById('pfGst').value, shippingCost: document.getElementById('pfShip').value, marginThreshold: document.getElementById('pfLimit').value,
+        marginAbove: document.getElementById('pfAbove').value, marginAtOrBelow: document.getElementById('pfBelow').value, gatewayFeePct: document.getElementById('pfFee').value
+      });
+      const paintTry = () => {
+        const v = read(), cfg = { gstRate: Number(v.gstRate), shippingCost: Number(v.shippingCost), marginThreshold: Number(v.marginThreshold), marginAbove: Number(v.marginAbove), marginAtOrBelow: Number(v.marginAtOrBelow) };
+        const r = Object.values(cfg).every(Number.isFinite) ? AdminColours.calc(document.getElementById('pfTry').value, cfg) : null;
+        document.getElementById('pfTryOut').innerHTML = r
+          ? `(₹${Number(document.getElementById('pfTry').value).toLocaleString('en-IN')} + shipping ${rupee2(r.shipping)}) + GST ${rupee2(r.gstAmount)} = <strong>Final CP ${rupee2(r.finalCp)}</strong> → margin <strong>${r.marginPct}%</strong> → <strong>selling price ₹${r.sellingPrice.toLocaleString('en-IN')}</strong> (you earn ${rupee2(r.sellingPrice - r.finalCp)} per piece)`
+          : '<span style="color:var(--ink-soft);">Fill in the numbers above to see an example.</span>';
+      };
+      host.querySelectorAll('input').forEach(i => i.addEventListener('input', paintTry));
+      paintTry();
+      document.getElementById('saveProfitSettings').addEventListener('click', async ()=>{
+        const btn = document.getElementById('saveProfitSettings'); btn.disabled = true;
+        try{
+          await adminApiFetch('/admin/settings/profit', {method:'PUT', body: JSON.stringify(read())});
+          await loadPricingConfig();
+          if(npMain && document.getElementById('addProductForm').style.display === 'none') buildAddProductColours();
+          toast('Pricing & profit settings saved');
+        }catch(e){ toast(e.message, 'error'); }
+        btn.disabled = false;
+      });
+      const out = document.getElementById('pfRepriceOut');
+      document.getElementById('pfRepricePreview').addEventListener('click', async ()=>{
+        out.innerHTML = '<span style="font-size:13px;color:var(--ink-soft);">Checking…</span>';
+        try{
+          const r = await adminApiFetch('/admin/settings/profit/reprice', {method:'POST', body: JSON.stringify({})});
+          if(!r.changes){ out.innerHTML = `<p style="font-size:13px;color:var(--teal);">Nothing to change — all ${r.total} colour${r.total === 1 ? '' : 's'} with a buying price already match the saved settings.</p>`; return; }
+          out.innerHTML = `
+            <p style="font-size:13px;margin-bottom:8px;"><strong>${r.changes}</strong> of ${r.total} colour${r.total === 1 ? '' : 's'} would change. <strong>Customers will see the new prices straight away.</strong> Save the settings above first if you have just edited them.</p>
+            <div style="max-height:300px;overflow:auto;border:1px solid rgba(173,59,92,0.12);border-radius:4px;">
+              <table class="admin-table" style="min-width:560px;"><thead><tr><th>Saree</th><th>Buying</th><th>Final CP</th><th>Margin</th><th>Price</th></tr></thead>
+              <tbody>${r.items.map(i => `<tr><td>${escHTML(i.product)}<br><span style="font-size:11.5px;color:var(--ink-soft);">${escHTML(i.colour)}</span></td><td>${money(i.buyingPrice)}</td>
+                <td>${i.oldFinalCp != null ? rupee2(i.oldFinalCp) + ' → ' : ''}${rupee2(i.newFinalCp)}</td><td>${i.oldMargin != null ? i.oldMargin + '% → ' : ''}${i.newMargin}%</td><td>${money(i.oldPrice)} → <strong>${money(i.newPrice)}</strong></td></tr>`).join('')}</tbody></table>
+            </div>${r.changes > r.items.length ? `<p style="font-size:12px;color:var(--ink-soft);">Showing the first ${r.items.length}.</p>` : ''}
+            <button class="btn btn-primary btn-sm" id="pfRepriceApply" style="margin-top:12px;">Update ${r.changes} price${r.changes === 1 ? '' : 's'}</button>`;
+          document.getElementById('pfRepriceApply').addEventListener('click', async ()=>{
+            const ok = await showConfirmDialog(`This changes the selling price of ${r.changes} colour${r.changes === 1 ? '' : 's'} in your live shop.`, {title:'Update prices?', confirmLabel:'Update prices', danger:true});
+            if(!ok) return;
+            try{
+              const done = await adminApiFetch('/admin/settings/profit/reprice', {method:'POST', body: JSON.stringify({apply:true})});
+              out.innerHTML = `<div class="editor-card" style="background:rgba(126,160,67,0.12);"><strong>${done.updated} price${done.updated === 1 ? '' : 's'} updated.</strong></div>`;
+              toast('Prices updated');
+              allProducts = []; if(document.getElementById('panel-products').style.display !== 'none') loadProducts();
+            }catch(e){ toast(e.message, 'error'); }
+          });
+        }catch(e){ out.innerHTML = ''; toast(e.message, 'error'); }
+      });
+    }catch(e){ host.innerHTML = ''; toast(e.message, 'error'); }
+  }
+
+  // ---- Net profit (Overview, Super Admin only) ----
+  const PROFIT_RANGES = [['today','Today'],['7','7 days'],['30','30 days'],['month','This month'],['all','All time']];
+  let profitRange = 'all';
+  async function loadProfit(range){
+    const panel = document.getElementById('profitPanel');
+    if(range) profitRange = range;
+    panel.style.display = 'block';
+    try{
+      const r = await adminApiFetch('/admin/analytics/profit?range=' + encodeURIComponent(profitRange));
+      renderProfit(panel, r);
+      if(profitRange === 'all') setNetProfitCard(r);
+      else adminApiFetch('/admin/analytics/profit?range=all').then(setNetProfitCard).catch(()=>{});
+    }catch(e){ panel.innerHTML = `<p style="font-size:13px;color:var(--maroon);">${escHTML(e.message)}</p>`; }
+  }
+  function setNetProfitCard(r){
+    const grid = document.getElementById('statGrid');
+    let card = document.getElementById('netProfitCard');
+    if(!card){ card = document.createElement('div'); card.id = 'netProfitCard'; if(grid.firstElementChild) grid.firstElementChild.after(card); else grid.appendChild(card); }
+    card.className = 'stat-card stat-card-profit' + (r.netProfit < 0 ? ' stat-card-warn' : '');
+    card.innerHTML = `<strong>${rupeeSigned(r.netProfit)}</strong><span>Net Profit (all time)</span>`;
+    card.title = r.orders.counted + ' of ' + (r.orders.counted + r.orders.notCounted) + ' orders have a buying price and are counted';
+  }
+  function renderProfit(panel, r){
+    const line = (label, value, cls) => `<tr class="${cls || ''}"><td>${label}</td><td style="text-align:right;">${value}</td></tr>`;
+    const o = r.orders, s = r.settings;
+    panel.innerHTML = `
+      <div class="profit-head">
+        <h3>Profit</h3>
+        <div class="order-filter-row" id="profitRange">${PROFIT_RANGES.map(([k, l]) => `<button data-range="${k}" class="${profitRange === k ? 'active' : ''}">${l}</button>`).join('')}</div>
+      </div>
+      <div class="stat-grid profit-cards">
+        <div class="stat-card stat-card-profit ${r.netProfit < 0 ? 'stat-card-warn' : ''}"><strong>${rupeeSigned(r.netProfit)}</strong><span>Net Profit</span></div>
+        <div class="stat-card"><strong>${rupeeSigned(r.revenue)}</strong><span>Revenue (orders with costs)</span></div>
+        <div class="stat-card"><strong>${rupeeSigned(r.netCost)}</strong><span>Cost of sarees sold</span></div>
+        <div class="stat-card"><strong>${r.marginPct}%</strong><span>Profit margin</span></div>
+        <div class="stat-card"><strong>${rupeeSigned(r.avgProfitPerOrder)}</strong><span>Avg profit / order</span></div>
+        <div class="stat-card"><strong>${o.counted}</strong><span>Orders counted</span></div>
+      </div>
+      ${o.notCounted ? `<p class="profit-note"><strong>${o.notCounted} order${o.notCounted === 1 ? '' : 's'}</strong> (${rupeeSigned(r.notCountedRevenue)} of sales) ${o.notCounted === 1 ? 'is' : 'are'} left out because a saree in ${o.notCounted === 1 ? 'it has' : 'them has'} no buying price — add it under Products → Colours (or in the Instagram sheet) to include ${o.notCounted === 1 ? 'it' : 'them'}.</p>` : ''}
+      ${o.estimatedLines ? `<p class="profit-note">${o.estimatedLines} sold item${o.estimatedLines === 1 ? ' was' : 's were'} ordered before costs were tracked, so today's buying price is used for ${o.estimatedLines === 1 ? 'it' : 'them'}.</p>` : ''}
+      <details class="profit-how" open>
+        <summary>How this net profit is worked out</summary>
+        <table class="profit-table"><tbody>
+          ${line('What customers paid for these orders <span>(sarees − coupons + shipping charged)</span>', rupeeSigned(r.revenue))}
+          ${line('− Refunded to customers', rupeeSigned(r.refunds))}
+          ${line('= Net sales', rupeeSigned(r.netRevenue), 'sub')}
+          ${line('− Cost of the sarees sold <span>(buying price + shipping + GST)</span>', rupeeSigned(r.cost))}
+          ${r.restockedCost ? line('+ Cost of returned sarees put back in stock', rupeeSigned(r.restockedCost)) : ''}
+          ${r.gatewayFees ? line('− Payment gateway fees <span>(' + s.gatewayFeePct + '% of online payments)</span>', rupeeSigned(r.gatewayFees)) : ''}
+          ${line('= Net profit', rupeeSigned(r.netProfit), 'total')}
+        </tbody></table>
+        <p class="profit-foot">Cancelled orders are not counted. Each saree's cost is the Final CP saved when it was ordered, so changing a buying price later does not change past profit. Not included: packaging, advertising, salaries, rent or GST you may owe on sales.</p>
+      </details>
+      ${r.topProducts.length ? `
+      <h4 class="profit-sub">Sarees that earned the most</h4>
+      <div style="overflow-x:auto;"><table class="admin-table" style="min-width:520px;"><thead><tr><th>Saree</th><th>Sold</th><th>Sales</th><th>Cost</th><th>Profit</th></tr></thead>
+        <tbody>${r.topProducts.map(p => `<tr><td>${escHTML(p.name)}</td><td>${p.units}</td><td>${rupeeSigned(p.sales)}</td><td>${rupeeSigned(p.cost)}</td><td style="font-weight:600;color:${p.profit < 0 ? 'var(--maroon)' : 'var(--teal)'};">${rupeeSigned(p.profit)}</td></tr>`).join('')}</tbody></table></div>
+      <p class="profit-foot">Per-saree figures are before coupons and shipping charged, so they add up to a little more or less than the net profit above.</p>` : ''}
+      ${r.lossMakers.length ? `<p class="profit-note profit-loss"><strong>Selling below cost:</strong> ${r.lossMakers.map(p => escHTML(p.name) + ' (' + rupeeSigned(p.profit) + ')').join(', ')}.</p>` : ''}`;
+    panel.querySelectorAll('[data-range]').forEach(b => b.addEventListener('click', () => loadProfit(b.dataset.range)));
+  }
+
   async function loadOverview(){
     try{
       const {stats, lowStock} = await adminApiFetch('/admin/stats');
@@ -461,6 +622,10 @@
       backupNote.textContent = stats.lastBackupAt
         ? `Last database backup: ${new Date(stats.lastBackupAt).toLocaleString('en-IN')}`
         : 'No backup has run yet.';
+      // Profit is only for the Super Admin (the server refuses everyone else too).
+      const me = getStoredAdmin();
+      if(me && me.role === 'Super Admin') loadProfit(profitRange);
+      else document.getElementById('profitPanel').style.display = 'none';
     }catch(e){ toast(e.message, 'error'); }
   }
 
@@ -894,16 +1059,17 @@
               <button class="btn btn-sm" style="color:var(--maroon);" data-del-variant="${v.id}">Remove</button>
             </div>
           </div>
+          ${AdminColours.getConfig() ? AdminColours.pricingHTML({ attr: 'vf', cost: v.costPrice, price: onSale && v.mrp > v.price ? v.mrp : v.price, sale: onSale, requireCost: false }) : ''}
           <div class="variant-fields">
             <div class="form-field"><label>Colour name ${AdminColours.tip('What customers see for this colour, for example “Mustard Yellow”.')}</label><input type="text" class="admin-input" style="width:100%;" data-vf="colorName" maxlength="60" value="${escHTML(v.colorName)}"></div>
             <div class="form-field"><label>Colour shade ${AdminColours.tip('Picks the little round colour dot and the group this colour appears under in the shop’s Colour filter. Choose the closest shade.')}</label><select class="admin-input" style="width:100%;" data-vf="swatch">${AdminColours.shadeOptionsHTML(v.swatch)}</select></div>
             <div class="form-field"><label>Product code (SKU) ${AdminColours.tip('Made automatically for every colour, for example PDM-12-MUSTARD. Used on packing slips and inventory. You can type your own instead.')}</label><input type="text" class="admin-input" style="width:100%;" data-vf="sku" maxlength="60" value="${escHTML(v.sku || '')}" placeholder="Made automatically"></div>
             <div class="form-field"><label>Low-stock alert at ${AdminColours.tip('When stock falls to this number (or below) the colour is marked “Low stock” and you get a low-stock alert.')}</label><input type="number" class="admin-input" style="width:100%;" data-vf="lowStockThreshold" value="${v.lowStockThreshold}"></div>
             ${onSale ? `
-            <div class="form-field"><label>Actual price (₹)</label><input type="number" class="admin-input" style="width:100%;" data-vf="price" data-sale-actual value="${v.mrp > v.price ? v.mrp : v.price}"></div>
+            ${AdminColours.getConfig() ? '' : `<div class="form-field"><label>Actual price (₹)</label><input type="number" class="admin-input" style="width:100%;" data-vf="price" data-sale-actual value="${v.mrp > v.price ? v.mrp : v.price}"></div>`}
             <div class="form-field"><label>Sale % off</label><input type="number" class="admin-input" style="width:100%;" data-vf="salePercent" data-sale-pct min="1" max="90" placeholder="e.g. 20" value="${offOf(v)}"></div>
             <div class="form-field"><label>Sale price (auto)</label><div class="sale-preview" style="padding:9px 0;font-weight:600;color:var(--teal);">${v.mrp > v.price ? '₹' + v.price.toLocaleString('en-IN') : '—'}</div></div>`
-            : `<div class="form-field"><label>Price (₹) ${AdminColours.tip('The price customers pay, in rupees. GST is already included — nothing is added on top.')}</label><input type="number" class="admin-input" style="width:100%;" data-vf="price" value="${v.price}"></div>`}
+            : (AdminColours.getConfig() ? '' : `<div class="form-field"><label>Price (₹) ${AdminColours.tip('The price customers pay, in rupees. GST is already included — nothing is added on top.')}</label><input type="number" class="admin-input" style="width:100%;" data-vf="price" value="${v.price}"></div>`)}
             <div class="form-field"><label>Stock ${AdminColours.tip('How many pieces of this colour you have. It counts down as orders come in.')}</label><input type="number" class="admin-input" style="width:100%;${v.stock<=v.lowStockThreshold?'border-color:var(--maroon);color:var(--maroon);':''}" data-vf="stock" value="${v.stock}"></div>
           </div>
           <div class="form-field"><label>Variant Description (optional override)</label><textarea class="admin-input" style="width:100%;" rows="2" data-vf="desc">${escHTML(v.desc || '')}</textarea></div>
@@ -938,11 +1104,14 @@
     body.querySelectorAll('textarea[data-vf="desc"]').forEach(enhanceRichText);
 
     // Live "Sale price" as the admin types the actual price or the percentage.
-    body.querySelectorAll('.variant-card').forEach(card=>{
+    body.querySelectorAll('.variant-card[data-variant-id]').forEach(card=>{
       const actual = card.querySelector('[data-sale-actual]'), pct = card.querySelector('[data-sale-pct]'), out = card.querySelector('.sale-preview');
+      const refresh = () => { if(!actual || !pct || !out) return; const t = salePreviewText(actual.value, pct.value); out.textContent = t ? t.replace(/ — .*/, '').replace('Sale price ', '') : '—'; };
+      // buying price -> Final CP -> selling price (the "actual price" of a Sale saree); the Sale % feeds the profit line
+      const pricing = card.querySelector('[data-pf-group]') ? AdminColours.wirePricing(card, { sale: onSale, getPct: () => pct ? pct.value : '', onChange: refresh }) : null;
       if(!actual || !pct || !out) return;
-      const refresh = () => { const t = salePreviewText(actual.value, pct.value); out.textContent = t ? t.replace(/ — .*/, '').replace('Sale price ', '') : '—'; };
-      actual.addEventListener('input', refresh); pct.addEventListener('input', refresh);
+      actual.addEventListener('input', refresh);
+      pct.addEventListener('input', () => { refresh(); if(pricing) pricing.refresh(); });
     });
 
     body.querySelectorAll('[data-save-variant]').forEach(btn=>btn.addEventListener('click', async ()=>{
@@ -1034,16 +1203,16 @@
     // Add a colour: name, shade, price, stock and photos in one go.
     const defV = p.variants.find(v => v.isDefault) || p.variants[0];
     const nv = AdminColours.wire((()=>{ const h = document.getElementById('nvBlock'); h.innerHTML = AdminColours.blockHTML({
-      onSale, price: defV ? (defV.mrp > defV.price ? defV.mrp : defV.price) : '', salePct: defV ? offOf(defV) : '', stock: 10, low: 3 }); return h; })(), { onSale });
+      onSale, price: defV ? (defV.mrp > defV.price ? defV.mrp : defV.price) : '', cost: defV && defV.costPrice != null ? defV.costPrice : '', salePct: defV ? offOf(defV) : '', stock: 10, low: 3 }); return h; })(), { onSale });
     document.getElementById('addVariantBtn').addEventListener('click', async ()=>{
       const d = nv.read();
-      if(!d.colorName || !d.price){ toast('Colour name and price are required.', 'error'); return; }
+      if(!d.colorName || (d.costPrice !== undefined ? !d.costPrice : !d.price)){ toast(d.costPrice !== undefined ? 'Colour name and buying price are required.' : 'Colour name and price are required.', 'error'); return; }
       if(onSale && !d.salePercent){ toast('Enter the sale percentage for this colour.', 'error'); return; }
       const btn = document.getElementById('addVariantBtn'), status = document.getElementById('nvStatus');
       btn.disabled = true; status.textContent = 'Adding…';
       try{
         const {variant} = await adminApiFetch('/admin/products/' + p.id + '/variants', { method:'POST', body: JSON.stringify({
-          colorName: d.colorName, swatch: d.swatch, price: d.price, salePercent: d.salePercent, stock: d.stock, lowStockThreshold: d.lowStockThreshold
+          colorName: d.colorName, swatch: d.swatch, price: d.price, costPrice: d.costPrice, salePercent: d.salePercent, stock: d.stock, lowStockThreshold: d.lowStockThreshold
         })});
         let failed = '';
         if(d.files.length){
@@ -1097,12 +1266,12 @@
     document.getElementById('npExtraColours').innerHTML = '';
     const mainHost = document.getElementById('npMainColour');
     mainHost.innerHTML = AdminColours.blockHTML({ onSale: false, stock: 10, low: 3 });
-    npMain = AdminColours.wire(mainHost.firstElementChild, { onSale: false, onPriceInput: (v, kind) => npExtras.forEach(c => kind === 'price' ? c.setPrice(v) : c.setPct(v)) });
+    npMain = AdminColours.wire(mainHost.firstElementChild, { onSale: false, onPriceInput: (v, kind) => npExtras.forEach(c => kind === 'price' ? c.setPrice(v) : kind === 'cost' ? c.setCost(v) : c.setPct(v)) });
   }
   function addExtraColour(){
     const n = npExtras.length + 2;   // the main colour is colour 1
     const m = npMain.read();
-    const { root } = newColourBlock({ title: 'Colour ' + n, removable: true, onSale: npOnSale(), price: m.price, salePct: m.salePercent, stock: 10, low: 3 });
+    const { root } = newColourBlock({ title: 'Colour ' + n, removable: true, onSale: npOnSale(), price: m.price, cost: m.costPrice, salePct: m.salePercent, stock: 10, low: 3 });
     document.getElementById('npExtraColours').appendChild(root);
     const ctl = AdminColours.wire(root, { onSale: npOnSale() });
     npExtras.push(ctl);
@@ -1175,9 +1344,9 @@
     if(!document.getElementById('npFabric').value.trim()){ toast('Enter the fabric.', 'error'); return; }
     if(!readOccasionChecks(document.getElementById('npOccasion')).length){ toast('Tick at least one occasion.', 'error'); return; }
     if(!main.colorName){ toast('Enter the main colour name.', 'error'); npMain.focusName(); return; }
-    if(!main.price){ toast('Enter the price.', 'error'); return; }
+    if(main.costPrice !== undefined ? !main.costPrice : !main.price){ toast(main.costPrice !== undefined ? 'Enter the buying price.' : 'Enter the price.', 'error'); return; }
     for(const [i, c] of extras.entries()){
-      if(!c.colorName || !c.price){ toast(`Colour ${i + 2}: enter the colour name and price.`, 'error'); return; }
+      if(!c.colorName || (c.costPrice !== undefined ? !c.costPrice : !c.price)){ toast(`Colour ${i + 2}: enter the colour name and ${c.costPrice !== undefined ? 'buying price' : 'price'}.`, 'error'); return; }
       if(sale && !c.salePercent){ toast(`Colour ${i + 2}: enter the sale percentage.`, 'error'); return; }
     }
     if(sale && !main.salePercent){ toast('Enter the sale percentage.', 'error'); return; }
@@ -1190,14 +1359,14 @@
           fabric: document.getElementById('npFabric').value,
           occasion: readOccasionChecks(document.getElementById('npOccasion')),
           colorName: main.colorName, swatch: main.swatch,
-          price: main.price, salePercent: sale ? main.salePercent : undefined,
+          price: main.price, costPrice: main.costPrice, salePercent: sale ? main.salePercent : undefined,
           stock: main.stock, lowStockThreshold: main.lowStockThreshold,
           badge: document.getElementById('npBadge').value,
           desc: document.getElementById('npDesc').value,
           weaverName: document.getElementById('npWeaverName').value,
           weaverRegion: document.getElementById('npWeaverRegion').value,
           loomType: document.getElementById('npLoomType').value,
-          colors: extras.map(c => ({ colorName: c.colorName, swatch: c.swatch, price: c.price, salePercent: sale ? c.salePercent : undefined, stock: c.stock, lowStockThreshold: c.lowStockThreshold }))
+          colors: extras.map(c => ({ colorName: c.colorName, swatch: c.swatch, price: c.price, costPrice: c.costPrice, salePercent: sale ? c.salePercent : undefined, stock: c.stock, lowStockThreshold: c.lowStockThreshold }))
         })
       });
       toast(product.variants.length > 1 ? `Product created with ${product.variants.length} colours` : 'Product created');
@@ -1728,7 +1897,7 @@
                 <td>${r.row}</td>
                 <td style="color:${bad ? 'var(--maroon)' : r.alreadyImported ? 'var(--ink-soft)' : 'var(--teal)'};font-weight:700;">${bad ? '✗' : r.alreadyImported ? '–' : '✓'}</td>
                 <td>${s ? escHTML(s.name) + '<br><span style="font-size:11.5px;color:var(--ink-soft);">' + escHTML(s.phone) + '</span>' : '—'}</td>
-                <td>${s ? escHTML(s.product) + '<br><span style="font-size:11.5px;color:var(--ink-soft);">Code: ' + escHTML(s.code) + '</span>' : '—'}</td>
+                <td>${s ? escHTML(s.product) + '<br><span style="font-size:11.5px;color:var(--ink-soft);">Code: ' + escHTML(s.code) + (s.finalCp ? ' · Cost ' + rupee2(s.finalCp) : '') + '</span>' : '—'}</td>
                 <td style="font-size:12.5px;">${s ? escHTML(s.date) + ' · ' + escHTML(s.payment) + ' · ' + money(s.price) : '—'}</td>
                 <td style="font-size:12.5px;color:${bad ? 'var(--maroon)' : r.alreadyImported ? 'var(--ink-soft)' : 'var(--teal)'};">${bad ? r.errors.map(escHTML).join('<br>') : r.alreadyImported ? 'Already imported as #' + escHTML(r.alreadyImported) + ' — skipped' : 'Will become #' + escHTML(r.willGetId)}</td>
               </tr>`;
@@ -4182,6 +4351,8 @@
       setStoredAdmin(admin);
       renderIdentityBar(admin);
       applyRoleVisibility(admin.role);
+      await loadPricingConfig();
+      if(npMain && document.getElementById('addProductForm').style.display === 'none') buildAddProductColours();
       // Land on the first tab this role can actually see, in case they
       // bookmarked/reloaded on one they no longer have access to.
       const allowed = ROLE_TAB_ACCESS[admin.role];

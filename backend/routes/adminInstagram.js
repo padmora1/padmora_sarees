@@ -15,6 +15,7 @@ const { buildInstagramTemplateXlsx, buildInstagramTemplateCsv } = require('../ut
 const { parseSheet, findAlreadyImported, findOrCreateCustomer, readTable, publicEmail, PAYMENTS } = require('../utils/instagramOrders');
 const { sendOrderConfirmation, smsConfigured } = require('../utils/notify');
 const { shapeOrder } = require('./orders');
+const { getProfitSettings } = require('../utils/profit');
 
 module.exports = function instagramRoutes({ asyncRoute, record }) {
   const router = express.Router();
@@ -38,13 +39,13 @@ module.exports = function instagramRoutes({ asyncRoute, record }) {
   }
   const idFor = n => 'INS' + String(n).padStart(4, '0');
 
-  function read(buf) {
-    try { return { entries: null, ...parseSheet(readTable(buf, { maxRows: 600 })) }; }
+  async function read(buf) {
+    try { return { entries: null, ...parseSheet(readTable(buf, { maxRows: 600 }), { profitSettings: await getProfitSettings() }) }; }
     catch (err) { return { error: err.message }; }
   }
 
   router.post('/preview', rawSheet, asyncRoute(async (req, res) => {
-    const parsed = read(req.body);
+    const parsed = await read(req.body);
     if (parsed.error) return res.status(400).json({ message: parsed.error });
     const already = await findAlreadyImported(parsed.entries);
     const next = await nextNumber();
@@ -54,7 +55,7 @@ module.exports = function instagramRoutes({ asyncRoute, record }) {
       const dup = d ? already.get(d.importKey) || null : null;
       const row = {
         row: e.row, errors: e.errors, alreadyImported: dup,
-        summary: d ? { date: d.date, name: d.name, phone: d.phone, email: d.email, address: d.address, product: d.product, code: d.code, payment: d.payment, price: d.price } : null,
+        summary: d ? { date: d.date, name: d.name, phone: d.phone, email: d.email, address: d.address, product: d.product, code: d.code, payment: d.payment, price: d.price, buyingPrice: d.buyingPrice || null, finalCp: d.unitCost || null } : null,
         willGetId: null
       };
       if (d && !dup) row.willGetId = idFor(n++);
@@ -73,7 +74,7 @@ module.exports = function instagramRoutes({ asyncRoute, record }) {
   }));
 
   router.post('/import', rawSheet, asyncRoute(async (req, res) => {
-    const parsed = read(req.body);
+    const parsed = await read(req.body);
     if (parsed.error) return res.status(400).json({ message: parsed.error });
     const bad = parsed.entries.filter(e => e.errors.length);
     if (bad.length) {
@@ -95,7 +96,7 @@ module.exports = function instagramRoutes({ asyncRoute, record }) {
       const key = d.email || d.phone;
       payload.push({
         idx: i, user_id: customers.get(key).id, name: d.name, phone: d.phone, address: d.address, city: d.city, state: d.state, pincode: d.pincode,
-        payment: d.payment, price: d.price, placed_at: d.placedAt, product_name: d.product, product_code: d.code, import_key: d.importKey
+        payment: d.payment, price: d.price, placed_at: d.placedAt, product_name: d.product, product_code: d.code, import_key: d.importKey, unit_cost: d.unitCost == null ? null : d.unitCost
       });
     }
 
