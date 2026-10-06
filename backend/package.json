@@ -23,6 +23,7 @@
     "razorpay": "^2.9.8"
   },
   "overrides": {
+    "proxy-addr": "2.0.8",
     "qs": "6.16.0"
   }
 }

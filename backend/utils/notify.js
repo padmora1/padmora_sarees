@@ -50,6 +50,8 @@ function getTransporter() {
 }
 
 async function sendEmail({ to, subject, html, text, orderId, userId }) {
+  // Instagram customers who gave no e-mail are stored under an address that cannot receive mail - never try it.
+  if (to && String(to).toLowerCase().endsWith('@instagram.padmora.invalid')) to = null;
   if (!to) {
     await logNotification({ orderId, userId, channel: 'email', recipient: to, subject, status: 'skipped_no_recipient' });
     return { status: 'skipped_no_recipient' };
@@ -142,7 +144,7 @@ function orderConfirmationEmailHtml(order, customerName) {
       ${order.taxAmount ? `Tax: ₹${order.taxAmount}<br>` : ''}
     </p>
     <p style="text-align:right;font-size:16px;"><strong>Total: ₹${order.total}</strong></p>
-    <p>Shipping to: ${order.address.line1}, ${order.address.city}, ${order.address.state} ${order.address.pincode}</p>
+    <p>Shipping to: ${[order.address.line1, [order.address.city, order.address.state].filter(Boolean).join(', '), order.address.pincode && !String(order.address.line1 || '').includes(order.address.pincode) ? order.address.pincode : ''].filter(Boolean).join(', ')}</p>
     <p>Payment method: ${order.payment}</p>
     <p style="margin-top:24px;color:#999;font-size:12px;">You can track this order anytime at ${SITE_URL.replace(/^https?:\/\//, '')}/track-order</p>
     <p style="margin-top:10px;color:#999;font-size:12px;">Once it is delivered, any problem with it can be raised from your <a href="${inquiryLink(order.id)}" style="color:#7A1F2B;">order inquiry page</a> &mdash; no login needed.</p>

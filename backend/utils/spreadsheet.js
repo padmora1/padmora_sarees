@@ -72,7 +72,7 @@ function attr(attrs, name) {
   return m ? decodeXml(m[1]) : null;
 }
 
-function firstColumnFromXlsx(buf) {
+function loadFirstSheet(buf) {
   const zip = readZip(buf);
   const shared = [];
   const sst = zip.read('xl/sharedStrings.xml');
@@ -106,6 +106,12 @@ function firstColumnFromXlsx(buf) {
   const sheet = sheetPath && zip.read(sheetPath);
   if (!sheet) throw new Error('Could not find a worksheet in that file.');
 
+  return { shared, sheet };
+}
+
+function firstColumnFromXlsx(buf) {
+  const { shared, sheet } = loadFirstSheet(buf);
+
   const rows = [];
   sheet.replace(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g, (_, attrs, inner) => {
     const ref = attr(attrs, 'r');
@@ -126,6 +132,85 @@ function firstColumnFromXlsx(buf) {
     return '';
   });
   return rows.sort((a, b) => a.row - b.row).map(r => r.value);
+}
+
+function colIndex(letters) {
+  let n = 0;
+  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+}
+
+// Every cell of the first sheet as rows of strings ("" where a cell is empty), each with its row number in the file.
+function tableFromXlsx(buf) {
+  const { shared, sheet } = loadFirstSheet(buf);
+  const byRow = new Map();
+  sheet.replace(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g, (_, attrs, inner) => {
+    const ref = attr(attrs, 'r');
+    const m = ref && /^([A-Z]+)(\d+)$/.exec(ref);
+    if (!m || inner == null) return '';
+    const type = attr(attrs, 't');
+    let value = '';
+    if (type === 'inlineStr') value = textOf(inner);
+    else {
+      const v = /<v>([\s\S]*?)<\/v>/.exec(inner);
+      if (v) {
+        if (type === 's') value = shared[Number(v[1])] || '';
+        else if (type === 'b' || type === 'e') value = '';
+        else value = decodeXml(v[1]);
+      }
+    }
+    const r = Number(m[2]);
+    if (!byRow.has(r)) byRow.set(r, []);
+    byRow.get(r)[colIndex(m[1])] = value;
+    return '';
+  });
+  return [...byRow.entries()].sort((a, b) => a[0] - b[0]).map(([row, cells]) => ({ row, cells: Array.from(cells, c => c == null ? '' : c) }));
+}
+
+// RFC-4180 style: quoted cells may hold commas, quotes ("") and line breaks. The separator (comma, semicolon or tab)
+// is taken from the first line, because Excel in some regions saves "CSV" with semicolons.
+function tableFromCsv(buf) {
+  let text = buf.toString('utf8');
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const firstLine = text.split(/\r\n|\n|\r/)[0] || '';
+  const counts = { ',': 0, ';': 0, '\t': 0 };
+  let inQ = false;
+  for (const ch of firstLine) { if (ch === '"') inQ = !inQ; else if (!inQ && ch in counts) counts[ch]++; }
+  const sep = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+  const out = [];
+  let row = [], cell = '', quoted = false, line = 1, rowLine = 1;
+  const endRow = () => { row.push(cell); cell = ''; out.push({ row: rowLine, cells: row }); row = []; };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else quoted = false; }
+      else { if (ch === '\n') line++; cell += ch; }
+    } else if (ch === '"' && cell === '') quoted = true;
+    else if (ch === sep) { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      endRow(); line++; rowLine = line;
+    } else cell += ch;
+  }
+  if (cell !== '' || row.length) endRow();
+  return out;
+}
+
+// Reads the first sheet of an .xlsx / .csv as rows of cells: [{ row, cells: [...] }], blank rows left out.
+function readTable(buf, { maxRows = 5000 } = {}) {
+  if (!buf || !buf.length) throw new Error('The file is empty.');
+  if (buf.length > 4 && buf.readUInt32BE(0) === 0xD0CF11E0) {
+    throw new Error('That is an old .xls file. In Excel choose File → Save As → "Excel Workbook (.xlsx)" or "CSV", then upload again.');
+  }
+  let rows;
+  if (buf[0] === 0x50 && buf[1] === 0x4B) rows = tableFromXlsx(buf);
+  else {
+    if (buf.subarray(0, 512).includes(0)) throw new Error('That does not look like an .xlsx or .csv file.');
+    rows = tableFromCsv(buf);
+  }
+  rows = rows.filter(r => r.cells.some(c => String(c).trim() !== ''));
+  if (rows.length > maxRows) throw new Error(`That file has ${rows.length} rows — please upload at most ${maxRows} at a time.`);
+  return rows;
 }
 
 function firstColumnFromCsv(buf) {
@@ -262,4 +347,73 @@ function buildTemplateCsv() {
   return '﻿Order ID\r\n';
 }
 
-module.exports = { readOrderIds, buildTemplateXlsx, buildTemplateCsv, normalizeOrderId, MAX_IDS };
+// ---------- Instagram orders template ----------
+
+const INSTAGRAM_COLUMNS = [
+  { key: 'date', header: 'Order Date', width: 14, required: true },
+  { key: 'name', header: 'Customer Name', width: 24, required: true },
+  { key: 'phone', header: 'Phone', width: 16, required: true },
+  { key: 'address', header: 'Customer Address', width: 46, required: true },
+  { key: 'product', header: 'Product Name', width: 30, required: true },
+  { key: 'code', header: 'Product Code', width: 16, required: true },
+  { key: 'payment', header: 'Payment Method', width: 18, required: true },
+  { key: 'price', header: 'Price', width: 12, required: true },
+  { key: 'email', header: 'Email (optional)', width: 26 },
+  { key: 'city', header: 'City (optional)', width: 16 },
+  { key: 'state', header: 'State (optional)', width: 16 },
+  { key: 'pincode', header: 'Pincode (optional)', width: 16 }
+];
+
+const INSTAGRAM_NOTES = [
+  'How to fill the Instagram Orders sheet',
+  '',
+  'One row = one order = one saree. Fill the sheet called "Instagram Orders" and upload it in Admin → Instagram Orders.',
+  'The dark-red columns (up to Price) are required. Email, City, State and Pincode (pink) are optional.',
+  '',
+  'Order Date — the day the order was taken, like 05/10/2026 or 5 Oct 2026 (day first). Not a future date.',
+  'Customer Name — the name on the order.',
+  "Phone — the customer's mobile number. Customers use it to track the order and to raise an Order Inquiry, and the courier needs it. Add the country code (+44 …) for numbers outside India.",
+  'Customer Address — the full delivery address. If it ends with a 6-digit pincode, the Pincode column is filled in for you.',
+  'Product Name and Product Code — as you call the saree. These sarees need not exist in your Products list.',
+  'Payment Method — one of: UPI, COD, Bank Transfer, Card, Cash, Other.',
+  'Price — what the customer pays in rupees, a whole number, for example 4500 (include shipping if you charged it).',
+  'Email — if given, the customer also gets the order e-mail and can log in with it to see the order in their account.',
+  '',
+  'Example (do not copy this row into the sheet):',
+  '05/10/2026 | Anita Rao | 9876543210 | 12 MG Road, Indiranagar, Bengaluru, Karnataka 560038 | Kanjivaram silk – peacock green | KJV-204 | UPI | 8500'
+];
+
+const xmlEsc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const colLetter = i => { let s = ''; for (let n = i + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s; return s; };
+
+function buildInstagramTemplateXlsx() {
+  const cols = INSTAGRAM_COLUMNS;
+  const head = cols.map((c, i) => `<c r="${colLetter(i)}1" t="inlineStr" s="${c.required ? 1 : 2}"><is><t>${xmlEsc(c.header)}</t></is></c>`).join('');
+  const colXml = cols.map((c, i) => `<col min="${i + 1}" max="${i + 1}" width="${c.width}" customWidth="1"${c.key === 'price' ? '' : ' style="3"'}/>`).join('');
+  const sheet1 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${colXml}</cols><sheetData><row r="1" ht="22" customHeight="1">${head}</row></sheetData></worksheet>`;
+  const notes = INSTAGRAM_NOTES.map((t, i) => `<row r="${i + 1}"><c r="A${i + 1}" t="inlineStr"${i === 0 ? ' s="4"' : ''}><is><t>${xmlEsc(t)}</t></is></c></row>`).join('');
+  const sheet2 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols><col min="1" max="1" width="150" customWidth="1"/></cols><sheetData>${notes}</sheetData></worksheet>`;
+  return buildZip([
+    ['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`],
+    ['_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ['xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Instagram Orders" sheetId="1" r:id="rId1"/><sheet name="How to fill" sheetId="2" r:id="rId2"/></sheets></workbook>`],
+    ['xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+    // xf 0 normal · 1 required header (white on maroon) · 2 optional header (dark on pink) · 3 text cells · 4 bold title
+    ['xl/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF7A1F2B"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF3DDE3"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="2" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="0" fontId="1" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`],
+    ['xl/worksheets/sheet1.xml', sheet1],
+    ['xl/worksheets/sheet2.xml', sheet2]
+  ]);
+}
+
+function buildInstagramTemplateCsv() {
+  return '﻿' + INSTAGRAM_COLUMNS.map(c => c.header).join(',') + '\r\n';
+}
+
+module.exports = { readOrderIds, buildTemplateXlsx, buildTemplateCsv, normalizeOrderId, MAX_IDS, readTable, buildInstagramTemplateXlsx, buildInstagramTemplateCsv, INSTAGRAM_COLUMNS, buildZip };

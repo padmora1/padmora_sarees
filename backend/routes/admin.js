@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const {
-  supabase, must, getProducts, getProductById, getVariantById, getPrimaryImagesByVariantIds, syncProductMirrorFromDefaultVariant, getSetting, setSetting,
+  supabase, must, fetchAllRows, fetchAllByIds, getProducts, getProductById, getVariantById, getPrimaryImagesByVariantIds, syncProductMirrorFromDefaultVariant, getSetting, setSetting,
   getFabrics, getOccasions, getBadges, getCollections, getCollectionProductIds, getReelItems, getFaqItems,
   ADMIN_ROLES, logActivity
 } = require('../utils/db');
@@ -21,6 +21,7 @@ const { runBackup, listBackups, BACKUP_DIR } = require('../utils/backup');
 const { RETURN_REASONS } = require('../utils/returns');
 const { sendEmail, sendOrderStatusEmail, emailConfigured, smsConfigured } = require('../utils/notify');
 const reviewReminders = require('../utils/reviewReminders');
+const { publicEmail } = require('../utils/instagramOrders');
 const razorpayUtil = require('../utils/razorpay');
 const { MAX_ATTEMPTS: INQUIRY_MAX_ATTEMPTS, decisionEmail } = require('../utils/inquiry');
 const { checkWishlistAlerts } = require('../utils/wishlistAlerts');
@@ -40,6 +41,9 @@ router.use(requireAdminAuth, requirePermission);
 async function record(req, action, entity, entityId, before, after) {
   await logActivity({ adminId: req.adminId, adminName: req.adminName, action, entity, entityId, before, after });
 }
+
+// Admin -> Instagram Orders (upload a sheet of orders taken on Instagram). Its own file; same login and permission as above.
+router.use('/instagram-orders', require('./adminInstagram')({ asyncRoute, record }));
 
 // A Postgres unique_violation (23505) surfaces through must()'s wrapped
 // error as err.cause.code — used everywhere the old SQLite code checked
@@ -683,9 +687,9 @@ router.post('/variants/import', asyncRoute(async (req, res) => {
 // ---- Orders ----
 async function attachOrderExtras(orders) {
   const userIds = [...new Set(orders.map(o => o.user_id))];
-  const users = userIds.length ? must(await supabase.from('users').select('id, name, email').in('id', userIds), 'attachOrderExtras:users') : [];
+  const users = userIds.length ? await fetchAllByIds(userIds, c => supabase.from('users').select('id, name, email').in('id', c).order('id'), 'attachOrderExtras:users') : [];
   const userById = Object.fromEntries(users.map(u => [u.id, u]));
-  return orders.map(o => ({ ...o, customer_name: userById[o.user_id]?.name, customer_email: userById[o.user_id]?.email }));
+  return orders.map(o => ({ ...o, customer_name: userById[o.user_id]?.name, customer_email: publicEmail(userById[o.user_id]?.email) }));
 }
 
 // Each order line's product code (SKU) - looked up live from its colour, in one query for any number of orders.
@@ -696,21 +700,34 @@ async function attachSkus(orders) {
     const rows = must(await supabase.from('product_variants').select('id, sku').in('id', ids.slice(i, i + 200)), 'attachSkus');
     rows.forEach(r => { skuById[r.id] = r.sku; });
   }
-  orders.forEach(o => o.items.forEach(i => { i.sku = skuById[i.variantId] || ''; }));
+  // an Instagram order's saree is not in the catalogue, so its code is the one typed in the sheet
+  orders.forEach(o => o.items.forEach(i => { i.sku = skuById[i.variantId] || i.productCode || ''; }));
   return orders;
 }
 
-async function shapeAdminOrder(o, { full } = {}) {
-  const items = must(await supabase.from('order_items').select('*').eq('order_id', o.id), 'shapeAdminOrder:items');
-  const imageByVariant = await getPrimaryImagesByVariantIds(items.map(li => li.variant_id));
+// The Orders list shapes hundreds of orders at once: read all their items and pictures together instead of per order.
+async function shapeAdminOrderList(orders) {
+  const items = orders.length ? await fetchAllByIds(orders.map(o => o.id), c => supabase.from('order_items').select('*').in('order_id', c).order('id'), 'adminOrderList:items') : [];
+  const itemsByOrder = {};
+  items.forEach(li => (itemsByOrder[li.order_id] || (itemsByOrder[li.order_id] = [])).push(li));
+  const imageByVariant = {};
+  const variantIds = [...new Set(items.map(li => li.variant_id).filter(Boolean))];
+  for (let i = 0; i < variantIds.length; i += 150) Object.assign(imageByVariant, await getPrimaryImagesByVariantIds(variantIds.slice(i, i + 150)));
+  return Promise.all(orders.map(o => shapeAdminOrder(o, { preloaded: { items: itemsByOrder[o.id] || [], imageByVariant } })));
+}
+
+async function shapeAdminOrder(o, { full, preloaded } = {}) {
+  const items = preloaded ? preloaded.items : must(await supabase.from('order_items').select('*').eq('order_id', o.id), 'shapeAdminOrder:items');
+  const imageByVariant = preloaded ? preloaded.imageByVariant : await getPrimaryImagesByVariantIds(items.map(li => li.variant_id));
   const status = await computeStatus(o);
   const base = {
     id: o.id,
+    source: o.source || 'website',
     customerName: o.customer_name,
     customerEmail: o.customer_email,
     items: items.map(li => ({
       productId: li.product_id, variantId: li.variant_id, name: li.name, color: li.color, qty: li.qty, price: li.price,
-      imageUrl: imageByVariant[li.variant_id] || null
+      productCode: li.product_code || '', imageUrl: imageByVariant[li.variant_id] || null
     })),
     subtotal: o.subtotal,
     discount: o.discount,
@@ -761,9 +778,9 @@ async function shapeAdminOrder(o, { full } = {}) {
 }
 
 router.get('/orders', asyncRoute(async (req, res) => {
-  const orders = await attachOrderExtras(must(await supabase.from('orders').select('*').order('placed_at', { ascending: false }), 'listOrders'));
+  const orders = await attachOrderExtras(await fetchAllRows(() => supabase.from('orders').select('*').order('placed_at', { ascending: false }).order('id', { ascending: false }), 'listOrders'));
 
-  let shaped = await attachSkus(await Promise.all(orders.map(o => shapeAdminOrder(o))));
+  let shaped = await attachSkus(await shapeAdminOrderList(orders));
   const { status } = req.query;
   if (status && status !== 'all') {
     shaped = shaped.filter(o => o.status.toLowerCase() === String(status).toLowerCase());
@@ -775,21 +792,21 @@ router.get('/orders', asyncRoute(async (req, res) => {
 // Registered ahead of /orders/:id below — otherwise Express would match this
 // path as an :id lookup for an order literally named "export.csv" and 404.
 router.get('/orders/export.csv', asyncRoute(async (req, res) => {
-  const orders = await attachOrderExtras(must(await supabase.from('orders').select('*').order('placed_at', { ascending: false }), 'exportOrders'));
+  const orders = await attachOrderExtras(await fetchAllRows(() => supabase.from('orders').select('*').order('placed_at', { ascending: false }).order('id', { ascending: false }), 'exportOrders'));
   const orderIds = orders.map(o => o.id);
-  const allItems = orderIds.length ? must(await supabase.from('order_items').select('order_id, name, color, qty, variant_id').in('order_id', orderIds), 'exportOrders:items') : [];
-  const skuOf = (await attachSkus([{ items: allItems.map(i => ({ variantId: i.variant_id })) }]))[0].items;
+  const allItems = orderIds.length ? await fetchAllByIds(orderIds, c => supabase.from('order_items').select('order_id, name, color, qty, variant_id, product_code').in('order_id', c).order('id'), 'exportOrders:items') : [];
+  const skuOf = (await attachSkus([{ items: allItems.map(i => ({ variantId: i.variant_id, productCode: i.product_code })) }]))[0].items;
   allItems.forEach((i, k) => { i.sku = skuOf[k].sku; });
   const itemsByOrder = {};
   allItems.forEach(i => (itemsByOrder[i.order_id] || (itemsByOrder[i.order_id] = [])).push(i));
 
-  const header = ['orderId', 'placedAt', 'customerName', 'customerEmail', 'status', 'payment', 'items', 'units', 'subtotal', 'discount', 'shippingFee', 'total'];
+  const header = ['orderId', 'source', 'placedAt', 'customerName', 'customerEmail', 'status', 'payment', 'items', 'units', 'subtotal', 'discount', 'shippingFee', 'total'];
   const rows = [];
   for (const o of orders) {
     const items = itemsByOrder[o.id] || [];
     const itemsSummary = items.map(i => `${i.name}${i.color ? ' (' + i.color + ')' : ''}${i.sku ? ' [' + i.sku + ']' : ''} x${i.qty}`).join('; ');
     rows.push([
-      o.id, o.placed_at, o.customer_name, o.customer_email, await computeStatus(o), o.payment,
+      o.id, o.source || 'website', o.placed_at, o.customer_name, o.customer_email, await computeStatus(o), o.payment,
       itemsSummary, items.reduce((n, i) => n + i.qty, 0), o.subtotal, o.discount, o.shipping_fee, o.total
     ]);
   }
@@ -1187,7 +1204,7 @@ async function shapeAdminReturn(r) {
     orderTotal: order ? order.total : null,
     orderPayment: order ? order.payment : null,
     customerName: customer ? customer.name : null,
-    customerEmail: customer ? customer.email : null,
+    customerEmail: customer ? publicEmail(customer.email) : null,
     customerPhone: customer ? customer.phone : null,
     // where the order was delivered (and where a return pickup would be arranged)
     address: order ? { name: order.address_name, line1: order.address_line1, city: order.address_city, state: order.address_state, pincode: order.address_pincode, phone: order.address_phone } : null,
@@ -2104,9 +2121,8 @@ router.delete('/faq/:id(\\d{1,9})', asyncRoute(async (req, res) => {
 
 // ---- Customers ----
 router.get('/customers', asyncRoute(async (req, res) => {
-  const users = must(await supabase.from('users').select('*').eq('is_admin', false).order('created_at', { ascending: false }), 'listCustomers');
-  const userIds = users.map(u => u.id);
-  const orders = userIds.length ? must(await supabase.from('orders').select('user_id, total, cancelled_at, placed_at').in('user_id', userIds), 'listCustomers:orders') : [];
+  const users = await fetchAllRows(() => supabase.from('users').select('*').eq('is_admin', false).order('created_at', { ascending: false }).order('id'), 'listCustomers');
+  const orders = users.length ? await fetchAllRows(() => supabase.from('orders').select('user_id, total, cancelled_at, placed_at').order('id'), 'listCustomers:orders') : [];
   const aggByUser = {};
   orders.forEach(o => {
     const agg = aggByUser[o.user_id] || (aggByUser[o.user_id] = { orderCount: 0, totalSpent: 0, lastOrderAt: null });
@@ -2118,7 +2134,7 @@ router.get('/customers', asyncRoute(async (req, res) => {
     customers: users.map(c => {
       const agg = aggByUser[c.id] || { orderCount: 0, totalSpent: 0, lastOrderAt: null };
       return {
-        id: c.id, name: c.name, email: c.email, phone: c.phone, status: c.status || 'active',
+        id: c.id, name: c.name, email: publicEmail(c.email), phone: c.phone, status: c.status || 'active',
         isGuest: !!c.is_guest, flag: c.flag, adminNote: c.admin_note,
         createdAt: c.created_at, orderCount: agg.orderCount, totalSpent: agg.totalSpent, lastOrderAt: agg.lastOrderAt
       };
@@ -2295,8 +2311,8 @@ router.get('/analytics/sales-by-fabric', asyncRoute(async (req, res) => {
   const liveOrderIds = must(await supabase.from('orders').select('id').is('cancelled_at', null), 'salesByFabric:orders').map(o => o.id);
   if (!liveOrderIds.length) return res.json({ fabrics: [], totalRevenue: 0 });
 
-  const items = must(await supabase.from('order_items').select('product_id, qty, price').in('order_id', liveOrderIds), 'salesByFabric:items');
-  const productIds = [...new Set(items.map(i => i.product_id))];
+  const items = await fetchAllByIds(liveOrderIds, c => supabase.from('order_items').select('product_id, qty, price').in('order_id', c).order('id'), 'salesByFabric:items');
+  const productIds = [...new Set(items.map(i => i.product_id).filter(Boolean))];   // Instagram sarees have no product, they count under "Other"
   const products = productIds.length ? must(await supabase.from('products').select('id, fabric').in('id', productIds), 'salesByFabric:products') : [];
   const fabricByProduct = Object.fromEntries(products.map(p => [p.id, p.fabric || 'Other']));
 
@@ -2325,11 +2341,13 @@ router.get('/analytics/top-products', asyncRoute(async (req, res) => {
   ).map(o => o.id);
   if (!liveOrders.length) return res.json({ products: [] });
 
-  const items = must(await supabase.from('order_items').select('product_id, name, color, qty, price').in('order_id', liveOrders), 'topProducts:items');
+  const items = await fetchAllByIds(liveOrders, c => supabase.from('order_items').select('product_id, name, color, qty, price').in('order_id', c).order('id'), 'topProducts:items');
   const byProduct = new Map();
   items.forEach(i => {
-    if (!byProduct.has(i.product_id)) byProduct.set(i.product_id, { productId: i.product_id, name: i.name, revenue: 0, units: 0 });
-    const bucket = byProduct.get(i.product_id);
+    // Instagram sarees have no product id; each is counted under its own name instead of all piling into one "null" row
+    const key = i.product_id == null ? 'ig:' + i.name : i.product_id;
+    if (!byProduct.has(key)) byProduct.set(key, { productId: i.product_id, name: i.name, revenue: 0, units: 0 });
+    const bucket = byProduct.get(key);
     bucket.revenue += i.price * i.qty;
     bucket.units += i.qty;
   });
@@ -2350,7 +2368,7 @@ router.get('/analytics/slow-movers', asyncRoute(async (req, res) => {
 
   const recentOrders = must(await supabase.from('orders').select('id').is('cancelled_at', null).gte('placed_at', since.toISOString()), 'slowMovers:orders').map(o => o.id);
   const recentItems = recentOrders.length
-    ? must(await supabase.from('order_items').select('product_id').in('order_id', recentOrders), 'slowMovers:items')
+    ? await fetchAllByIds(recentOrders, c => supabase.from('order_items').select('product_id').in('order_id', c).order('id'), 'slowMovers:items')
     : [];
   const soldRecently = new Set(recentItems.map(i => i.product_id));
 
@@ -2392,7 +2410,7 @@ router.get('/analytics/customer-growth', asyncRoute(async (req, res) => {
 router.get('/analytics/customer-mix', asyncRoute(async (req, res) => {
   const orders = must(await supabase.from('orders').select('user_id').is('cancelled_at', null), 'customerMix:orders');
   const userIds = [...new Set(orders.map(o => o.user_id))];
-  const users = userIds.length ? must(await supabase.from('users').select('id, is_guest').in('id', userIds), 'customerMix:users') : [];
+  const users = userIds.length ? await fetchAllByIds(userIds, c => supabase.from('users').select('id, is_guest').in('id', c).order('id'), 'customerMix:users') : [];
   const guestByUser = Object.fromEntries(users.map(u => [u.id, !!u.is_guest]));
   let guestOrders = 0, registeredOrders = 0;
   orders.forEach(o => { if (guestByUser[o.user_id]) guestOrders += 1; else registeredOrders += 1; });
@@ -2481,7 +2499,7 @@ router.get('/analytics/wishlist', asyncRoute(async (req, res) => {
   const nonCancelledOrders = must(await supabase.from('orders').select('id, user_id').is('cancelled_at', null), 'wishlistAnalytics:orders');
   const userByOrderId = Object.fromEntries(nonCancelledOrders.map(o => [o.id, o.user_id]));
   const orderIds = nonCancelledOrders.map(o => o.id);
-  const purchasedItems = orderIds.length ? must(await supabase.from('order_items').select('order_id, product_id').in('order_id', orderIds), 'wishlistAnalytics:items') : [];
+  const purchasedItems = orderIds.length ? await fetchAllByIds(orderIds, c => supabase.from('order_items').select('order_id, product_id').in('order_id', c).order('id'), 'wishlistAnalytics:items') : [];
   const purchasedPairs = new Set(purchasedItems.map(i => `${userByOrderId[i.order_id]}:${i.product_id}`));
 
   const byProduct = new Map();

@@ -35,6 +35,9 @@ async function getTrackingMode() {
 }
 
 async function isManualOrder(order) {
+  // An Instagram order is dated by the day it was taken (often days ago), so the clock must never move it along:
+  // it stays Confirmed until the admin marks it, exactly like a live-store order.
+  if (order.source === 'instagram') return true;
   const { mode, since } = await getTrackingMode();
   return mode === 'manual' && new Date(order.placed_at).getTime() >= since;
 }

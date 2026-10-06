@@ -46,6 +46,7 @@
           <button data-tab="catalog">Catalog</button>
           <button data-tab="storefront">Storefront</button>
           <button data-tab="orders">Orders</button>
+          <button data-tab="instagram">Instagram Orders</button>
           <button data-tab="returns">Returns</button>
           <button data-tab="inventory">Inventory</button>
           <button data-tab="coupons">Coupons</button>
@@ -176,11 +177,36 @@
               </div>
             </details>
             <div class="order-filter-row" id="orderStatusFilters"></div>
+            <div class="order-filter-row" id="orderSourceFilters" aria-label="Where the order came from"></div>
             <div id="orderTools"></div>
             <div style="overflow-x:auto;">
               <table class="admin-table" id="ordersTable"></table>
             </div>
             <div id="orderDetail" style="display:none;"></div>
+          </div>
+
+          <div id="panel-instagram" style="display:none;">
+            <h2>Instagram Orders</h2>
+            <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Orders taken on Instagram — sarees that are not in your Products list. Upload a sheet and every row becomes an order numbered <strong>INS0001, INS0002…</strong> (carrying on from the last one). Customers can then track it and raise an Order Inquiry like any other order, and it appears in the Orders tab tagged <span class="src-tag ig">Instagram</span> so web and Instagram orders are packed, shipped and marked together.</p>
+            <div class="editor-card" style="margin-bottom:18px;">
+              <h3 style="font-family:var(--font-body);font-size:15px;margin-bottom:6px;">Upload orders</h3>
+              <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px;">One row = one order = one saree. Columns: <strong>Order Date, Customer Name, Phone, Customer Address, Product Name, Product Code, Payment Method, Price</strong> (Email, City, State, Pincode are optional). The Phone is what the customer uses to track the order. The sheet is checked first — nothing is created until every row is correct and you press Import; uploading the same sheet twice never duplicates orders.</p>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+                <button class="btn btn-outline btn-sm" id="igTplXlsx">⬇ Download Excel template (.xlsx)</button>
+                <button class="btn btn-outline btn-sm" id="igTplCsv">⬇ Download CSV template</button>
+              </div>
+              <div class="form-field"><label for="igFile">Filled-in sheet (.xlsx or .csv)</label><input type="file" id="igFile" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>
+              <p style="font-size:12px;color:var(--ink-soft);margin:-4px 0 12px;">Have an old .xls file? In Excel choose File → Save As → “Excel Workbook (.xlsx)”.</p>
+              <label style="font-size:12.5px;display:block;margin-bottom:12px;"><input type="checkbox" id="igNotify" checked> Send the order confirmation to customers who gave an e-mail</label>
+              <button class="btn btn-primary btn-sm" id="igCheckBtn">Check the sheet</button>
+              <div id="igResult" style="margin-top:16px;"></div>
+            </div>
+
+            <h3 style="font-family:var(--font-body);font-size:15px;margin-bottom:10px;">All Instagram orders</h3>
+            <div id="igTools"></div>
+            <div style="overflow-x:auto;">
+              <table class="admin-table" id="igTable"></table>
+            </div>
           </div>
 
           <div id="panel-returns" style="display:none;">
@@ -340,7 +366,7 @@
 
   // The open tab (and the sub-tab inside Catalog / Storefront) is kept in the address (#returns, #storefront/weaves),
   // so refreshing the page - or sharing / bookmarking the address - lands on the same screen, not on Overview.
-  const ADMIN_TABS = ['overview','products','catalog','storefront','orders','returns','inventory','coupons','customers','reviews','analytics','messages','settings','adminusers','activitylog'];
+  const ADMIN_TABS = ['overview','products','catalog','storefront','orders','instagram','returns','inventory','coupons','customers','reviews','analytics','messages','settings','adminusers','activitylog'];
   function setHash(tab, sub){ try{ history.replaceState(null, '', '#' + tab + (sub ? '/' + sub : '')); }catch(e){ /* ignore */ } }
   function hashTarget(){
     const [tab, sub] = (location.hash || '').replace(/^#/, '').split('/');
@@ -353,7 +379,7 @@
     const label = document.getElementById('adminMenuLabel');
     if(label && activeBtn) label.textContent = activeBtn.textContent.trim();
     closeAdminMenu();
-    ['overview','products','catalog','storefront','orders','returns','inventory','coupons','customers','reviews','analytics','messages','settings','adminusers','activitylog'].forEach(t=>{
+    ['overview','products','catalog','storefront','orders','instagram','returns','inventory','coupons','customers','reviews','analytics','messages','settings','adminusers','activitylog'].forEach(t=>{
       document.getElementById('panel-'+t).style.display = (t===tab) ? 'block' : 'none';
     });
     if(tab==='overview') loadOverview();
@@ -361,6 +387,7 @@
     if(tab==='catalog') renderCatalogTab();
     if(tab==='storefront') renderStorefrontTab();
     if(tab==='orders') loadOrders();
+    if(tab==='instagram') loadInstagram();
     if(tab==='returns') loadReturns();
     if(tab==='inventory'){ loadInventory(); loadPrebooks(); }
     if(tab==='coupons') loadCoupons();
@@ -1193,6 +1220,8 @@
   let openOrderId = null;
   let selectedOrderIds = new Set();
   const ORDER_FILTERS = ['all', 'Cancellation Requested', 'Confirmed', 'Packed', 'Shipped', 'Out for Delivery', 'Delivered', 'Cancelled'];
+  const ORDER_SOURCES = [['all', 'All orders'], ['website', 'Website'], ['instagram', 'Instagram']];
+  let orderSource = 'all';
 
   document.getElementById('printSelectedSlips').addEventListener('click', ()=>{
     if(!selectedOrderIds.size) return;
@@ -1291,8 +1320,8 @@
   }
   function visibleOrders(){
     const t = ordersTools, groups = t.groups();
-    let rows = ordersCache.filter(o => AdminLists.inRange(o.placedAt, t.state.from, t.state.to) && AdminLists.matches(groups, [
-      o.id, o.customerName, o.customerEmail, o.address && o.address.name, o.address && o.address.city, o.address && o.address.state, o.address && o.address.pincode,
+    let rows = ordersCache.filter(o => (orderSource === 'all' || (o.source || 'website') === orderSource) && AdminLists.inRange(o.placedAt, t.state.from, t.state.to) && AdminLists.matches(groups, [
+      o.id, o.source === 'instagram' ? 'instagram' : '', o.customerName, o.customerEmail, o.address && o.address.name, o.address && o.address.city, o.address && o.address.state, o.address && o.address.pincode,
       o.status, o.couponCode, o.total, o.items.map(i => i.name + ' ' + (i.color || '') + ' ' + (i.sku || '')).join(' ')
     ].join(' ')));
     const by = { new: (x, y) => new Date(y.placedAt) - new Date(x.placedAt), old: (x, y) => new Date(x.placedAt) - new Date(y.placedAt), high: (x, y) => y.total - x.total, low: (x, y) => x.total - y.total };
@@ -1302,8 +1331,8 @@
     const rows = visibleOrders();
     if(!rows.length){ toast('Nothing to export for this search and date range.', 'error'); return; }
     AdminLists.downloadCsv('padmora-orders-' + AdminLists.today() + '.csv',
-      ['Order ID','Placed at','Customer','E-mail','Status','Payment','Items (colour, SKU, qty)','Units','Subtotal','Discount','Shipping','Total','Coupon','City','State','Pincode'],
-      rows.map(o => [o.id, new Date(o.placedAt).toLocaleString('en-IN'), o.customerName, o.customerEmail, o.status, o.payment || '',
+      ['Order ID','Source','Placed at','Customer','E-mail','Status','Payment','Items (colour, SKU, qty)','Units','Subtotal','Discount','Shipping','Total','Coupon','City','State','Pincode'],
+      rows.map(o => [o.id, o.source === 'instagram' ? 'Instagram' : 'Website', new Date(o.placedAt).toLocaleString('en-IN'), o.customerName, o.customerEmail, o.status, o.payment || '',
         o.items.map(i => `${i.name}${i.color ? ' (' + i.color + ')' : ''}${i.sku ? ' [' + i.sku + ']' : ''} x${i.qty}`).join('; '), o.items.reduce((n, i) => n + i.qty, 0),
         o.subtotal, o.discount, o.shippingFee, o.total, o.couponCode || '', o.address && o.address.city || '', o.address && o.address.state || '', o.address && o.address.pincode || '']));
     toast(rows.length + ' order' + (rows.length === 1 ? '' : 's') + ' exported');
@@ -1314,6 +1343,13 @@
     document.getElementById('orderStatusFilters').innerHTML = ORDER_FILTERS.map(f=>
       `<button data-filter="${f}" class="${orderFilter===f?'active':''}">${f==='all'?'All':f}</button>`).join('');
     document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click', ()=>{ orderFilter = b.dataset.filter; loadOrders(); }));
+    document.getElementById('orderSourceFilters').innerHTML = ORDER_SOURCES.map(([k, label])=>
+      `<button data-source="${k}" class="${orderSource===k?'active':''}">${label}</button>`).join('');
+    document.querySelectorAll('[data-source]').forEach(b=>b.addEventListener('click', ()=>{
+      orderSource = b.dataset.source;
+      document.querySelectorAll('[data-source]').forEach(x=>x.classList.toggle('active', x.dataset.source === orderSource));
+      renderOrdersTable();
+    }));
     try{
       const q = (orderFilter !== 'all' && orderFilter !== 'Cancellation Requested') ? ('?status=' + encodeURIComponent(orderFilter)) : '';
       let {orders} = await adminApiFetch('/admin/orders' + q);
@@ -1340,7 +1376,7 @@
       <tbody>${orders.length ? orders.map(o=>`
         <tr data-order-row="${escHTML(o.id)}" class="${openOrderId === o.id ? 'is-open' : ''}">
           <td><input type="checkbox" class="order-select-box" data-select-order="${escHTML(o.id)}" ${selectedOrderIds.has(o.id)?'checked':''}></td>
-          <td class="order-id-cell ${o.viewedAt === null ? 'unviewed' : ''}" ${o.viewedAt === null ? 'title="Not opened yet"' : ''}>#${hl(o.id)}</td>
+          <td class="order-id-cell ${o.viewedAt === null ? 'unviewed' : ''}" ${o.viewedAt === null ? 'title="Not opened yet"' : ''}>#${hl(o.id)}${o.source === 'instagram' ? '<br><span class="src-tag ig">Instagram</span>' : ''}</td>
           <td style="white-space:nowrap;font-size:12.5px;">${AdminLists.fmtDate(o.placedAt)}<br><span style="font-size:11px;color:var(--ink-soft);">${new Date(o.placedAt).toLocaleTimeString('en-IN', {hour:'numeric', minute:'2-digit'})}</span></td>
           <td>${hl(o.customerName)}<br><span style="font-size:11px;color:var(--ink-soft);">${hl(o.customerEmail)}</span></td>
           <td style="font-size:12.5px;">${o.items.map(i=>`${hl(i.name)}${i.color?' ('+escHTML(i.color)+')':''} ×${i.qty}`).join('<br>')}</td>
@@ -1423,7 +1459,7 @@
       wrap.innerHTML = `
         <div class="editor-card">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-            <h3 style="font-family:var(--font-body);font-size:16px;">Order #${o.id} ${o.manualStatus?'<span class="manual-override-flag">MANUAL OVERRIDE ACTIVE</span>':''}</h3>
+            <h3 style="font-family:var(--font-body);font-size:16px;">Order #${o.id} ${o.source === 'instagram' ? '<span class="src-tag ig">Instagram</span>' : ''} ${o.manualStatus?'<span class="manual-override-flag">MANUAL OVERRIDE ACTIVE</span>':''}</h3>
             <div style="display:flex;gap:8px;">
               <button class="btn btn-sm btn-outline" id="printPackingSlip">Print Packing Slip</button>
               <button class="btn btn-sm" id="closeOrderDetail">Close ×</button>
@@ -1438,7 +1474,7 @@
             </div>
             <div class="detail-block">
               <h5>Delivery Address</h5>
-              <p>${escHTML(o.address.name)}<br>${escHTML(o.address.line1)}<br>${escHTML(o.address.city)}, ${escHTML(o.address.state)} ${escHTML(o.address.pincode)}<br>${escHTML(o.address.phone)}</p>
+              <p>${escHTML(o.address.name)}<br>${escHTML(o.address.line1)}${addrPlace(o.address) ? '<br>' + escHTML(addrPlace(o.address)) : ''}<br>${escHTML(o.address.phone)}</p>
             </div>
             <div class="detail-block">
               <h5>Items</h5>
@@ -1565,6 +1601,191 @@
     if(cell){ const c = cell.querySelector('.order-id-cell'); if(c){ c.classList.remove('unviewed'); c.removeAttribute('title'); } }
     adminApiFetch('/admin/orders/' + encodeURIComponent(id) + '/viewed', { method:'POST' }).catch(() => { if(o) o.viewedAt = null; });
   }
+
+  // "City, State Pincode" from only the parts that exist (an Instagram order keeps its whole address in one line)
+  function addrPlace(a){
+    return [[a.city, a.state].filter(Boolean).join(', '), a.pincode && !String(a.line1 || '').includes(a.pincode) ? a.pincode : ''].filter(Boolean).join(' ');
+  }
+
+  // ---- Instagram orders: upload a sheet of orders taken on Instagram, see them, and ship them like any other order ----
+  let igCache = [];
+  let igTools = null;
+  const IG_SITE = 'https://padmorasarees.com';
+  function ensureIgTools(){
+    if(igTools) return;
+    igTools = AdminLists.createTools(document.getElementById('igTools'), {
+      searchId: 'igSearchBox', noun: 'Instagram orders',
+      placeholder: 'Search order #, customer, phone, saree, code, city…',
+      sorts: [{value:'new',label:'Newest first'},{value:'old',label:'Oldest first'},{value:'high',label:'Highest price'},{value:'low',label:'Lowest price'}],
+      onChange: renderIgTable, exportCsv: exportIgCsv
+    });
+  }
+  function visibleIg(){
+    const t = igTools, groups = t.groups();
+    const rows = igCache.filter(o => AdminLists.inRange(o.placedAt, t.state.from, t.state.to) && AdminLists.matches(groups, [
+      o.id, o.customerName, o.phone, o.email, o.address.line1, o.address.city, o.address.state, o.address.pincode, o.status, o.payment, o.total,
+      o.items.map(i => i.name + ' ' + (i.code || '')).join(' ')
+    ].join(' ')));
+    const by = { new: (x, y) => new Date(y.placedAt) - new Date(x.placedAt) || y.id.localeCompare(x.id), old: (x, y) => new Date(x.placedAt) - new Date(y.placedAt) || x.id.localeCompare(y.id), high: (x, y) => y.total - x.total, low: (x, y) => x.total - y.total };
+    return rows.sort(by[t.state.sort] || by.new);
+  }
+  function exportIgCsv(){
+    const rows = visibleIg();
+    if(!rows.length){ toast('Nothing to export for this search and date range.', 'error'); return; }
+    AdminLists.downloadCsv('padmora-instagram-orders-' + AdminLists.today() + '.csv',
+      ['Order ID','Order date','Customer','Phone','E-mail','Address','City','State','Pincode','Saree','Product code','Payment','Price','Status'],
+      rows.map(o => [o.id, new Date(o.placedAt).toLocaleDateString('en-IN'), o.customerName, o.phone, o.email, o.address.line1, o.address.city, o.address.state, o.address.pincode,
+        o.items.map(i => i.name).join('; '), o.items.map(i => i.code).join('; '), o.payment, o.total, o.status]));
+    toast(rows.length + ' order' + (rows.length === 1 ? '' : 's') + ' exported');
+  }
+  async function loadInstagram(){
+    ensureIgTools();
+    try{
+      const {orders} = await adminApiFetch('/admin/instagram-orders');
+      igCache = orders;
+      renderIgTable();
+    }catch(e){ toast(e.message, 'error'); }
+  }
+  function renderIgTable(){
+    ensureIgTools();
+    const rows = visibleIg(), groups = igTools.groups();
+    const hl = text => AdminLists.highlight(text, groups);
+    igTools.setCount(rows.length, igCache.length);
+    document.getElementById('igTable').innerHTML = `
+      <thead><tr><th>Order</th><th>Date</th><th>Customer</th><th>Saree</th><th>Payment</th><th>Price</th><th>Status</th><th></th></tr></thead>
+      <tbody>${rows.length ? rows.map(o => `
+        <tr>
+          <td class="order-id-cell ${o.viewedAt === null ? 'unviewed' : ''}" ${o.viewedAt === null ? 'title="Not opened yet"' : ''}>#${hl(o.id)}</td>
+          <td style="white-space:nowrap;font-size:12.5px;">${AdminLists.fmtDate(o.placedAt)}</td>
+          <td>${hl(o.customerName)}<br><span style="font-size:11.5px;color:var(--ink-soft);">${hl(o.phone)}${o.email ? '<br>' + hl(o.email) : ''}</span></td>
+          <td style="font-size:12.5px;">${o.items.map(i => `${hl(i.name)}<br><span style="font-size:11.5px;color:var(--ink-soft);">Code: ${hl(i.code || '—')}</span>`).join('<br>')}</td>
+          <td style="font-size:12.5px;">${escHTML(o.payment || '')}</td>
+          <td>${money(o.total)}</td>
+          <td>${o.status === 'Cancelled' ? '<span class="order-status cancelled">Cancelled</span>' : `
+            <select class="admin-input" data-ig-status="${escHTML(o.id)}">
+              <option value="auto" ${!o.manualStatus ? 'selected' : ''}>Auto (${o.status})</option>
+              ${STAGE_NAMES.map(s => `<option value="${s}" ${o.manualStatus === s ? 'selected' : ''}>${s}</option>`).join('')}
+            </select>`}
+            ${o.cancelRequestStatus === 'Requested' ? '<br><span class="order-status" style="background:var(--gold);color:#fff;">Cancellation Requested</span>' : ''}</td>
+          <td><button class="btn btn-sm btn-outline" data-ig-view="${escHTML(o.id)}">View</button></td>
+        </tr>`).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--ink-soft);padding:24px;">${igCache.length ? 'No Instagram orders match this search and date range.' : 'No Instagram orders yet. Upload your first sheet above.'}</td></tr>`}</tbody>`;
+    document.querySelectorAll('[data-ig-status]').forEach(sel => sel.addEventListener('change', async () => {
+      try{
+        await adminApiFetch('/admin/orders/' + sel.dataset.igStatus + '/status', {method:'PUT', body: JSON.stringify({status: sel.value})});
+        toast('Order status updated');
+        loadInstagram();
+      }catch(e){ toast(e.message, 'error'); }
+    }));
+    document.querySelectorAll('[data-ig-view]').forEach(btn => btn.addEventListener('click', () => viewOrderFromElsewhere(btn.dataset.igView)));
+  }
+
+  (function(){
+    const resultEl = document.getElementById('igResult');
+    const fileEl = document.getElementById('igFile');
+    const checkBtn = document.getElementById('igCheckBtn');
+    let ready = null;   // the file that just passed the check, waiting for "Import"
+
+    document.getElementById('igTplXlsx').addEventListener('click', () => adminDownloadFile('/admin/instagram-orders/template.xlsx').catch(e => toast(e.message, 'error')));
+    document.getElementById('igTplCsv').addEventListener('click', () => adminDownloadFile('/admin/instagram-orders/template.csv').catch(e => toast(e.message, 'error')));
+    fileEl.addEventListener('change', () => { ready = null; resultEl.innerHTML = ''; });
+
+    async function postSheet(path, file){
+      const token = getAdminToken();
+      const res = await fetch(API_BASE + path, { method: 'POST', headers: Object.assign({'Content-Type': 'application/octet-stream'}, token ? {Authorization: 'Bearer ' + token} : {}), body: file });
+      let data = {};
+      try{ data = await res.json(); }catch(e){ /* no body */ }
+      if(res.status === 401){ clearAdminToken(); window.location.href = '/admin-login'; throw new Error('Please log in again.'); }
+      if(!res.ok) throw new Error(data.message || 'Something went wrong. Please try again.');
+      return data;
+    }
+
+    checkBtn.addEventListener('click', async () => {
+      const file = fileEl.files[0];
+      if(!file) return toast('Choose the filled-in sheet first.', 'error');
+      checkBtn.disabled = true; checkBtn.textContent = 'Reading…';
+      try{
+        const d = await postSheet('/admin/instagram-orders/preview', file);
+        renderCheck(d, file);
+      }catch(e){ ready = null; resultEl.innerHTML = ''; toast(e.message, 'error'); }
+      finally{ checkBtn.disabled = false; checkBtn.textContent = 'Check the sheet'; }
+    });
+
+    const chip = (n, label, color) => `<span style="display:inline-block;padding:4px 12px;border-radius:20px;background:${color};font-size:12.5px;margin:0 8px 8px 0;"><strong>${n}</strong> ${label}</span>`;
+
+    function renderCheck(d, file){
+      const c = d.counts;
+      ready = (c.errors === 0 && c.ready > 0) ? file : null;
+      resultEl.innerHTML = `
+        <div>${chip(c.ready, 'ready to import', 'rgba(126,160,67,0.18)')}${c.errors ? chip(c.errors, 'row' + (c.errors === 1 ? '' : 's') + ' with a problem', 'rgba(173,59,92,0.15)') : ''}${c.alreadyImported ? chip(c.alreadyImported, 'already imported (skipped)', 'rgba(61,34,41,0.08)') : ''}</div>
+        ${c.errors ? `<p style="font-size:13px;color:var(--maroon);margin:0 0 10px;"><strong>Nothing has been imported.</strong> Fix the rows marked ✗ in your sheet and check it again.</p>` : ''}
+        <div style="max-height:380px;overflow:auto;border:1px solid rgba(173,59,92,0.12);border-radius:4px;">
+          <table class="admin-table" style="min-width:640px;">
+            <thead><tr><th>Row</th><th></th><th>Customer</th><th>Saree</th><th>Date · Payment · Price</th><th>Result</th></tr></thead>
+            <tbody>${d.rows.map(r => {
+              const s = r.summary;
+              const bad = r.errors.length > 0;
+              return `<tr>
+                <td>${r.row}</td>
+                <td style="color:${bad ? 'var(--maroon)' : r.alreadyImported ? 'var(--ink-soft)' : 'var(--teal)'};font-weight:700;">${bad ? '✗' : r.alreadyImported ? '–' : '✓'}</td>
+                <td>${s ? escHTML(s.name) + '<br><span style="font-size:11.5px;color:var(--ink-soft);">' + escHTML(s.phone) + '</span>' : '—'}</td>
+                <td>${s ? escHTML(s.product) + '<br><span style="font-size:11.5px;color:var(--ink-soft);">Code: ' + escHTML(s.code) + '</span>' : '—'}</td>
+                <td style="font-size:12.5px;">${s ? escHTML(s.date) + ' · ' + escHTML(s.payment) + ' · ' + money(s.price) : '—'}</td>
+                <td style="font-size:12.5px;color:${bad ? 'var(--maroon)' : r.alreadyImported ? 'var(--ink-soft)' : 'var(--teal)'};">${bad ? r.errors.map(escHTML).join('<br>') : r.alreadyImported ? 'Already imported as #' + escHTML(r.alreadyImported) + ' — skipped' : 'Will become #' + escHTML(r.willGetId)}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>
+        <div style="margin-top:14px;">${ready
+          ? `<button class="btn btn-primary btn-sm" id="igImportBtn">Import ${c.ready} order${c.ready === 1 ? '' : 's'} (#${escHTML(d.rows.find(r => r.willGetId).willGetId)} onwards)</button>`
+          : (c.errors ? '' : `<p style="font-size:13px;color:var(--ink-soft);">There is nothing new to import from this sheet.</p>`)}</div>`;
+      const btn = document.getElementById('igImportBtn');
+      if(btn) btn.addEventListener('click', doImport);
+    }
+
+    async function doImport(){
+      if(!ready) return;
+      const btn = document.getElementById('igImportBtn');
+      btn.disabled = true; btn.textContent = 'Importing…';
+      try{
+        const notify = document.getElementById('igNotify').checked;
+        const r = await postSheet('/admin/instagram-orders/import?notify=' + (notify ? '1' : '0'), ready);
+        ready = null;
+        fileEl.value = '';
+        renderDone(r);
+        toast(r.created.length + ' Instagram order' + (r.created.length === 1 ? '' : 's') + ' added');
+        loadInstagram();
+      }catch(e){ toast(e.message, 'error'); btn.disabled = false; btn.textContent = 'Try again'; }
+    }
+
+    const dmText = c => `Hi ${c.name.split(' ')[0]}, your Padmora order ${c.id} (${c.product}) is confirmed. You can track it anytime at ${IG_SITE}/track-order with your Order ID ${c.id} and this phone number. Thank you for shopping with Padmora by Yashi!`;
+    async function copyText(text){
+      try{ await navigator.clipboard.writeText(text); }
+      catch(e){ const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+      toast('Message copied — paste it in the Instagram chat');
+    }
+
+    function renderDone(r){
+      const list = r.created;
+      resultEl.innerHTML = `
+        <div class="editor-card" style="background:rgba(126,160,67,0.12);">
+          <strong>${list.length} Instagram order${list.length === 1 ? '' : 's'} added — #${escHTML(list[0].id)}${list.length > 1 ? ' to #' + escHTML(list[list.length - 1].id) : ''}.</strong>
+          They are now in the list below and in the Orders tab (tagged Instagram), ready to pack and ship.
+          ${r.skippedAlreadyImported ? `<br><span style="font-size:12.5px;color:var(--ink-soft);">${r.skippedAlreadyImported} row${r.skippedAlreadyImported === 1 ? ' was' : 's were'} skipped because already imported.</span>` : ''}
+          ${r.notified ? `<br><span style="font-size:12.5px;color:var(--ink-soft);">Order confirmation sent to ${r.notified} customer${r.notified === 1 ? '' : 's'} who can receive one (e-mail given). Everyone else needs their Order ID from you — use the Copy button.</span>` : `<br><span style="font-size:12.5px;color:var(--ink-soft);">Customers need their Order ID to track the order — send it to them with the Copy button.</span>`}
+        </div>
+        <div style="margin:12px 0;"><button class="btn btn-outline btn-sm" id="igDownloadIds">⬇ Download order IDs (CSV)</button></div>
+        <div style="max-height:340px;overflow:auto;border:1px solid rgba(173,59,92,0.12);border-radius:4px;">
+          <table class="admin-table" style="min-width:560px;">
+            <thead><tr><th>Order ID</th><th>Customer</th><th>Saree</th><th>Price</th><th></th></tr></thead>
+            <tbody>${list.map((c, i) => `<tr><td><strong>#${escHTML(c.id)}</strong></td><td>${escHTML(c.name)}<br><span style="font-size:11.5px;color:var(--ink-soft);">${escHTML(c.phone)}</span></td><td>${escHTML(c.product)}<br><span style="font-size:11.5px;color:var(--ink-soft);">Code: ${escHTML(c.code)}</span></td><td>${money(c.price)}</td><td><button class="btn btn-sm btn-outline" data-ig-copy="${i}">Copy message</button></td></tr>`).join('')}</tbody>
+          </table>
+        </div>`;
+      resultEl.querySelectorAll('[data-ig-copy]').forEach(b => b.addEventListener('click', () => copyText(dmText(list[Number(b.dataset.igCopy)]))));
+      document.getElementById('igDownloadIds').addEventListener('click', () =>
+        AdminLists.downloadCsv('padmora-instagram-order-ids-' + AdminLists.today() + '.csv', ['Order ID','Customer','Phone','Saree','Product code','Price','Message to send'],
+          list.map(c => [c.id, c.name, c.phone, c.product, c.code, c.price, dmText(c)])));
+    }
+  })();
 
   // ---- Returns & Refunds ----
   const RETURN_FILTERS = ['all','Requested','Approved','Rejected','Received','Refunded'];
@@ -1710,7 +1931,7 @@
             <div class="detail-block">
               <h5>Customer</h5>
               <p><strong>${escHTML(r.customerName)}</strong><br>${escHTML(r.customerEmail)}<br>${escHTML(r.customerPhone || '')}</p>
-              ${r.address ? `<p style="margin-top:10px;"><span style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);">Delivery address</span><br>${escHTML(r.address.name)}<br>${escHTML(r.address.line1)}<br>${escHTML(r.address.city)}, ${escHTML(r.address.state)} ${escHTML(r.address.pincode)}${r.address.phone ? '<br>' + escHTML(r.address.phone) : ''}</p>` : ''}
+              ${r.address ? `<p style="margin-top:10px;"><span style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);">Delivery address</span><br>${escHTML(r.address.name)}<br>${escHTML(r.address.line1)}${addrPlace(r.address) ? '<br>' + escHTML(addrPlace(r.address)) : ''}${r.address.phone ? '<br>' + escHTML(r.address.phone) : ''}</p>` : ''}
             </div>
             <div class="detail-block">
               <h5>Reason</h5>
@@ -3931,7 +4152,7 @@
   // ever ran (a role can't unlock more by editing the DOM).
   const ROLE_TAB_ACCESS = {
     'Catalog Manager': ['overview','products','catalog','inventory','coupons','analytics','activitylog'],
-    'Order Manager': ['overview','orders','returns','inventory','analytics','activitylog'],
+    'Order Manager': ['overview','orders','instagram','returns','inventory','analytics','activitylog'],
     'Customer Support': ['overview','customers','reviews','messages','analytics','activitylog'],
     'Content Manager': ['overview','storefront','analytics','activitylog']
   };
