@@ -1578,3 +1578,32 @@ body.oi-open{overflow:hidden;}
 /* Where an order came from (Orders list, order detail, Instagram Orders) */
 .src-tag{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:10px;margin-top:3px;}
 .src-tag.ig{background:rgba(173,59,92,0.12);color:var(--maroon);border:1px solid rgba(173,59,92,0.3);}
+
+/* Cost price -> Final CP -> selling price, and the profit panel (admin) */
+.pricing-group{background:rgba(31,75,74,0.05);border:1px solid rgba(31,75,74,0.16);border-radius:6px;padding:14px 14px 4px;margin:4px 0 14px;}
+.pricing-group .pf-ro{background:rgba(0,0,0,0.04);color:var(--ink);cursor:default;border-style:dashed;}
+.pricing-group .pf-sp[readonly]{background:rgba(31,75,74,0.1);font-weight:700;color:var(--teal);border-style:solid;}
+.pf-profit{font-size:12.5px;color:var(--teal);margin:0 0 12px;min-height:1px;}
+.pf-profit.pf-loss{color:var(--maroon);font-weight:600;}
+.pf-try{background:rgba(201,162,75,0.1);border-radius:6px;padding:12px 14px;margin:6px 0 16px;}
+.pf-try-out{font-size:13px;line-height:1.7;}
+.pf-reprice{margin-top:26px;padding-top:18px;border-top:1px solid rgba(173,59,92,0.14);}
+.pf-reprice h4{font-family:var(--font-body);font-size:14px;margin-bottom:6px;}
+.pf-reprice p{font-size:12.5px;color:var(--ink-soft);margin-bottom:12px;line-height:1.6;}
+.profit-panel{margin-top:26px;padding:18px;border:1px solid rgba(31,75,74,0.2);border-radius:8px;background:rgba(31,75,74,0.03);}
+.profit-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px 16px;margin-bottom:8px;}
+.profit-head h3{font-size:16px;margin:0;}
+.profit-head .order-filter-row{margin-bottom:0;}
+.stat-card-profit strong{color:var(--teal);}
+.stat-card-profit.stat-card-warn strong{color:var(--maroon);}
+.profit-note{font-size:13px;line-height:1.6;color:var(--ink-soft);margin:10px 0;padding:10px 12px;border-left:3px solid var(--gold);background:rgba(201,162,75,0.1);border-radius:0 4px 4px 0;}
+.profit-note.profit-loss{border-left-color:var(--maroon);background:rgba(173,59,92,0.08);color:var(--maroon);}
+.profit-how{margin:14px 0;}
+.profit-how summary{cursor:pointer;font-weight:600;font-size:13.5px;color:var(--maroon-deep);}
+.profit-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13.5px;}
+.profit-table td{padding:7px 4px;border-bottom:1px solid rgba(0,0,0,0.06);}
+.profit-table td span{color:var(--ink-soft);font-size:11.5px;}
+.profit-table tr.sub td{font-weight:600;}
+.profit-table tr.total td{font-weight:700;font-size:15px;color:var(--teal);border-bottom:2px solid var(--teal);}
+.profit-foot{font-size:12px;color:var(--ink-soft);line-height:1.6;margin:8px 0 0;}
+.profit-sub{font-family:var(--font-body);font-size:14px;margin:18px 0 8px;}

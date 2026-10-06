@@ -33,6 +33,101 @@ const AdminColours = (function(){
   }
   const dotBg = key => (typeof swatchBg === 'function' ? swatchBg(key) : '#ccc');
 
+  // ---- cost, Final CP and selling price ------------------------------------
+  // The numbers come from Admin -> Settings (set by admin.html after it loads them). This is only the live preview: the server
+  // works the same sums out again when the colour is saved, and what it works out is what gets stored.
+  let CFG = null;
+  const setConfig = c => { CFG = c || null; };
+  const getConfig = () => CFG;
+  const rup = n => '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const rup0 = n => '₹' + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+
+  // Same arithmetic as backend/utils/profit.js computePricing (whole paise, so no floating-point drift).
+  function calc(buying, cfg){
+    const cost = Number(buying), c = cfg || CFG;
+    if(!c || !Number.isFinite(cost) || cost <= 0) return null;
+    const baseCents = Math.round(cost * 100) + Math.round(c.shippingCost * 100);
+    const gstCents = Math.round(baseCents * c.gstRate / 100);
+    const finalCp = (baseCents + gstCents) / 100;
+    const marginPct = finalCp > c.marginThreshold ? c.marginAbove : c.marginAtOrBelow;
+    const sellingPrice = Math.max(1, Math.round(finalCp * (1 + marginPct / 100)));
+    return { shipping: c.shippingCost, gstAmount: gstCents / 100, finalCp, marginPct, sellingPrice };
+  }
+
+  // attr: the data attribute the form reads its values from ("cb" in the new-colour block, "vf" in a saved colour's card).
+  // opts: { attr, cost, price, sale, requireCost }
+  function pricingHTML(opts){
+    const o = opts || {}, a = o.attr || 'cb', c = CFG;
+    if(!c) return '';
+    const ro = 'readonly tabindex="-1" class="admin-input pf-ro" style="width:100%;"';
+    return `
+    <div class="pricing-group" data-pf-group>
+      <div class="form-row-2">
+        <div class="form-field"><label>Buying price (₹) ${tip('What you pay for this saree. The shipping and GST from Settings are added to it to get your Final CP, and the selling price is worked out from that.')}</label>
+          <input type="number" class="admin-input" style="width:100%;" data-${a}="costPrice" data-pf="cost" min="0.01" step="0.01" placeholder="e.g. 3000" value="${o.cost != null ? esc(o.cost) : ''}"></div>
+        <div class="form-field"><label>Shipping (₹) ${tip('Taken from Settings → Product pricing & profit. You cannot change it here.')}</label>
+          <input type="text" ${ro} data-pf="ship" value="${rup(c.shippingCost)}"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-field"><label>GST <span data-pf="gstlabel">${esc(c.gstRate)}%</span> (₹) ${tip('GST on (buying price + shipping), at the rate in Settings. You cannot change it here.')}</label>
+          <input type="text" ${ro} data-pf="gst" value="—"></div>
+        <div class="form-field"><label>Final CP (₹) ${tip('Your total cost for one saree: (buying price + shipping) + GST.')}</label>
+          <input type="text" ${ro} data-pf="cp" value="—"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-field"><label>Margin on Final CP ${tip('Chosen automatically from Settings: one margin when the Final CP is above the limit, another when it is up to the limit.')}</label>
+          <input type="text" ${ro} data-pf="margin" value="—"></div>
+        <div class="form-field"><label><span data-pf="splabel">${o.sale ? 'Actual price (₹) — before the sale' : 'Final selling price (₹)'}</span> ${tip('Final CP + the margin. This is the price shown on the product page' + (o.sale ? ' (for a Sale saree, the price before the % off).' : '.'))}</label>
+          <input type="number" class="admin-input pf-sp" style="width:100%;" data-${a}="price" data-pf="sp" ${o.sale ? 'data-sale-actual' : ''} min="1" step="1" value="${o.price != null ? esc(o.price) : ''}" ${o.requireCost || o.cost != null ? 'readonly' : ''}></div>
+      </div>
+      <p class="pf-profit" data-pf="profit"></p>
+    </div>`;
+  }
+
+  // Keeps the read-only boxes in step with the buying price. getPct() gives the Sale % off (or '' when the saree is not on sale).
+  function wirePricing(root, opts){
+    const o = opts || {};
+    const q = k => root.querySelector(`[data-pf="${k}"]`);
+    const cost = q('cost'), sp = q('sp');
+    if(!cost || !sp) return { refresh(){}, setCost(){}, getCost(){ return ''; }, setSale(){} };
+    const st = { sale: !!o.sale };
+    function refresh(){
+      const r = calc(cost.value);
+      if(r){
+        q('gst').value = rup(r.gstAmount); q('cp').value = rup(r.finalCp);
+        q('margin').value = r.marginPct + '%' + (r.marginPct === CFG.marginAbove && r.finalCp > CFG.marginThreshold ? ' (Final CP above ' + rup0(CFG.marginThreshold) + ')' : ' (Final CP up to ' + rup0(CFG.marginThreshold) + ')');
+        sp.value = r.sellingPrice; sp.readOnly = true;
+        const pct = o.getPct ? Number(o.getPct()) : 0;
+        const sold = st.sale && pct > 0 && pct <= 90 ? Math.max(1, Math.round(r.sellingPrice * (100 - pct) / 100)) : r.sellingPrice;
+        const gain = sold - r.finalCp, margin = r.finalCp ? gain / r.finalCp * 100 : 0;
+        const line = q('profit');
+        line.className = 'pf-profit' + (gain < 0 ? ' pf-loss' : '');
+        line.textContent = gain < 0
+          ? `At ${rup0(sold)} you would lose ${rup(-gain)} on every piece — the sale price is below your Final CP.`
+          : `You earn ${rup(gain)} on each piece sold at ${rup0(sold)} (${margin.toFixed(0)}% on your cost).`;
+      }else{
+        ['gst', 'cp', 'margin'].forEach(k => { q(k).value = '—'; });
+        q('profit').textContent = '';
+        if(o.requireCost){ sp.value = ''; sp.readOnly = true; }
+        else { sp.readOnly = false; }   // a colour priced by hand before buying prices existed keeps its typed price
+      }
+      if(o.onChange) o.onChange(r);
+    }
+    cost.addEventListener('input', refresh);
+    refresh();
+    return {
+      refresh,
+      setCost(v){ cost.value = v; refresh(); },
+      getCost(){ return cost.value; },
+      setSale(on){
+        st.sale = !!on;
+        q('splabel').textContent = on ? 'Actual price (₹) — before the sale' : 'Final selling price (₹)';
+        if(on) sp.setAttribute('data-sale-actual', ''); else sp.removeAttribute('data-sale-actual');
+        refresh();
+      }
+    };
+  }
+
   // ---- one colour's fields -------------------------------------------------
   // opts: { title, removable, onSale, price, salePct, stock, low, colorName, shade }
   function blockHTML(opts){
@@ -47,9 +142,12 @@ const AdminColours = (function(){
         <div class="form-field"><label>Colour shade ${tip('Picks the little round colour dot and the group this colour appears under in the shop’s Colour filter. Choose the closest shade — it is chosen for you from the colour name, and you can change it.')}</label>
           <div class="shade-pick"><span class="shade-dot" data-cb-dot style="background:${dotBg(o.shade || 'maroon')};"></span><select class="admin-input" data-cb="swatch">${shadeOptionsHTML(o.shade || 'maroon')}</select></div></div>
       </div>
+      ${CFG ? pricingHTML({ attr: 'cb', cost: o.cost, price: o.price, sale, requireCost: true }) : `
       <div class="form-row-2">
         <div class="form-field"><label><span data-cb-pricelabel>${sale ? 'Actual price (₹)' : 'Price (₹)'}</span> ${tip('The price customers pay, in rupees. GST is already included — nothing is added on top. For a Sale saree, enter the actual (original) price and the % off below.')}</label>
           <input type="number" class="admin-input" style="width:100%;" data-cb="price" min="1" step="1" placeholder="e.g. 5999" value="${o.price != null ? esc(o.price) : ''}"></div>
+      </div>`}
+      <div class="form-row-2">
         <div class="form-field" data-cb-salefield style="${sale ? '' : 'display:none;'}"><label>Sale % off ${tip('How much cheaper the sale price is than the actual price. The sale price is worked out for you.')}</label>
           <input type="number" class="admin-input" style="width:100%;" data-cb="salePercent" min="1" max="90" placeholder="e.g. 20" value="${o.salePct != null ? esc(o.salePct) : ''}">
           <span class="sale-preview-line" data-cb-salepreview></span></div>
@@ -75,6 +173,9 @@ const AdminColours = (function(){
     const st = { files: [], shadeTouched: !!o.shadeTouched, priceTouched: false, pctTouched: false, sale: !!o.onSale, urls: [] };
     const name = q('[data-cb="colorName"]'), shade = q('[data-cb="swatch"]'), dot = q('[data-cb-dot]');
     const price = q('[data-cb="price"]'), pct = q('[data-cb="salePercent"]');
+    const costInput = q('[data-cb="costPrice"]');
+    let afterPricing = () => {};   // set below, once the sale preview exists
+    const pricing = costInput ? wirePricing(root, { requireCost: true, sale: !!o.onSale, getPct: () => pct.value, onChange: () => afterPricing() }) : null;
 
     const paintDot = () => { dot.style.background = dotBg(shade.value); };
     shade.addEventListener('change', () => { st.shadeTouched = true; paintDot(); });
@@ -91,8 +192,11 @@ const AdminColours = (function(){
       const sp = Math.max(1, Math.round(a * (100 - p) / 100));
       out.textContent = `Sale price ₹${sp.toLocaleString('en-IN')} — customers save ₹${(a - sp).toLocaleString('en-IN')}`;
     };
+    afterPricing = salePreview;
     price.addEventListener('input', () => { st.priceTouched = true; salePreview(); if(o.onPriceInput) o.onPriceInput(price.value, 'price'); });
-    pct.addEventListener('input', () => { st.pctTouched = true; salePreview(); if(o.onPriceInput) o.onPriceInput(pct.value, 'pct'); });
+    if(costInput) costInput.addEventListener('input', () => { st.costTouched = true; salePreview(); if(o.onPriceInput) o.onPriceInput(costInput.value, 'cost'); });
+    pct.addEventListener('input', () => { st.pctTouched = true; salePreview(); if(pricing) pricing.refresh(); if(o.onPriceInput) o.onPriceInput(pct.value, 'pct'); });
+    price.addEventListener('change', salePreview);
 
     const strip = q('[data-cb-photos]'), fileInput = q('[data-cb-file]'), addBtn = strip.querySelector('.upload-label');
     const drawPhotos = () => {
@@ -116,20 +220,21 @@ const AdminColours = (function(){
     function setSale(on){
       st.sale = !!on;
       q('[data-cb-salefield]').style.display = on ? '' : 'none';
-      q('[data-cb-pricelabel]').textContent = on ? 'Actual price (₹)' : 'Price (₹)';
+      const pl = q('[data-cb-pricelabel]'); if(pl) pl.textContent = on ? 'Actual price (₹)' : 'Price (₹)';
+      if(pricing) pricing.setSale(on);
       salePreview();
     }
     function read(){
       return {
-        colorName: name.value.trim(), swatch: shade.value, price: price.value, salePercent: st.sale ? pct.value : undefined,
+        colorName: name.value.trim(), swatch: shade.value, price: price.value, costPrice: costInput ? costInput.value : undefined, salePercent: st.sale ? pct.value : undefined,
         stock: q('[data-cb="stock"]').value, lowStockThreshold: q('[data-cb="lowStockThreshold"]').value, files: st.files.slice()
       };
     }
     function destroy(){ st.urls.forEach(u => URL.revokeObjectURL(u)); st.urls = []; }
     salePreview();
-    return { el: root, read, setSale, destroy, setPrice(v){ if(!st.priceTouched){ price.value = v; salePreview(); } }, setPct(v){ if(!st.pctTouched){ pct.value = v; salePreview(); } },
+    return { el: root, read, setSale, destroy, setPrice(v){ if(!costInput && !st.priceTouched){ price.value = v; salePreview(); } }, setCost(v){ if(pricing && !st.costTouched){ pricing.setCost(v); salePreview(); } }, setPct(v){ if(!st.pctTouched){ pct.value = v; if(pricing) pricing.refresh(); salePreview(); } },
       focusName(){ name.focus(); }, nameInput: name, priceInput: price };
   }
 
-  return { tip, blockHTML, wire, suggestShade, shadeOptionsHTML, esc };
+  return { tip, blockHTML, wire, suggestShade, shadeOptionsHTML, esc, setConfig, getConfig, calc, pricingHTML, wirePricing };
 })();

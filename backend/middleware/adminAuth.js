@@ -54,6 +54,8 @@ const ROLE_SCOPES = {
 // activity log — is visible to every admin role, since those are read-only
 // and useful regardless of what a role can edit.
 const PATH_SCOPES = [
+  // Profit and cost figures are for the Super Admin only (checked ahead of everything else).
+  ['/analytics/profit', 'superadmin'],
   // Stock CSV import/export/template live on the Inventory *screen* (orders
   // scope), even though they update the same variants table Catalog Manager
   // edits directly — checked ahead of the general /variants rule below so an

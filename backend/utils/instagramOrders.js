@@ -8,6 +8,7 @@ const bcrypt = require('bcryptjs');
 const { supabase, must } = require('./db');
 const { readTable, INSTAGRAM_COLUMNS } = require('./spreadsheet');
 const { normalizePhone } = require('../routes/auth');
+const profit = require('./profit');
 
 const MAX_ROWS = 500;
 const MAX_PRICE = 10000000;
@@ -28,6 +29,7 @@ const HEADER_ALIASES = {
   code: ['productcode', 'code', 'sku', 'itemcode', 'sareecode', 'productsku'],
   payment: ['paymentmethod', 'payment', 'paymentmode', 'paidby', 'paymenttype'],
   price: ['price', 'amount', 'total', 'priceinr', 'pricerupees', 'orderamount', 'orderprice'],
+  cost: ['buyingprice', 'costprice', 'cost', 'purchaseprice', 'buyprice', 'cp', 'buyingcost'],
   email: ['email', 'emailaddress', 'emailid', 'customeremail', 'mail'],
   city: ['city', 'town', 'customercity'],
   state: ['state', 'customerstate'],
@@ -108,7 +110,7 @@ function fingerprint(d) {
 }
 
 // rows: readTable() output. Returns { entries, error } - entries: [{ row, errors: [], data }] in file order.
-function parseSheet(rows, { now = Date.now() } = {}) {
+function parseSheet(rows, { now = Date.now(), profitSettings = null } = {}) {
   if (!rows.length) return { error: 'The sheet is empty. Fill in the template and upload it again.' };
   const index = mapHeaders(rows[0].cells);
   const missing = INSTAGRAM_COLUMNS.filter(c => c.required && index[c.key] === undefined).map(c => c.header);
@@ -172,6 +174,11 @@ function parseSheet(rows, { now = Date.now() } = {}) {
     if (!get('price')) errors.push('Price is empty.');
     else if (price === null) errors.push(`Price "${get('price')}" must be a whole number of rupees, like 4500.`);
     else d.price = price;
+
+    // optional buying price -> the saree's Final CP (buying + shipping + GST from Settings) is saved on the order for the profit figures
+    const buying = profit.parseBuyingPrice(index.cost === undefined ? '' : r.cells[index.cost]);
+    if (buying.error) errors.push(`Buying Price "${get('cost')}" must be a number above 0, like 3000.`);
+    else if (!buying.empty && profitSettings) { const pr = profit.computePricing(buying.cost, profitSettings); d.buyingPrice = buying.cost; d.unitCost = pr.finalCp; }
 
     const email = get('email').toLowerCase();
     if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 160)) errors.push(`Email "${get('email')}" is not a valid e-mail address.`);
