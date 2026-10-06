@@ -459,18 +459,27 @@
     const host = document.getElementById('profitSettingsForm');
     try{
       const {settings: st} = await adminApiFetch('/admin/settings/profit');
+      let tiers = st.marginTiers.map(t => ({ upTo: t.upTo, margin: t.margin }));
       host.innerHTML = `
         <div class="form-row-2">
           <div class="form-field"><label>GST on product (%)</label><input type="number" min="0" max="100" step="0.01" class="admin-input" style="width:100%;" id="pfGst" value="${st.gstRate}"></div>
           <div class="form-field"><label>Shipping cost per saree (₹)</label><input type="number" min="0" step="0.01" class="admin-input" style="width:100%;" id="pfShip" value="${st.shippingCost}"></div>
         </div>
         <p class="field-hint" style="margin:-6px 0 12px;">Shipping cost is what it costs <em>you</em> to ship one saree; it is added to the buying price. It is separate from the shipping fee customers pay at checkout (set under Shipping above).</p>
-        <div class="form-row-2">
-          <div class="form-field"><label>Margin limit — Final CP (₹)</label><input type="number" min="1" step="1" class="admin-input" style="width:100%;" id="pfLimit" value="${st.marginThreshold}"></div>
-          <div class="form-field"><label>Margin when Final CP is above the limit (%)</label><input type="number" min="0" max="1000" step="0.01" class="admin-input" style="width:100%;" id="pfAbove" value="${st.marginAbove}"></div>
+
+        <div class="pf-tiers">
+          <h4>Margin rules</h4>
+          <p>Your margin on the Final CP depends on how much the saree costs you. The rules are checked from the lowest limit upwards and the <strong>first one the Final CP fits</strong> is used. Add as many as you like.</p>
+          <div id="pfTierRows"></div>
+          <button type="button" class="btn btn-outline btn-sm" id="pfAddTier">+ Add a condition</button>
+          <div class="pf-tier pf-tier-above">
+            <span id="pfAboveLabel">Above the highest limit</span> → margin
+            <input type="number" min="0" max="1000" step="0.01" class="admin-input pf-tier-input" id="pfAbove" value="${st.marginAbove}" aria-label="Margin for everything above the highest limit">
+            <span>%</span>
+          </div>
         </div>
+
         <div class="form-row-2">
-          <div class="form-field"><label>Margin when Final CP is up to the limit (%)</label><input type="number" min="0" max="1000" step="0.01" class="admin-input" style="width:100%;" id="pfBelow" value="${st.marginAtOrBelow}"></div>
           <div class="form-field"><label>Payment gateway fee (%) <span style="color:var(--ink-soft);font-weight:400;">— optional</span></label><input type="number" min="0" max="20" step="0.01" class="admin-input" style="width:100%;" id="pfFee" value="${st.gatewayFeePct}"></div>
         </div>
         <p class="field-hint" style="margin:-6px 0 12px;">The gateway fee is only used in the profit figures: Razorpay's cut of online payments (about 2.36% with GST). Leave it at 0 to ignore it.</p>
@@ -483,32 +492,58 @@
 
         <div class="pf-reprice">
           <h4>Update prices of existing sarees</h4>
-          <p>Saving the settings above does not change sarees that are already in your shop — a colour is worked out again only when you save it. To bring every colour that has a buying price in line with the current settings in one go, preview the changes first.</p>
+          <p>Saving the settings above does not change sarees that are already in your shop — a colour is worked out again only when you save it. To bring every colour that has a buying price in line with the current settings in one go, preview the changes first. Prices you typed by hand are kept.</p>
           <button class="btn btn-outline btn-sm" id="pfRepricePreview">Preview price changes</button>
           <div id="pfRepriceOut" style="margin-top:12px;"></div>
         </div>`;
-      const read = () => ({
-        gstRate: document.getElementById('pfGst').value, shippingCost: document.getElementById('pfShip').value, marginThreshold: document.getElementById('pfLimit').value,
-        marginAbove: document.getElementById('pfAbove').value, marginAtOrBelow: document.getElementById('pfBelow').value, gatewayFeePct: document.getElementById('pfFee').value
-      });
-      const paintTry = () => {
-        const v = read(), cfg = { gstRate: Number(v.gstRate), shippingCost: Number(v.shippingCost), marginThreshold: Number(v.marginThreshold), marginAbove: Number(v.marginAbove), marginAtOrBelow: Number(v.marginAtOrBelow) };
-        const r = Object.values(cfg).every(Number.isFinite) ? AdminColours.calc(document.getElementById('pfTry').value, cfg) : null;
-        document.getElementById('pfTryOut').innerHTML = r
-          ? `(₹${Number(document.getElementById('pfTry').value).toLocaleString('en-IN')} + shipping ${rupee2(r.shipping)}) + GST ${rupee2(r.gstAmount)} = <strong>Final CP ${rupee2(r.finalCp)}</strong> → margin <strong>${r.marginPct}%</strong> → <strong>selling price ₹${r.sellingPrice.toLocaleString('en-IN')}</strong> (you earn ${rupee2(r.sellingPrice - r.finalCp)} per piece)`
-          : '<span style="color:var(--ink-soft);">Fill in the numbers above to see an example.</span>';
+      const num = id => document.getElementById(id).value;
+      const paintTiers = () => {
+        document.getElementById('pfTierRows').innerHTML = tiers.length ? tiers.map((t, i) => `
+          <div class="pf-tier" data-tier="${i}">
+            <span>If Final CP is up to ₹</span><input type="number" min="0.01" step="0.01" class="admin-input pf-tier-input pf-tier-limit" data-tf="upTo" value="${t.upTo}" aria-label="Final CP limit, rule ${i + 1}">
+            <span>→ margin</span><input type="number" min="0" max="1000" step="0.01" class="admin-input pf-tier-input" data-tf="margin" value="${t.margin}" aria-label="Margin, rule ${i + 1}"><span>%</span>
+            <button type="button" class="btn btn-sm pf-tier-del" data-tier-del="${i}" aria-label="Remove rule ${i + 1}">Remove</button>
+          </div>`).join('') : '<p class="field-hint" style="margin:0 0 8px;">No conditions yet — every saree gets the margin below.</p>';
+        document.querySelectorAll('[data-tier]').forEach(row => {
+          const i = Number(row.dataset.tier);
+          row.querySelectorAll('[data-tf]').forEach(inp => inp.addEventListener('input', () => { tiers[i][inp.dataset.tf] = inp.value; paintAbove(); paintTry(); }));
+        });
+        document.querySelectorAll('[data-tier-del]').forEach(b => b.addEventListener('click', () => { tiers.splice(Number(b.dataset.tierDel), 1); paintTiers(); paintAbove(); paintTry(); }));
+        paintAbove();
       };
-      host.querySelectorAll('input').forEach(i => i.addEventListener('input', paintTry));
-      paintTry();
+      const paintAbove = () => {
+        const limits = tiers.map(t => Number(t.upTo)).filter(Number.isFinite);
+        document.getElementById('pfAboveLabel').textContent = limits.length ? 'Above ₹' + Math.max(...limits).toLocaleString('en-IN') + ' (the highest limit)' : 'For every saree';
+      };
+      const read = () => ({
+        gstRate: num('pfGst'), shippingCost: num('pfShip'), marginAbove: num('pfAbove'), gatewayFeePct: num('pfFee'),
+        marginTiers: tiers.map(t => ({ upTo: t.upTo, margin: t.margin }))
+      });
+      function paintTry(){
+        const v = read();
+        const cfg = { gstRate: Number(v.gstRate), shippingCost: Number(v.shippingCost), marginAbove: Number(v.marginAbove), marginTiers: v.marginTiers };
+        const ok = Number.isFinite(cfg.gstRate) && Number.isFinite(cfg.shippingCost) && Number.isFinite(cfg.marginAbove);
+        const r = ok ? AdminColours.calc(document.getElementById('pfTry').value, cfg) : null;
+        document.getElementById('pfTryOut').innerHTML = r
+          ? `(₹${Number(document.getElementById('pfTry').value).toLocaleString('en-IN')} + shipping ${rupee2(r.shipping)}) + GST ${rupee2(r.gstAmount)} = <strong>Final CP ${rupee2(r.finalCp)}</strong> → margin <strong>${AdminColours.marginText(r)}</strong> → selling price ${rupee2(r.exactPrice)} → <strong>Final selling price ₹${r.sellingPrice.toLocaleString('en-IN')}</strong> (you earn ${rupee2(r.sellingPrice - r.finalCp)} per piece)`
+          : '<span style="color:var(--ink-soft);">Fill in the numbers above to see an example.</span>';
+      }
+      host.querySelectorAll('#pfGst, #pfShip, #pfAbove, #pfFee, #pfTry').forEach(i => i.addEventListener('input', paintTry));
+      document.getElementById('pfAddTier').addEventListener('click', () => {
+        const top = tiers.length ? Math.max(...tiers.map(t => Number(t.upTo) || 0)) : 0;
+        tiers.push({ upTo: top ? top * 2 : 1000, margin: '' }); paintTiers(); paintTry();
+        const rows = document.querySelectorAll('[data-tier] .pf-tier-limit'); if(rows.length) rows[rows.length - 1].focus();
+      });
+      paintTiers(); paintTry();
       document.getElementById('saveProfitSettings').addEventListener('click', async ()=>{
         const btn = document.getElementById('saveProfitSettings'); btn.disabled = true;
         try{
           await adminApiFetch('/admin/settings/profit', {method:'PUT', body: JSON.stringify(read())});
           await loadPricingConfig();
-          if(npMain && document.getElementById('addProductForm').style.display === 'none') buildAddProductColours();
           toast('Pricing & profit settings saved');
-        }catch(e){ toast(e.message, 'error'); }
-        btn.disabled = false;
+          await loadProfitSettings();   // shows the rules in their saved (sorted) order
+          if(npMain && document.getElementById('addProductForm').style.display === 'none') buildAddProductColours();
+        }catch(e){ toast(e.message, 'error'); btn.disabled = false; }
       });
       const out = document.getElementById('pfRepriceOut');
       document.getElementById('pfRepricePreview').addEventListener('click', async ()=>{
@@ -521,7 +556,8 @@
             <div style="max-height:300px;overflow:auto;border:1px solid rgba(173,59,92,0.12);border-radius:4px;">
               <table class="admin-table" style="min-width:560px;"><thead><tr><th>Saree</th><th>Buying</th><th>Final CP</th><th>Margin</th><th>Price</th></tr></thead>
               <tbody>${r.items.map(i => `<tr><td>${escHTML(i.product)}<br><span style="font-size:11.5px;color:var(--ink-soft);">${escHTML(i.colour)}</span></td><td>${money(i.buyingPrice)}</td>
-                <td>${i.oldFinalCp != null ? rupee2(i.oldFinalCp) + ' → ' : ''}${rupee2(i.newFinalCp)}</td><td>${i.oldMargin != null ? i.oldMargin + '% → ' : ''}${i.newMargin}%</td><td>${money(i.oldPrice)} → <strong>${money(i.newPrice)}</strong></td></tr>`).join('')}</tbody></table>
+                <td>${i.oldFinalCp != null ? rupee2(i.oldFinalCp) + ' → ' : ''}${rupee2(i.newFinalCp)}</td><td>${i.oldMargin != null ? i.oldMargin + '% → ' : ''}${i.newMargin}%</td>
+                <td>${i.manual ? money(i.oldPrice) + '<br><span style="font-size:11.5px;color:var(--ink-soft);">your own price — kept</span>' : money(i.oldPrice) + ' → <strong>' + money(i.newPrice) + '</strong>'}</td></tr>`).join('')}</tbody></table>
             </div>${r.changes > r.items.length ? `<p style="font-size:12px;color:var(--ink-soft);">Showing the first ${r.items.length}.</p>` : ''}
             <button class="btn btn-primary btn-sm" id="pfRepriceApply" style="margin-top:12px;">Update ${r.changes} price${r.changes === 1 ? '' : 's'}</button>`;
           document.getElementById('pfRepriceApply').addEventListener('click', async ()=>{
@@ -1108,7 +1144,8 @@
       const actual = card.querySelector('[data-sale-actual]'), pct = card.querySelector('[data-sale-pct]'), out = card.querySelector('.sale-preview');
       const refresh = () => { if(!actual || !pct || !out) return; const t = salePreviewText(actual.value, pct.value); out.textContent = t ? t.replace(/ — .*/, '').replace('Sale price ', '') : '—'; };
       // buying price -> Final CP -> selling price (the "actual price" of a Sale saree); the Sale % feeds the profit line
-      const pricing = card.querySelector('[data-pf-group]') ? AdminColours.wirePricing(card, { sale: onSale, getPct: () => pct ? pct.value : '', onChange: refresh }) : null;
+      const own = p.variants.find(x => String(x.id) === card.dataset.variantId);
+      const pricing = card.querySelector('[data-pf-group]') ? AdminColours.wirePricing(card, { sale: onSale, getPct: () => pct ? pct.value : '', onChange: refresh, manual: !!(own && own.priceManual) }) : null;
       if(!actual || !pct || !out) return;
       actual.addEventListener('input', refresh);
       pct.addEventListener('input', () => { refresh(); if(pricing) pricing.refresh(); });
