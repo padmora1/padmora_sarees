@@ -65,7 +65,7 @@ async function shapeOrder(order) {
     returnStatus: latestRequest ? latestRequest.status : null,
     returnRequestId: latestRequest ? latestRequest.id : null,
     canRequestReturn: inquiry.eligible,
-    inquiry: { eligible: inquiry.eligible, reason: inquiry.reason, secondChance: !!inquiry.secondChance, attempt: inquiry.attempt || inquiry.attemptsUsed, attemptsUsed: inquiry.attemptsUsed, maxAttempts: inquiry.maxAttempts, finalRejected: !!inquiry.finalRejected, activeStatus: inquiry.activeStatus || null, deadline: inquiry.deadline || null }
+    inquiry: { windowDays: inquiry.policy.windowDays, eligible: inquiry.eligible, reason: inquiry.reason, secondChance: !!inquiry.secondChance, attempt: inquiry.attempt || inquiry.attemptsUsed, attemptsUsed: inquiry.attemptsUsed, maxAttempts: inquiry.maxAttempts, finalRejected: !!inquiry.finalRejected, activeStatus: inquiry.activeStatus || null, deadline: inquiry.deadline || null }
   };
 }
 

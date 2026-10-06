@@ -28,7 +28,20 @@
 
   <section class="section" style="padding-top:36px;">
     <div class="container" style="max-width:760px;">
-      <div id="inqPage"><div class="loading-state"><span class="zari-spinner"></span>Opening your order…</div></div>
+      <div id="inqLookup" style="display:none;">
+        <div class="summary-card" style="position:static;">
+          <h3 style="font-size:16px;margin-bottom:6px;">Find your order</h3>
+          <p style="font-size:13px;color:var(--ink-soft);margin-bottom:14px;">Enter your Order ID<span id="lookupAsk"> and the e-mail or phone number you used at checkout</span>. You can raise an inquiry within <span id="lookupDays">7</span> days of delivery.</p>
+          <div class="form-error" id="lookupError"></div>
+          <form id="lookupForm">
+            <div class="form-field"><label for="lkOrder">Order ID</label><input type="text" id="lkOrder" placeholder="e.g. ZR12345" autocomplete="off" required></div>
+            <div class="form-field" id="lkContactField"><label for="lkContact">E-mail or phone used at checkout</label><input type="text" id="lkContact" placeholder="you@example.com or mobile number" autocomplete="email"></div>
+            <button type="submit" class="btn btn-primary" id="lkBtn">Continue</button>
+          </form>
+          <p style="font-size:12.5px;color:var(--ink-soft);margin-top:14px;">Your Order ID is in the e-mail we sent you. Checked out with an account? <a href="/login?redirect=/order-inquiry" style="color:var(--maroon);text-decoration:underline;">Log in</a> and you only need the Order ID.</p>
+        </div>
+      </div>
+      <div id="inqPage"><div class="loading-state"><span class="zari-spinner"></span>Opening…</div></div>
       <p style="font-size:12.5px;color:var(--ink-soft);margin-top:22px;">Have a Padmora account? <a href="/login?redirect=/account%23orders" style="color:var(--maroon);text-decoration:underline;">Log in</a> to see all your orders and inquiries in one place &mdash; anything you send here appears there too.</p>
     </div>
   </section>
@@ -40,36 +53,83 @@
 <script src="/js/cursor.js"></script>
 <script src="/js/order-inquiry.js"></script>
 <script>
-  const token = new URLSearchParams(location.search).get('token') || '';
+  let token = new URLSearchParams(location.search).get('token') || '';
+  let acctOrderId = '';          // set when a logged-in customer looked an order up by its ID
   const box = document.getElementById('inqPage');
   const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const LABEL = { Requested: 'Sent — waiting for our team to review it', Approved: 'Approved — please ship the saree(s) back to us', Received: 'Received — we are checking the saree(s)', Refunded: 'Refunded', Rejected: 'Not approved' };
+  const $ = id => document.getElementById(id);
+
+  function showLookup(){
+    box.innerHTML = '';
+    $('inqLookup').style.display = 'block';
+    if(isLoggedIn()){ $('lookupAsk').style.display = 'none'; $('lkContactField').style.display = 'none'; }
+  }
+
+  // Draws the order, where it stands, and the button (or the reason there is none).
+  function paint(order, inquiry, openOpts, autoOpen){
+    $('inqLookup').style.display = 'none';
+    const last = (inquiry.requests || [])[(inquiry.requests || []).length - 1];
+    box.innerHTML = `
+      <div class="summary-card" style="position:static;">
+        <h3 style="font-size:16px;margin-bottom:6px;">Order #${esc(order.id)}</h3>
+        <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px;">Placed ${new Date(order.placedAt).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'})} · ${order.deliveredAt && order.status === 'Delivered' ? 'Delivered ' + new Date(order.deliveredAt).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'}) : esc(order.status)}</p>
+        ${order.items.map(li => `<div class="order-item-row"><span>${esc(li.name)}${li.color ? ' — ' + esc(li.color) : ''} × ${li.qty}</span><span>${money(li.price * li.qty)}</span></div>`).join('')}
+        <div class="summary-row total"><span>Total</span><span>${money(order.total)}</span></div>
+      </div>
+      ${last ? `<p style="font-size:13.5px;color:var(--maroon);margin:16px 0 6px;">↩ Inquiry ${last.attempt} of ${inquiry.maxAttempts}: ${esc(LABEL[last.status] || last.status)}${last.adminNote ? ' — “' + esc(last.adminNote) + '”' : ''}</p>` : ''}
+      <div style="margin-top:18px;">
+        ${inquiry.eligible
+          ? `<button type="button" class="btn btn-primary" id="openInq">${inquiry.secondChance ? 'Send my second inquiry' : 'Start an order inquiry'}</button>`
+          : `<div class="oi-notice"><p>${esc(inquiry.message || '')}</p></div><a href="/contact" class="btn btn-primary btn-sm" style="margin-top:6px;">Contact us</a>`}
+      </div>
+      <p style="margin-top:14px;"><a href="#" id="otherOrder" style="font-size:12.5px;color:var(--maroon);text-decoration:underline;">Look up a different order</a></p>`;
+    const btn = $('openInq');
+    const open = () => OrderInquiry.open({ ...openOpts, onDone: () => load(false) });
+    if(btn) btn.addEventListener('click', open);
+    if(btn && autoOpen) open();
+    $('otherOrder').addEventListener('click', e => { e.preventDefault(); token = ''; acctOrderId = ''; history.replaceState(null, '', '/order-inquiry'); showLookup(); });
+  }
 
   async function load(autoOpen){
-    if(!token){ box.innerHTML = '<div class="empty-state"><p>This page needs the private link from your Padmora e-mail.</p><a href="/track-order" class="btn btn-primary" style="margin-top:14px;">Track an order</a></div>'; return; }
     try{
-      const { order, inquiry } = await apiFetch('/inquiry/' + encodeURIComponent(token));
-      const last = (inquiry.requests || [])[(inquiry.requests || []).length - 1];
-      box.innerHTML = `
-        <div class="summary-card" style="position:static;">
-          <h3 style="font-size:16px;margin-bottom:6px;">Order #${esc(order.id)}</h3>
-          <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px;">Placed ${new Date(order.placedAt).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'})} · ${esc(order.status)}</p>
-          ${order.items.map(li => `<div class="order-item-row"><span>${esc(li.name)}${li.color ? ' — ' + esc(li.color) : ''} × ${li.qty}</span><span>${money(li.price * li.qty)}</span></div>`).join('')}
-          <div class="summary-row total"><span>Total</span><span>${money(order.total)}</span></div>
-        </div>
-        ${last ? `<p style="font-size:13.5px;color:var(--maroon);margin:16px 0 6px;">↩ Inquiry ${last.attempt} of ${inquiry.maxAttempts}: ${esc(LABEL[last.status] || last.status)}${last.adminNote ? ' — “' + esc(last.adminNote) + '”' : ''}</p>` : ''}
-        <div style="margin-top:18px;">
-          ${inquiry.eligible
-            ? `<button type="button" class="btn btn-primary" id="openInq">${inquiry.secondChance ? 'Send my second inquiry' : 'Start an order inquiry'}</button>`
-            : `<p style="font-size:13.5px;color:var(--ink-soft);">${esc(inquiry.message || '')}</p><a href="/contact" class="btn btn-outline btn-sm" style="margin-top:10px;">Contact us</a>`}
-        </div>`;
-      const btn = document.getElementById('openInq');
-      if(btn) btn.addEventListener('click', () => OrderInquiry.open({ token, onDone: () => load(false) }));
-      if(btn && autoOpen) OrderInquiry.open({ token, onDone: () => load(false) });
+      if(token){
+        const { order, inquiry } = await apiFetch('/inquiry/' + encodeURIComponent(token));
+        return paint(order, inquiry, { token }, autoOpen);
+      }
+      if(acctOrderId){
+        const [{ order }, inquiry] = await Promise.all([apiFetch('/orders/' + encodeURIComponent(acctOrderId)), apiFetch('/returns/eligibility/' + encodeURIComponent(acctOrderId))]);
+        return paint(order, inquiry, { order }, autoOpen);
+      }
+      showLookup();
     }catch(e){
-      box.innerHTML = '<div class="empty-state"><p>' + esc(e.message) + '</p><a href="/track-order" class="btn btn-primary" style="margin-top:14px;">Track an order</a></div>';
+      if(token){ token = ''; history.replaceState(null, '', '/order-inquiry'); showLookup(); const er = $('lookupError'); er.textContent = e.message; er.classList.add('show'); }
+      else { acctOrderId = ''; showLookup(); const er = $('lookupError'); er.textContent = e.message; er.classList.add('show'); }
     }
   }
+
+  // Find the order by its ID. A guest also gives the e-mail or phone used at checkout (the same check as order tracking);
+  // a logged-in customer only needs the ID, and it must be one of their own orders.
+  $('lookupForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const er = $('lookupError'); er.classList.remove('show');
+    const id = $('lkOrder').value.trim().toUpperCase().replace(/^#/, '');
+    const contact = $('lkContact').value.trim();
+    if(!id){ er.textContent = 'Enter your Order ID.'; er.classList.add('show'); return; }
+    if(!isLoggedIn() && !contact){ er.textContent = 'Enter the e-mail or phone number you used at checkout.'; er.classList.add('show'); return; }
+    const btn = $('lkBtn'); btn.disabled = true; btn.textContent = 'Looking…';
+    try{
+      if(isLoggedIn()){ acctOrderId = id; await apiFetch('/orders/' + encodeURIComponent(id)); }
+      else{
+        const res = await apiFetch('/orders/guest/' + encodeURIComponent(id) + '?contact=' + encodeURIComponent(contact));
+        token = res.inquiryToken;
+        history.replaceState(null, '', '/order-inquiry?token=' + encodeURIComponent(token));
+      }
+      await load(true);
+    }catch(ex){ acctOrderId = ''; er.textContent = ex.message; er.classList.add('show'); }
+    btn.disabled = false; btn.textContent = 'Continue';
+  });
+
   load(true);
 </script>
 </body>
