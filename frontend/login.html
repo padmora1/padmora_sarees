@@ -23,24 +23,28 @@
     <div class="container">
       <div class="auth-shell">
         <h1>Welcome Back</h1>
-        <p class="sub">Log in to view your orders, wishlist and bag.</p>
+        <p class="sub" id="loginSub">Enter your e-mail and we will send you a 6-digit code to log in &mdash; no password needed.</p>
         <div class="form-error" id="formError"></div>
-        <form id="loginForm">
+
+        <form id="emailForm">
           <div class="form-field">
             <label>Email Address</label>
-            <input type="email" id="email" name="email" autocomplete="username" placeholder="you@example.com" required>
+            <input type="email" id="email" name="email" autocomplete="username email" placeholder="you@example.com" required>
           </div>
-          <div class="form-field">
-            <label>Password</label>
-            <div class="password-field">
-              <input type="password" id="password" name="current-password" autocomplete="current-password" placeholder="••••••••" required>
-              <button type="button" class="password-toggle" id="togglePassword" aria-label="Show password">Show</button>
-            </div>
-            <span class="field-hint"><a href="/forgot-password">Forgot password?</a></span>
-          </div>
-          <button type="submit" class="btn btn-primary btn-block" style="justify-content:center;">Log In</button>
+          <button type="submit" class="btn btn-primary btn-block" id="sendBtn" style="justify-content:center;">Send me a code</button>
         </form>
-        <p class="form-note">New to Padmora? <a href="/register">Create an account</a></p>
+
+        <form id="codeForm" style="display:none;" autocomplete="off">
+          <div class="code-sent" id="codeSent"></div>
+          <div class="form-field">
+            <label>6-digit code</label>
+            <input type="text" id="code" class="code-input" name="otp" autocomplete="one-time-code" inputmode="numeric" maxlength="6" pattern="\d{6}" placeholder="••••••" required>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block" id="verifyBtn" style="justify-content:center;">Log In</button>
+          <div class="resend-row"><span id="resendInfo"></span><button type="button" id="resendBtn" disabled>Send a new code</button></div>
+        </form>
+
+        <p class="form-note">New to Padmora? <a href="/register" id="toRegister">Create an account</a></p>
       </div>
     </div>
   </section>
@@ -53,36 +57,53 @@
 <script src="js/cursor.js"></script>
 <script>
   const redirectTo = new URLSearchParams(window.location.search).get('redirect') || '/';
+  const $ = id => document.getElementById(id);
+  const errBox = $('formError');
+  const showError = m => { errBox.textContent = m; errBox.classList.add('show'); };
+  const clearError = () => errBox.classList.remove('show');
+  let sentTo = '', timer = null;
+  // keep the redirect on the "create account" link
+  $('toRegister').href = '/register' + (location.search || '');
 
-  document.getElementById('loginForm').addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const errBox = document.getElementById('formError');
-    errBox.classList.remove('show');
+  function startCountdown(){
+    let left = 60; const btn = $('resendBtn'), info = $('resendInfo');
+    clearInterval(timer); btn.disabled = true;
+    const tick = () => { if(left <= 0){ clearInterval(timer); btn.disabled = false; info.textContent = 'Did not get it?'; return; } info.textContent = 'You can ask for a new code in ' + left + 's'; left--; };
+    tick(); timer = setInterval(tick, 1000);
+  }
+  async function sendCode(){
+    clearError();
+    const email = $('email').value.trim();
+    const btn = $('sendBtn'); btn.disabled = true; btn.textContent = 'Sending…';
     try{
-      const { token, user } = await apiFetch('/auth/login', {
-        method:'POST',
-        body: JSON.stringify({
-          email: document.getElementById('email').value,
-          password: document.getElementById('password').value
-        })
-      });
-      setToken(token);
-      setStoredUser(user);
+      await apiFetch('/auth/login/start', { method:'POST', body: JSON.stringify({ email }) });
+      sentTo = email;
+      $('emailForm').style.display = 'none'; $('codeForm').style.display = 'block'; $('loginSub').style.display = 'none';
+      $('codeSent').innerHTML = 'If <strong></strong> has an account, a 6-digit code is on its way. It works for 10 minutes. <button type="button" id="changeEmail">Change e-mail</button>';
+      $('codeSent').querySelector('strong').textContent = email;
+      $('changeEmail').addEventListener('click', () => { $('codeForm').style.display = 'none'; $('emailForm').style.display = 'block'; $('loginSub').style.display = ''; clearInterval(timer); $('code').value = ''; clearError(); });
+      $('code').focus(); startCountdown();
+    }catch(err){ showError(err.message); }
+    btn.disabled = false; btn.textContent = 'Send me a code';
+  }
+  $('emailForm').addEventListener('submit', e => { e.preventDefault(); sendCode(); });
+  $('resendBtn').addEventListener('click', async () => {
+    clearError(); const b = $('resendBtn'); b.disabled = true;
+    try{ await apiFetch('/auth/login/start', { method:'POST', body: JSON.stringify({ email: sentTo }) }); toast('A new code is on its way'); startCountdown(); }
+    catch(err){ showError(err.message); b.disabled = false; }
+  });
+  $('codeForm').addEventListener('submit', async e => {
+    e.preventDefault(); clearError();
+    const btn = $('verifyBtn'); btn.disabled = true; btn.textContent = 'Checking…';
+    try{
+      const { token, user } = await apiFetch('/auth/login/verify', { method:'POST', body: JSON.stringify({ email: sentTo, code: $('code').value.trim() }) });
+      setToken(token); setStoredUser(user);
       await mergeGuestDataIntoAccount();
-      toast('Welcome back, ' + user.name.split(' ')[0] + '!');
+      toast('Welcome back, ' + String(user.name || '').split(' ')[0] + '!');
       window.location.href = redirectTo;
-    }catch(err){
-      errBox.textContent = err.message;
-      errBox.classList.add('show');
-    }
+    }catch(err){ showError(err.message); btn.disabled = false; btn.textContent = 'Log In'; $('code').select(); }
   });
-
-  document.getElementById('togglePassword').addEventListener('click', (e)=>{
-    const input = document.getElementById('password');
-    const showing = input.type === 'text';
-    input.type = showing ? 'password' : 'text';
-    e.target.textContent = showing ? 'Show' : 'Hide';
-  });
+  $('code').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6); });
 </script>
 </body>
 </html>

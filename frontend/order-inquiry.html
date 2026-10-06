@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+<link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+<title>Order Inquiry — Padmora Sarees by Yashi</title>
+<meta name="description" content="Raise a return or refund inquiry for your Padmora order. No login needed.">
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body data-page="order-inquiry.html">
+
+<div id="site-header"></div>
+
+<main>
+  <div class="page-banner">
+    <div class="container">
+      <p class="breadcrumb"><a href="/">Home</a> / Order Inquiry</p>
+      <h1>Order Inquiry</h1>
+      <p>Something not right with your saree? Tell us and send photos &mdash; no login needed.</p>
+    </div>
+  </div>
+
+  <section class="section" style="padding-top:36px;">
+    <div class="container" style="max-width:760px;">
+      <div id="inqPage"><div class="loading-state"><span class="zari-spinner"></span>Opening your order…</div></div>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:22px;">Have a Padmora account? <a href="/login?redirect=/account%23orders" style="color:var(--maroon);text-decoration:underline;">Log in</a> to see all your orders and inquiries in one place &mdash; anything you send here appears there too.</p>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+<script src="/js/api.js"></script>
+<script src="/js/components.js"></script>
+<script src="/js/cursor.js"></script>
+<script src="/js/order-inquiry.js"></script>
+<script>
+  const token = new URLSearchParams(location.search).get('token') || '';
+  const box = document.getElementById('inqPage');
+  const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const LABEL = { Requested: 'Sent — waiting for our team to review it', Approved: 'Approved — please ship the saree(s) back to us', Received: 'Received — we are checking the saree(s)', Refunded: 'Refunded', Rejected: 'Not approved' };
+
+  async function load(autoOpen){
+    if(!token){ box.innerHTML = '<div class="empty-state"><p>This page needs the private link from your Padmora e-mail.</p><a href="/track-order" class="btn btn-primary" style="margin-top:14px;">Track an order</a></div>'; return; }
+    try{
+      const { order, inquiry } = await apiFetch('/inquiry/' + encodeURIComponent(token));
+      const last = (inquiry.requests || [])[(inquiry.requests || []).length - 1];
+      box.innerHTML = `
+        <div class="summary-card" style="position:static;">
+          <h3 style="font-size:16px;margin-bottom:6px;">Order #${esc(order.id)}</h3>
+          <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px;">Placed ${new Date(order.placedAt).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'})} · ${esc(order.status)}</p>
+          ${order.items.map(li => `<div class="order-item-row"><span>${esc(li.name)}${li.color ? ' — ' + esc(li.color) : ''} × ${li.qty}</span><span>${money(li.price * li.qty)}</span></div>`).join('')}
+          <div class="summary-row total"><span>Total</span><span>${money(order.total)}</span></div>
+        </div>
+        ${last ? `<p style="font-size:13.5px;color:var(--maroon);margin:16px 0 6px;">↩ Inquiry ${last.attempt} of ${inquiry.maxAttempts}: ${esc(LABEL[last.status] || last.status)}${last.adminNote ? ' — “' + esc(last.adminNote) + '”' : ''}</p>` : ''}
+        <div style="margin-top:18px;">
+          ${inquiry.eligible
+            ? `<button type="button" class="btn btn-primary" id="openInq">${inquiry.secondChance ? 'Send my second inquiry' : 'Start an order inquiry'}</button>`
+            : `<p style="font-size:13.5px;color:var(--ink-soft);">${esc(inquiry.message || '')}</p><a href="/contact" class="btn btn-outline btn-sm" style="margin-top:10px;">Contact us</a>`}
+        </div>`;
+      const btn = document.getElementById('openInq');
+      if(btn) btn.addEventListener('click', () => OrderInquiry.open({ token, onDone: () => load(false) }));
+      if(btn && autoOpen) OrderInquiry.open({ token, onDone: () => load(false) });
+    }catch(e){
+      box.innerHTML = '<div class="empty-state"><p>' + esc(e.message) + '</p><a href="/track-order" class="btn btn-primary" style="margin-top:14px;">Track an order</a></div>';
+    }
+  }
+  load(true);
+</script>
+</body>
+</html>

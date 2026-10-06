@@ -184,7 +184,7 @@
           </div>
 
           <div id="panel-returns" style="display:none;">
-            <h2>Returns &amp; Refunds</h2>
+            <h2>Order Inquiries <span style="font-size:14px;color:var(--ink-soft);font-family:var(--font-body);">— returns &amp; refunds</span></h2>
             <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Requested → Approved/Rejected → Received → Refunded. Refunds can only be processed once an item is marked Received — never before the saree is actually back in hand.</p>
             <div class="order-filter-row" id="returnStatusFilters"></div>
             <div id="returnTools"></div>
@@ -1630,7 +1630,7 @@
       <thead><tr><th>Return</th><th>Date</th><th>Order</th><th>Customer</th><th>Reason</th><th>Refund</th><th>Status</th><th></th></tr></thead>
       <tbody>${returns.length ? returns.map(r=>`
         <tr>
-          <td>#${hl(r.id)}</td>
+          <td>#${hl(r.id)}${(r.attempt || 1) > 1 ? '<br><span class="oi-attempt last">2nd &amp; last</span>' : ''}</td>
           <td style="white-space:nowrap;font-size:12.5px;">${AdminLists.fmtDate(r.requestedAt)}<br><span style="font-size:11px;color:var(--ink-soft);">${new Date(r.requestedAt).toLocaleTimeString('en-IN', {hour:'numeric', minute:'2-digit'})}</span></td>
           <td>#${hl(r.orderId)}</td>
           <td>${hl(r.customerName)}<br><span style="font-size:11px;color:var(--ink-soft);">${hl(r.customerEmail)}</span></td>
@@ -1660,6 +1660,7 @@
         actionHTML = `
           <div class="detail-block" style="border-color:var(--gold);">
             <h5>Decision</h5>
+            <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">${(r.attempt || 1) >= (r.maxAttempts || 2) ? '<strong style="color:var(--maroon);">This is the customer’s second and last inquiry.</strong> Rejecting it is final — they cannot send another for this order.' : 'If you reject this, the customer is e-mailed your note and gets <strong>one more chance</strong> (a second inquiry). Approving starts the return and refund.'}</p>
             <div class="form-field"><label>Note (required to reject, optional to approve — the customer sees this)</label>
               <textarea class="admin-input" id="retDecisionNote" rows="2"></textarea>
             </div>
@@ -1702,7 +1703,7 @@
       wrap.innerHTML = `
         <div class="editor-card">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-            <h3 style="font-family:var(--font-body);font-size:16px;">Return #${r.id} — Order #${r.orderId}</h3>
+            <h3 style="font-family:var(--font-body);font-size:16px;">Order inquiry #${r.id} — Order #${r.orderId} <span class="oi-attempt ${(r.attempt || 1) >= (r.maxAttempts || 2) ? 'last' : ''}">Inquiry ${r.attempt || 1} of ${r.maxAttempts || 2}${(r.attempt || 1) >= (r.maxAttempts || 2) ? ' · last chance' : ''}</span></h3>
             <button class="btn btn-sm" id="closeReturnDetail">Close ×</button>
           </div>
           <div class="detail-grid">
@@ -1752,7 +1753,7 @@
       if(rejectBtn) rejectBtn.addEventListener('click', async ()=>{
         const note = document.getElementById('retDecisionNote').value;
         if(!note.trim()){ toast('Add a note explaining the rejection', 'error'); return; }
-        const ok = await showConfirmDialog('This cannot be undone — the customer will see your note.', {title:'Reject this return?', confirmLabel:'Reject', danger:true});
+        const ok = await showConfirmDialog((r.attempt || 1) >= (r.maxAttempts || 2) ? 'This is their last chance, so this is final. The customer will see your note.' : 'The customer will see your note and get one more chance to send a new inquiry.', {title:'Reject this inquiry?', confirmLabel:'Reject', danger:true});
         if(!ok) return;
         try{
           await adminApiFetch('/admin/returns/' + r.id + '/decision', {method:'PUT', body: JSON.stringify({approve:false, adminNote: note})});

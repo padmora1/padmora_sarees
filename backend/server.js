@@ -11,6 +11,7 @@ const express = require('express');
 const cors = require('cors');
 
 const authRoutes = require('./routes/auth');
+const inquiryRoutes = require('./routes/inquiry');
 const productRoutes = require('./routes/products');
 const cartRoutes = require('./routes/cart');
 const checkoutRoutes = require('./routes/checkout');
@@ -101,6 +102,7 @@ app.use('/api', taxonomyRoutes);
 app.use('/api', contentRoutes);
 app.use('/api/admin-auth', adminHostOnly, adminAuthRoutes);
 app.use('/api/returns', returnsRoutes);
+app.use('/api/inquiry', inquiryRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/upcoming-sarees', upcomingSareesRoutes);
 // Not under /api — a sitemap/robots.txt lives at the site root by convention,
@@ -125,7 +127,7 @@ const FRONTEND_DIR = path.join(__dirname, 'frontend');
 const CLEAN_PAGES = [
   'shop', 'sale', 'collections', 'product', 'cart', 'checkout', 'account', 'wishlist', 'login', 'register',
   'forgot-password',
-  'track-order', 'about', 'our-weaves', 'trousseau', 'faq', 'contact',
+  'track-order', 'order-inquiry', 'about', 'our-weaves', 'trousseau', 'faq', 'contact',
   'policies', 'packing-slip',
   'upcoming-sarees'
 ];

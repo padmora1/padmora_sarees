@@ -20,6 +20,7 @@ const https = require('https');
 const { logNotification } = require('./db');
 
 const SITE_URL = process.env.SITE_URL || 'https://padmorasarees.com';
+const { inquiryLink } = require('./inquiryToken');
 
 let cachedTransporter = null;
 let cachedTransporterKey = null;
@@ -144,6 +145,7 @@ function orderConfirmationEmailHtml(order, customerName) {
     <p>Shipping to: ${order.address.line1}, ${order.address.city}, ${order.address.state} ${order.address.pincode}</p>
     <p>Payment method: ${order.payment}</p>
     <p style="margin-top:24px;color:#999;font-size:12px;">You can track this order anytime at ${SITE_URL.replace(/^https?:\/\//, '')}/track-order</p>
+    <p style="margin-top:10px;color:#999;font-size:12px;">Once it is delivered, any problem with it can be raised from your <a href="${inquiryLink(order.id)}" style="color:#7A1F2B;">order inquiry page</a> &mdash; no login needed.</p>
   </div>`;
 }
 
@@ -198,6 +200,7 @@ async function sendOrderStatusEmail(order, customer, status) {
       <p>Hi ${esc((customer && customer.name) || 'there')},</p>
       <p>${tpl.body}</p>
       <p style="font-size:13px;color:#666;">Order ID: <strong>${esc(order.id)}</strong></p>
+      ${status === 'Delivered' ? `<p style="margin-top:18px;">Is something not right with your saree? You have 7 days to tell us:</p><p><a href="${inquiryLink(order.id)}" style="display:inline-block;background:#ad3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:999px;font-family:Arial,sans-serif;font-weight:bold;">Order inquiry (return &amp; refund)</a></p><p style="font-size:12px;color:#8a6f6f;">No login needed &mdash; this private link is for your order only. You will need 3 photos of the saree.</p>` : ''}
       <p style="margin-top:24px;color:#999;font-size:12px;">Track it anytime at ${SITE_URL.replace(/^https?:\/\//, '')}/track-order</p>
     </div>`,
     orderId: order.id,

@@ -133,7 +133,9 @@ async function apiFetch(path, options = {}) {
 
     if (!res.ok) {
       if (res.status === 401) { clearToken(); }
-      throw new Error(data.message || 'Something went wrong. Please try again.');
+      const err = new Error(data.message || 'Something went wrong. Please try again.');
+      err.status = res.status; err.data = data;   // so a page can react to more than the message (e.g. "account already exists")
+      throw err;
     }
     return data;
   } finally {

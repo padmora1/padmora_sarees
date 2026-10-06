@@ -22,6 +22,7 @@ const { RETURN_REASONS } = require('../utils/returns');
 const { sendEmail, sendOrderStatusEmail, emailConfigured, smsConfigured } = require('../utils/notify');
 const reviewReminders = require('../utils/reviewReminders');
 const razorpayUtil = require('../utils/razorpay');
+const { MAX_ATTEMPTS: INQUIRY_MAX_ATTEMPTS, decisionEmail } = require('../utils/inquiry');
 const { checkWishlistAlerts } = require('../utils/wishlistAlerts');
 const { checkAbandonedCarts } = require('../utils/abandonedCart');
 const { checkLowStock } = require('../utils/lowStockAlerts');
@@ -1181,6 +1182,8 @@ async function shapeAdminReturn(r) {
   return {
     id: r.id,
     orderId: r.order_id,
+    attempt: r.attempt || 1,
+    maxAttempts: INQUIRY_MAX_ATTEMPTS,
     orderTotal: order ? order.total : null,
     orderPayment: order ? order.payment : null,
     customerName: customer ? customer.name : null,
@@ -1243,19 +1246,8 @@ router.put('/returns/:id(\\d{1,9})/decision', asyncRoute(async (req, res) => {
 
   const customer = must(await supabase.from('users').select('name, email').eq('id', existing.user_id).maybeSingle(), 'decideReturn:customer');
   if (customer && customer.email) {
-    await sendEmail({
-      to: customer.email,
-      subject: approve ? `Your return for order ${existing.order_id} was approved` : `Update on your return for order ${existing.order_id}`,
-      html: `<div style="font-family:Georgia,serif;max-width:480px;margin:0 auto;">
-        <h2 style="color:#7A1F2B;">${approve ? 'Return approved' : 'Return request update'}</h2>
-        <p>Hi ${customer.name || 'there'},</p>
-        <p>${approve
-          ? `Your return request for order <strong>${existing.order_id}</strong> has been approved. Please ship the item(s) back to us — we'll email you again once we've received and inspected them.`
-          : `We're not able to approve your return request for order <strong>${existing.order_id}</strong>.`}</p>
-        ${adminNote ? `<p style="color:#6f5a5c;">Note from our team: ${adminNote}</p>` : ''}
-      </div>`,
-      userId: existing.user_id
-    });
+    const mail = decisionEmail({ approve: !!approve, name: customer.name, orderId: existing.order_id, adminNote: (adminNote || '').trim(), attempt: existing.attempt });
+    await sendEmail({ to: customer.email, subject: mail.subject, html: mail.html, userId: existing.user_id });
   }
 
   const updated = must(await supabase.from('return_requests').select('*').eq('id', existing.id).single(), 'decideReturn:reread');
