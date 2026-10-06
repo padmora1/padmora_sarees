@@ -62,7 +62,7 @@ const PATH_SCOPES = [
   ['/products', 'catalog'], ['/variants', 'catalog'], ['/media', 'catalog'],
   ['/fabrics', 'catalog'], ['/occasions', 'catalog'], ['/badges', 'catalog'], ['/collections', 'catalog'],
   ['/coupons', 'catalog'],
-  ['/inventory', 'orders'], ['/orders', 'orders'], ['/notifications', 'orders'], ['/prebooks', 'orders'], ['/returns', 'orders'],
+  ['/inventory', 'orders'], ['/orders', 'orders'], ['/instagram-orders', 'orders'], ['/notifications', 'orders'], ['/prebooks', 'orders'], ['/returns', 'orders'],
   ['/customers', 'support'], ['/reviews', 'support'], ['/contact', 'support'],
   ['/content', 'content'], ['/reels', 'content'], ['/faq', 'content'], ['/upcoming-sarees', 'content'],
   ['/settings', 'superadmin'], ['/admin-users', 'superadmin'], ['/backups', 'superadmin'], ['/jobs', 'superadmin']

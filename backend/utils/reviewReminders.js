@@ -94,6 +94,7 @@ async function getConfig() {
 
 // What one order's reminder would contain (or null when there is nothing to ask for).
 async function reminderFor(order) {
+  if (order.source === 'instagram') return null;   // these sarees are not in the catalogue, so there is nothing to review
   const user = must(await supabase.from('users').select('id, name, email, is_guest').eq('id', order.user_id).maybeSingle(), 'reviewReminder:user');
   if (!user || user.is_guest || !user.email) return null;
   const ret = must(await supabase.from('return_requests').select('id').eq('order_id', order.id).limit(1), 'reviewReminder:return');

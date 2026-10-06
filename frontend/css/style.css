@@ -1574,3 +1574,7 @@ body.oi-open{overflow:hidden;}
 .phone-row .cc-select{flex:0 0 auto;width:140px;padding:12px 8px;border:1px solid rgba(173,59,92,0.25);background:#fff;border-radius:2px;font-size:13px;}
 .phone-row input{flex:1;min-width:0;}
 @media (max-width:420px){ .phone-row .cc-select{width:112px;font-size:12.5px;} }
+
+/* Where an order came from (Orders list, order detail, Instagram Orders) */
+.src-tag{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:10px;margin-top:3px;}
+.src-tag.ig{background:rgba(173,59,92,0.12);color:var(--maroon);border:1px solid rgba(173,59,92,0.3);}

@@ -34,11 +34,13 @@ async function shapeOrder(order) {
   );
   return {
     id: order.id,
+    source: order.source || 'website',
     items: items.map(li => ({
       id: li.id, productId: li.product_id, variantId: li.variant_id, name: li.name, color: li.color, qty: li.qty, price: li.price,
+      productCode: li.product_code || '',
       imageUrl: imageByVariant[li.variant_id] || null,
       reviewed: reviewedIds.has(li.product_id),
-      canReview: status === 'Delivered' && !reviewedIds.has(li.product_id)
+      canReview: status === 'Delivered' && !!li.product_id && !reviewedIds.has(li.product_id)   // Instagram sarees have no product page to review
     })),
     subtotal: order.subtotal,
     discount: order.discount,
@@ -156,7 +158,8 @@ router.get('/guest/:id', async (req, res) => {
     const { contact } = req.query;
     if (!contact) return res.status(400).json({ message: 'Enter the email or phone used for this order.' });
 
-    const order = must(await supabase.from('orders').select('*').eq('id', req.params.id).maybeSingle(), 'guestOrder:lookup');
+    const orderId = String(req.params.id || '').trim().replace(/^#/, '').toUpperCase();   // people type "ins0001" or "#INS0001"
+    const order = must(await supabase.from('orders').select('*').eq('id', orderId).maybeSingle(), 'guestOrder:lookup');
     if (!order) return res.status(404).json({ message: 'Order not found. Check your Order ID and try again.' });
 
     const user = must(await supabase.from('users').select('*').eq('id', order.user_id).maybeSingle(), 'guestOrder:user');
@@ -201,7 +204,7 @@ const MAX_FAILS_PER_CLIENT = 10;
 const MAX_FAILS_PER_ORDER = 5;
 
 router.post('/guest/:id/cancel-request', async (req, res) => {
-  const orderId = String(req.params.id || '').trim();
+  const orderId = String(req.params.id || '').trim().replace(/^#/, '').toUpperCase();
   const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
   const clientKey = 'guest-cancel:ip:' + (forwarded || req.ip || 'unknown');
   const orderKey = 'guest-cancel:order:' + orderId.toUpperCase();

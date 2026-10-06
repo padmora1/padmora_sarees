@@ -142,13 +142,13 @@
         <h4>Delivery Address</h4>
         <p><strong>${escHTML(a.name)}</strong><br>
         ${escHTML(a.line1)}<br>
-        ${escHTML(a.city)}, ${escHTML(a.state)} ${escHTML(a.pincode)}</p>
+        ${escHTML([[a.city, a.state].filter(Boolean).join(', '), a.pincode && !String(a.line1 || '').includes(a.pincode) ? a.pincode : ''].filter(Boolean).join(' '))}</p>
       </div>
 
       <table>
         <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th></tr></thead>
         <tbody>
-          ${o.items.map(i=>`<tr><td>${escHTML(i.name)}<span class="sub">${[i.fabric, i.color ? 'Colour: ' + i.color : ''].filter(Boolean).map(escHTML).join(' · ')}</span></td><td class="num">${escHTML(i.qty)}</td><td class="num">${money(i.price)}</td></tr>`).join('')}
+          ${o.items.map(i=>`<tr><td>${escHTML(i.name)}<span class="sub">${[i.fabric, i.color ? 'Colour: ' + i.color : '', o.source === 'instagram' && i.sku ? 'Code: ' + i.sku : ''].filter(Boolean).map(escHTML).join(' · ')}</span></td><td class="num">${escHTML(i.qty)}</td><td class="num">${money(i.price)}</td></tr>`).join('')}
         </tbody>
       </table>
 
