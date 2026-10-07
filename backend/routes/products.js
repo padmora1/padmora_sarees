@@ -1,8 +1,9 @@
 const express = require('express');
-const { supabase, must, getProducts, getProductById, getProductsFullByIds, getVariantById, getReelProducts, logSearchQuery, getCollectionBySlug } = require('../utils/db');
-const { toProductApiShape } = require('../utils/shape');
+const { supabase, must, getProducts, getProductById, getProductByIdFast, getProductsFullByIds, getVariantById, logSearchQuery, getCollectionBySlug } = require('../utils/db');
+const { toProductApiShape, toListShape } = require('../utils/shape');
 const { splitOccasions } = require('../utils/occasions');
 const { getUserIdIfPresent } = require('../middleware/auth');
+const pub = require('../utils/publicData');
 
 const router = express.Router();
 
@@ -49,18 +50,29 @@ function wordMatches(searchWord, haystackText, haystackWords) {
 // Registered before '/:id' — otherwise Express would match "reels" as an :id.
 router.get('/reels', async (req, res) => {
   try {
-    const reels = await getReelProducts();
-    res.json({ products: reels.filter(p => p.status !== 'archived').map(toProductApiShape) });
+    res.json({ products: await pub.reels() });
   } catch (err) {
     console.error('GET /products/reels failed:', err);
     res.status(500).json({ message: 'Something went wrong on the server.' });
   }
 });
 
+// The shop's filter lists (colours, weaves, price range) without downloading the catalogue.
+router.get('/facets', async (req, res) => {
+  try {
+    const f = await pub.facets(String(req.query.collection || '').slice(0, 120));
+    if (!f) return res.status(404).json({ message: 'Collection not found.' });
+    res.json(f);
+  } catch (err) {
+    console.error('GET /products/facets failed:', err);
+    res.status(500).json({ message: 'Something went wrong on the server.' });
+  }
+});
+
 router.get('/', async (req, res) => {
   try {
-    let products = (await getProducts()).filter(p => p.status !== 'archived').map(toProductApiShape);
-    const { fabric, occasion, color, minPrice, maxPrice, search, sort, badge, collection, limit } = req.query;
+    let products = (await getProducts()).filter(p => p.status !== 'archived').map(toListShape);
+    const { fabric, occasion, color, minPrice, maxPrice, search, sort, badge, collection, limit, offset } = req.query;
 
     // Sale-badged sarees live on their own page (see routes GET /?badge=sale
     // and frontend/sale.html) — excluded from every general listing (shop
@@ -115,7 +127,8 @@ router.get('/', async (req, res) => {
         const haystackWords = haystack.split(/\s+/);
         return words.some(w => wordMatches(w, haystack, haystackWords));
       });
-      await logSearchQuery(search, products.length);
+      // analytics only - never make the shopper wait for (or fail because of) the log write
+      logSearchQuery(search, products.length).catch(err => console.error('logSearchQuery failed:', err.message));
     }
 
     if (sort === 'low') products = [...products].sort((a, b) => a.price - b.price);
@@ -141,7 +154,9 @@ router.get('/', async (req, res) => {
     // tell whether there's more to load.
     const total = products.length;
     if (limit) {
-      products = products.slice(0, Math.max(1, Number(limit) || 20));
+      // `offset` lets "Load more" fetch only the next slice instead of re-sending everything already shown
+      const start = Math.max(0, Number(offset) || 0);
+      products = products.slice(start, start + Math.max(1, Number(limit) || 20));
     }
 
     res.json({ products, total });
@@ -172,7 +187,7 @@ router.get('/:id(\\d{1,9})', async (req, res) => {
     // at the URL) used to reach the database as NaN and blow up as a 500 —
     // it's just a "not found" like any other bad id.
     if (!Number.isInteger(id)) return res.status(404).json({ message: 'Saree not found.' });
-    const row = await getProductById(id);
+    const row = await getProductByIdFast(id);
     if (!row) return res.status(404).json({ message: 'Saree not found.' });
     const shaped = toProductApiShape(row);
 

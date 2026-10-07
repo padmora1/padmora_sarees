@@ -13,10 +13,11 @@
 <meta property="og:title" id="ogTitle" content="Padmora Sarees by Yashi">
 <meta property="og:description" id="ogDescription" content="Handloom and heritage sarees, sourced directly from India's weaving communities.">
 <meta property="og:image" id="ogImage" content="">
-<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fxjlgsatgajagzqdokbe.supabase.co" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preload" href="/fonts/jost-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/marcellus-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/style.css">
+<style>main{min-height:85vh;}</style>
 </head>
 <body data-page="shop.html">
 
@@ -119,7 +120,7 @@
         return `<div class="pd-flip-slide pd-video-slide" data-video="1"><video muted playsinline preload="none" data-src="${escHTML(m.url)}" poster="${poster}" aria-label="${escHTML(base + ' — video')}" disablepictureinpicture></video></div>`;
       }
       imgIndex++;
-      return `<div class="pd-flip-slide${i===0?' active':''}" data-img="${imgIndex}"><img src="${escHTML(sizedPhoto(m.url, shown, 78))}" alt="${escHTML(m.alt || (base + (images.length > 1 ? ' — photo ' + (imgIndex + 1) : '')))}" ${i===0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" draggable="false"></div>`;
+      return `<div class="pd-flip-slide${i===0?' active':''}" data-img="${imgIndex}"><img ${i===0 ? 'src' : 'data-src'}="${escHTML(sizedPhoto(m.url, shown, i===0 ? 76 : 70))}" alt="${escHTML(m.alt || (base + (images.length > 1 ? ' — photo ' + (imgIndex + 1) : '')))}" ${i===0 ? 'fetchpriority="high"' : ''} decoding="async" draggable="false"></div>`;
     }).join('');
     if (items.length === 1) return `<div class="pd-media-flip">${slides}</div>`;
     const dots = items.map((m, i) => `<span class="pd-media-dot${i===0?' active':''}" data-index="${i}"></span>`).join('');
@@ -158,6 +159,17 @@
     const offs = [];
     const on = (el, ev, fn, opts) => { if (!el) return; el.addEventListener(ev, fn, opts); offs.push(() => el.removeEventListener(ev, fn, opts)); };
 
+    // Only the first photo is fetched with the page. The others (carried as data-src) are fetched once it has arrived and
+    // the browser is idle - or at once when a slide is about to be shown - so the photo the shopper is looking at never
+    // has to share the connection with photos they have not asked for yet.
+    const loadSlide = s => { const im = s && s.querySelector('img[data-src]'); if (im) { im.src = im.dataset.src; im.removeAttribute('data-src'); } };
+    let restTimer = null;
+    const firstImg = slides[0].querySelector('img');
+    const loadRest = () => slides.forEach(loadSlide);
+    const queueRest = () => { restTimer = setTimeout(() => ('requestIdleCallback' in window ? requestIdleCallback(loadRest, { timeout: 1500 }) : loadRest()), 300); };
+    if (!firstImg || firstImg.complete) queueRest(); else on(firstImg, 'load', queueRest, { once: true });
+    offs.push(() => clearTimeout(restTimer));
+
     function playVideo(v){
       if (!v) return;
       if (!v.getAttribute('src') && v.dataset.src) v.src = v.dataset.src;
@@ -173,6 +185,7 @@
       const forward = target > active || (active === slides.length - 1 && target === 0);
       const current = slides[active];
       const next = slides[target];
+      loadSlide(next); loadSlide(slides[(target + 1) % slides.length]);
 
       stopVideo(vids[active]);
       next.style.transition = 'none';

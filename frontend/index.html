@@ -12,9 +12,9 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="Padmora Sarees by Yashi">
 <meta property="og:description" content="Handloom and heritage sarees sourced directly from India's weaving communities, with honest loom-to-you provenance on every piece.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fxjlgsatgajagzqdokbe.supabase.co" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preload" href="/fonts/jost-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/marcellus-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/style.css">
 <style>
   .reel-rail-wrap{position:relative;}
@@ -213,19 +213,33 @@
     const desktop = h.desktopImage || h.mobileImage || '';
     const link = escAttr(h.ctaLink || '/shop');
     const label = escAttr(h.ctaText || 'Shop All Sarees');
+    const reserved = section.offsetHeight;
     const media = desktop
       ? `<picture><source media="(max-width:760px)" srcset="${escAttr(sizedPhoto(h.mobileImage || desktop, 900, 75))}"><img class="home-hero-img" src="${escAttr(sizedPhoto(desktop, 1600, 75))}" alt="${escAttr(h.altText || 'Padmora sarees')}" fetchpriority="high" decoding="async"></picture>`
       : `<div class="home-hero-fallback"></div>`;
     section.innerHTML = `<a class="home-hero-link" href="${link}" aria-label="${label}">${media}<span class="home-hero-btn"><span>${label}</span><i><svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></i></span></a>`;
     section.style.display = '';
     divider.style.display = '';
+    // hold the space the placeholder had until the picture is in, so the page below does not jump up and back down
+    const img = section.querySelector('.home-hero-img');
+    if(img && !img.complete && reserved){
+      section.style.minHeight = reserved + 'px';
+      const free = () => { section.style.minHeight = ''; };
+      img.addEventListener('load', free, { once:true });
+      img.addEventListener('error', free, { once:true });
+      setTimeout(free, 6000);
+    }
   }
+  // The hero, weave rail, shop-all band and reels come back in ONE request (a phone pays for every round trip); each
+  // section falls back to its own request if that ever fails.
+  const homeRequest = window.__HOME__ ? Promise.resolve(window.__HOME__) : apiFetch('/home').catch(() => null);
   async function renderHero(){
     let cached = null;
     try{ cached = localStorage.getItem(HERO_CACHE); }catch(e){ /* private mode */ }
     if(cached){ try{ paintHero(JSON.parse(cached)); }catch(e){ /* bad copy: wait for the server */ } }
     try{
-      const {hero: h} = await apiFetch('/content/hero');
+      const home = await homeRequest;
+      const h = home ? home.hero : (await apiFetch('/content/hero')).hero;
       const fresh = JSON.stringify(h || null);
       if(fresh !== cached){
         paintHero(h);
@@ -269,8 +283,13 @@
     try{ cached = localStorage.getItem(WEAVE_CACHE); }catch(e){ /* private mode */ }
     if(cached){ try{ const c = JSON.parse(cached); paintCatRail(c.fabrics, c.sec); }catch(e){ /* wait for the server */ } }
     try{
-      const [{fabrics}, secRes] = await Promise.all([apiFetch('/fabrics'), apiFetch('/content/weave-section').catch(() => null)]);
-      const sec = (secRes && secRes.section) || {};
+      const home = await homeRequest;
+      let fabrics, sec;
+      if(home){ fabrics = home.fabrics; sec = home.weaveSection || {}; }
+      else{
+        const [f, secRes] = await Promise.all([apiFetch('/fabrics'), apiFetch('/content/weave-section').catch(() => null)]);
+        fabrics = f.fabrics; sec = (secRes && secRes.section) || {};
+      }
       const fresh = JSON.stringify({ fabrics, sec });
       if(fresh !== cached){
         paintCatRail(fabrics, sec);
@@ -354,7 +373,8 @@
 
   async function loadReels(){
     try{
-      const {products} = await apiFetch('/products/reels');
+      const home = await homeRequest;
+      const products = home ? home.reels : (await apiFetch('/products/reels')).products;
       document.getElementById('reelRail').innerHTML = products.map(reelCardHTML).join('');
       bindReelHoverPlay();
       bindReelAutoPlay();
@@ -418,7 +438,8 @@
   async function renderShopAll(){
     const stage = document.getElementById('shopAllStage');
     try{
-      const {products} = await apiFetch('/content/shop-all');
+      const home = await homeRequest;
+      const products = home ? home.shopAll : (await apiFetch('/content/shop-all')).products;
       if(!products.length){ stage.style.display = 'none'; return; }
       const slots = [{sx:-1,y:'18px',rot:'-9deg',depth:-14,z:1,delay:'-2s'},{sx:0,y:'-10px',rot:'0deg',depth:10,z:3,delay:'0s'},{sx:1,y:'20px',rot:'9deg',depth:-14,z:2,delay:'-4s'}];
       // Fewer than three sarees: use the outer/centre slots that look balanced rather than leaving a hole.

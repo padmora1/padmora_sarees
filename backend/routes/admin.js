@@ -278,7 +278,7 @@ router.get('/stats', asyncRoute(async (req, res) => {
 
 // ---- Products ----
 router.get('/products', asyncRoute(async (req, res) => {
-  res.json({ products: (await getProducts()).map(adminProductShape) });
+  res.json({ products: (await getProducts({ fresh: true })).map(adminProductShape) });
 }));
 
 router.get('/products/:id(\\d{1,9})', asyncRoute(async (req, res) => {
@@ -1888,7 +1888,7 @@ router.delete('/badges/:id(\\d{1,9})', asyncRoute(async (req, res) => {
 // not sale-badged (sale sarees live only on /sale) — so admin and storefront
 // always agree.
 router.get('/collections', asyncRoute(async (req, res) => {
-  const [collections, products] = await Promise.all([getCollections({ activeOnly: false }), getProducts()]);
+  const [collections, products] = await Promise.all([getCollections({ activeOnly: false }), getProducts({ fresh: true })]);
   const visibleIds = new Set(products.filter(p => p.status !== 'archived' && p.badge !== 'sale').map(p => p.id));
   res.json({
     collections: collections.map(c => ({ ...c, productCount: c.productIds.filter(id => visibleIds.has(id)).length }))

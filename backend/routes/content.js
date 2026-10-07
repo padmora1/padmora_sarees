@@ -1,6 +1,6 @@
 const express = require('express');
-const { getSetting, getFaqItems, getProducts, getProductById } = require('../utils/db');
-const { toProductApiShape } = require('../utils/shape');
+const { getSetting, getFaqItems } = require('../utils/db');
+const pub = require('../utils/publicData');
 const { DEFAULT_FOOTER } = require('../utils/footerConfig');
 const { DEFAULT_ANNOUNCEMENT, DEFAULT_WEAVE_SECTION } = require('../utils/homeSections');
 
@@ -15,29 +15,32 @@ router.get('/content/hero', async (req, res) => {
   }
 });
 
-// The three sarees in the homepage "Shop all sarees" band. Admin-picked when
-// set (Storefront -> Shop-all band); otherwise the same popularity order the
-// shop page defaults to, so the band is never empty on a fresh store.
+// The three sarees in the homepage "Shop all sarees" band (see utils/publicData.js).
 router.get('/content/shop-all', async (req, res) => {
   try {
-    const cfg = await getSetting('shop_all_showcase', {});
-    const ids = (Array.isArray(cfg.productIds) ? cfg.productIds : []).slice(0, 3);
-    let products = [];
-    if (ids.length) {
-      // A stored id that no longer resolves must never take the whole homepage band down.
-      const rows = await Promise.all(ids.map(id => getProductById(id).catch(() => null)));
-      // A pick that was since archived or deleted just drops out.
-      products = rows.filter(r => r && r.status !== 'archived').map(toProductApiShape);
-    }
-    if (!products.length) {
-      products = (await getProducts()).filter(p => p.status !== 'archived').map(toProductApiShape)
-        .filter(p => p.badge !== 'sale')
-        .sort((a, b) => ((b.badge === 'bestseller') - (a.badge === 'bestseller')) || ((b.rating * b.reviews) - (a.rating * a.reviews)))
-        .slice(0, 3);
-    }
-    res.json({ products });
+    res.json({ products: await pub.shopAll() });
   } catch (err) {
     console.error('GET /content/shop-all failed:', err);
+    res.status(500).json({ message: 'Something went wrong on the server.' });
+  }
+});
+
+// What the header and footer of every page need, and what the home page needs, each in ONE response - a phone on a
+// slow connection pays for every round trip, and these used to be five requests each.
+router.get('/bootstrap', async (req, res) => {
+  try {
+    res.json(await pub.bootstrap());
+  } catch (err) {
+    console.error('GET /bootstrap failed:', err);
+    res.status(500).json({ message: 'Something went wrong on the server.' });
+  }
+});
+
+router.get('/home', async (req, res) => {
+  try {
+    res.json(await pub.home());
+  } catch (err) {
+    console.error('GET /home failed:', err);
     res.status(500).json({ message: 'Something went wrong on the server.' });
   }
 });
@@ -80,9 +83,7 @@ router.get('/content/promo-band', async (req, res) => {
 // there's exactly one place an admin edits this, not four.
 router.get('/settings/store', async (req, res) => {
   try {
-    // shipperAddress is for the packing slip only (admin endpoint); it is not public storefront info.
-    const { shipperAddress, ...publicStore } = await getSetting('store_info', {});
-    res.json({ store: publicStore });
+    res.json({ store: await pub.publicStore() });
   } catch (err) {
     console.error('GET /settings/store failed:', err);
     res.status(500).json({ message: 'Something went wrong on the server.' });
