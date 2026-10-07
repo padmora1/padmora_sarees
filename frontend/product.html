@@ -100,6 +100,10 @@
   let galleryWarmTimer = null;
 
   // The gallery order customers see: 1st the main photo, 2nd the product video (if the colour has one), then more photos.
+  function galleryPhotoWidth(){
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    return Math.min(1200, (window.innerWidth <= 760 ? window.innerWidth : 640) * dpr);
+  }
   function galleryHTML(v){
     const images = variantImages(v);
     if (!images.length) {
@@ -108,8 +112,7 @@
     // Real <img> tags (not CSS backgrounds) so every photo has alt text - the one set in Admin, or the saree's name and
     // colour - and so only the first photo is fetched straight away; the rest load as they are needed. A smaller copy is
     // fetched for the screen width.
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const shown = Math.min(1200, (window.innerWidth <= 760 ? window.innerWidth : 640) * dpr);
+    const shown = galleryPhotoWidth();
     const base = (currentProduct ? currentProduct.name : 'Saree') + (v && v.colorName ? ' — ' + v.colorName : '');
     const items = orderedMedia(v.media);
     let imgIndex = -1;
@@ -256,6 +259,32 @@
     wrap._galleryOff = () => { offs.splice(0).forEach(f => f()); wrap._galleryOff = null; };
 
     startAutoplay();
+  }
+
+  // Picking another colour: the new colour's main photo is fetched while the old gallery is still on screen, then the
+  // gallery fades out, is swapped, and fades in - no flash of an empty box, no jump (the frame never changes size).
+  // A quick second pick supersedes the first. Shoppers who asked for reduced motion get the plain swap.
+  let gallerySwitchToken = 0;
+  function switchGallery(v){
+    const token = ++gallerySwitchToken;
+    const wrap = document.getElementById('pdMedia');
+    const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const first = orderedMedia(v.media).find(m => m.type === 'image');
+    const finish = () => {
+      if (token !== gallerySwitchToken) return;
+      renderGallery(v);
+      wrap.classList.remove('is-swapping');
+    };
+    if (calm || !first) { finish(); return; }
+    const url = sizedPhoto(first.url, galleryPhotoWidth(), 76);
+    const ready = new Promise(resolve => {
+      const im = new Image();
+      im.onload = im.onerror = () => resolve();
+      im.src = url;
+      setTimeout(resolve, 1500);   // a slow connection never leaves the old photo stuck
+    });
+    wrap.classList.add('is-swapping');
+    Promise.all([ready, new Promise(r => setTimeout(r, 180))]).then(finish);
   }
 
   function renderGallery(v){
@@ -575,12 +604,12 @@
             <div class="product-rating"><span class="stars">★★★★★</span> ${p.rating} (${p.reviews} reviews)</div>
             <div class="product-price" style="margin-top:10px;" id="pdPrice"></div>
             <div class="pd-tax-note" id="pdTaxNote">*Tax Included</div>
-            <div class="pd-desc" id="pdDesc"></div>
-            <p class="stock-note" id="pdStockNote"></p>
-            <div>
+            <div class="pd-colours">
               <label style="font-size:12px;color:var(--ink-soft);">Choose colour<span id="pdShadeLabel" style="color:var(--ink);font-weight:600;"></span></label>
               <div class="swatch-row" id="pdSwatches"></div>
+              <p class="stock-note" id="pdStockNote"></p>
             </div>
+            <div class="pd-desc" id="pdDesc"></div>
             <div id="pdPreAddQty">
               <label style="font-size:12px;color:var(--ink-soft);">Quantity</label>
               <div class="qty-stepper" style="margin-top:8px;">
@@ -620,7 +649,7 @@
       selectedVariant = v;
       document.querySelectorAll('#pdSwatches .swatch-dot').forEach(d=>d.classList.remove('active'));
       dot.classList.add('active');
-      renderGallery(v);
+      switchGallery(v);
       // The pre-add qty stepper's count belongs to whichever colour is
       // selected — a "5" picked while browsing Wine shouldn't silently
       // carry over to Mustard if Mustard only has 3 left.
