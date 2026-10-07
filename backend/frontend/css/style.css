@@ -1248,9 +1248,22 @@ body.rv-modal-open{overflow:hidden;}
    5:4 (shorter than square) cuts that down further still. Arrows are
    hidden here too since swipe already covers touch devices. */
 @media (max-width:760px){
-  .pd-media{aspect-ratio:5/4;}
+  /* A portrait frame (4:5) so the whole saree shows at first glance instead of a wide crop of it; capped so it never
+     fills the screen. Photos are shown whole (contain) on a soft ivory ground - a few are taller than the frame, and
+     those get a little ivory at the sides rather than being cut. */
+  .pd-media{aspect-ratio:4/5;max-height:68vh;width:100%;background:var(--ivory-deep);}
+  .pd-flip-slide > img{object-fit:contain;}
+  .pd-flip-slide > video{object-fit:contain;background:var(--ivory-deep);}
   .pd-media-arrow{display:none;}
 }
+/* smooth colour change (see switchGallery in product.html) */
+.pd-media > *{transition:opacity .22s ease;}
+.pd-media.is-swapping > *{opacity:0;}
+.pd-colours{margin-top:14px;}
+.pd-colours .swatch-row{margin-bottom:4px;}
+.pd-colours .stock-note{margin:8px 0 0;}
+.pd-colours .stock-note[hidden]{display:none;}
+.pd-colours + .pd-desc{margin-top:16px;}
 @media (max-width:560px){
   .product-grid{grid-template-columns:1fr 1fr;gap:14px;}
   .header-inner{padding:14px 18px;}
