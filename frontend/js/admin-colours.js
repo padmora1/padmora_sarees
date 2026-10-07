@@ -43,15 +43,31 @@ const AdminColours = (function(){
   const rup0 = n => '₹' + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 
   // Same arithmetic as backend/utils/profit.js computePricing (whole paise, so no floating-point drift).
+  const roundToTen = n => Math.max(10, Math.round(Math.round(Number(n) * 100) / 100 / 10) * 10);
+  const sortedTiers = c => (c.marginTiers || []).map(t => ({ upTo: Number(t.upTo), margin: Number(t.margin) })).filter(t => Number.isFinite(t.upTo) && Number.isFinite(t.margin)).sort((a, b) => a.upTo - b.upTo);
+  function marginFor(amount, c){
+    let from = null;
+    for(const t of sortedTiers(c)){
+      if(amount <= t.upTo) return { pct: t.margin, upTo: t.upTo, from, above: false };
+      from = t.upTo;
+    }
+    return { pct: Number(c.marginAbove), upTo: null, from, above: true };
+  }
   function calc(buying, cfg){
     const cost = Number(buying), c = cfg || CFG;
     if(!c || !Number.isFinite(cost) || cost <= 0) return null;
     const baseCents = Math.round(cost * 100) + Math.round(c.shippingCost * 100);
     const gstCents = Math.round(baseCents * c.gstRate / 100);
     const finalCp = (baseCents + gstCents) / 100;
-    const marginPct = finalCp > c.marginThreshold ? c.marginAbove : c.marginAtOrBelow;
-    const sellingPrice = Math.max(1, Math.round(finalCp * (1 + marginPct / 100)));
-    return { shipping: c.shippingCost, gstAmount: gstCents / 100, finalCp, marginPct, sellingPrice };
+    const m = marginFor(c.marginBasis === 'cp' ? finalCp : Math.round(cost * 100) / 100, c);
+    const exactPrice = Math.round(finalCp * (1 + m.pct / 100) * 100) / 100;
+    return { shipping: c.shippingCost, gstAmount: gstCents / 100, finalCp, marginPct: m.pct, marginUpTo: m.upTo, marginFrom: m.from, marginAbove: m.above, marginBasis: c.marginBasis === 'cp' ? 'cp' : 'buying', exactPrice, sellingPrice: roundToTen(exactPrice) };
+  }
+  // "70% (buying price more than ₹1,000 and up to ₹10,000)" - says which rule was used
+  function marginText(r){
+    const what = r.marginBasis === 'cp' ? 'Final CP' : 'buying price';
+    if(r.marginAbove) return r.marginPct + '% (' + (r.marginFrom == null ? 'every ' + what : what + ' above ' + rup0(r.marginFrom)) + ')';
+    return r.marginPct + '% (' + what + ' ' + (r.marginFrom == null ? 'up to ' + rup0(r.marginUpTo) : 'more than ' + rup0(r.marginFrom) + ' and up to ' + rup0(r.marginUpTo)) + ')';
   }
 
   // attr: the data attribute the form reads its values from ("cb" in the new-colour block, "vf" in a saved colour's card).
@@ -75,53 +91,77 @@ const AdminColours = (function(){
           <input type="text" ${ro} data-pf="cp" value="—"></div>
       </div>
       <div class="form-row-2">
-        <div class="form-field"><label>Margin on Final CP ${tip('Chosen automatically from Settings: one margin when the Final CP is above the limit, another when it is up to the limit.')}</label>
+        <div class="form-field"><label>Margin ${tip('Chosen automatically from the margin rules in Settings (they compare the ' + (c.marginBasis === 'cp' ? 'Final CP' : 'buying price') + '): the first rule it fits.')}</label>
           <input type="text" ${ro} data-pf="margin" value="—"></div>
-        <div class="form-field"><label><span data-pf="splabel">${o.sale ? 'Actual price (₹) — before the sale' : 'Final selling price (₹)'}</span> ${tip('Final CP + the margin. This is the price shown on the product page' + (o.sale ? ' (for a Sale saree, the price before the % off).' : '.'))}</label>
-          <input type="number" class="admin-input pf-sp" style="width:100%;" data-${a}="price" data-pf="sp" ${o.sale ? 'data-sale-actual' : ''} min="1" step="1" value="${o.price != null ? esc(o.price) : ''}" ${o.requireCost || o.cost != null ? 'readonly' : ''}></div>
+        <div class="form-field"><label>Selling price (₹) ${tip('Final CP + the margin, exactly as calculated. The Final selling price below is this rounded to the nearest ₹10.')}</label>
+          <input type="text" ${ro} data-pf="spx" value="—"></div>
       </div>
+      <div class="form-field"><label><span data-pf="splabel">${o.sale ? 'Final actual price (₹) — before the sale' : 'Final selling price (₹)'}</span> ${tip('The selling price rounded to the nearest ₹10 (…5 to …9 goes up to the next ten, …1 to …4 goes down). This is the price shown on the product page' + (o.sale ? ' (for a Sale saree, the price before the % off)' : '') + ' and the price your profit is measured against. You can type a different price here.')}</label>
+        <input type="number" class="admin-input pf-sp" style="width:100%;" data-${a}="price" data-pf="sp" ${o.sale ? 'data-sale-actual' : ''} min="1" step="1" value="${o.price != null ? esc(o.price) : ''}" ${o.requireCost || o.cost != null ? '' : ''}>
+        <span class="pf-sphint" data-pf="sphint"></span></div>
       <p class="pf-profit" data-pf="profit"></p>
     </div>`;
   }
 
   // Keeps the read-only boxes in step with the buying price. getPct() gives the Sale % off (or '' when the saree is not on sale).
+  // The Final selling price starts as the generated (rounded) price; typing in it makes it the admin's own price ("manual") until the
+  // buying price changes or "Use the generated price" is pressed. opts.manual = a saved colour whose price was typed earlier.
   function wirePricing(root, opts){
     const o = opts || {};
     const q = k => root.querySelector(`[data-pf="${k}"]`);
     const cost = q('cost'), sp = q('sp');
-    if(!cost || !sp) return { refresh(){}, setCost(){}, getCost(){ return ''; }, setSale(){} };
-    const st = { sale: !!o.sale };
-    function refresh(){
+    if(!cost || !sp) return { refresh(){}, setCost(){}, getCost(){ return ''; }, setSale(){}, isManual(){ return false; } };
+    const st = { sale: !!o.sale, manual: !!o.manual };
+    function hint(r){
+      const h = q('sphint');
+      if(!r || !st.manual){ h.innerHTML = r ? 'Generated automatically — you can type your own price instead.' : ''; return; }
+      h.innerHTML = `Your own price. Generated would be ${rup0(r.sellingPrice)}. <button type="button" class="pf-reset" data-pf="reset">Use the generated price</button>`;
+      h.querySelector('[data-pf="reset"]').addEventListener('click', () => { st.manual = false; refresh(true); });
+    }
+    function profitLine(r){
+      const line = q('profit');
+      const typed = Number(sp.value);
+      if(!r || !(typed > 0)){ line.textContent = ''; line.className = 'pf-profit'; return; }
+      const pct = o.getPct ? Number(o.getPct()) : 0;
+      const sold = st.sale && pct > 0 && pct <= 90 ? Math.max(1, Math.round(typed * (100 - pct) / 100)) : typed;
+      const gain = sold - r.finalCp, margin = r.finalCp ? gain / r.finalCp * 100 : 0;
+      line.className = 'pf-profit' + (gain < 0 ? ' pf-loss' : '');
+      line.textContent = gain < 0
+        ? `At ${rup0(sold)} you would lose ${rup(-gain)} on every piece — the price is below your Final CP.`
+        : `You earn ${rup(gain)} on each piece sold at ${rup0(sold)} (${margin.toFixed(0)}% on your cost).`;
+    }
+    function refresh(forceGenerated){
       const r = calc(cost.value);
       if(r){
-        q('gst').value = rup(r.gstAmount); q('cp').value = rup(r.finalCp);
-        q('margin').value = r.marginPct + '%' + (r.marginPct === CFG.marginAbove && r.finalCp > CFG.marginThreshold ? ' (Final CP above ' + rup0(CFG.marginThreshold) + ')' : ' (Final CP up to ' + rup0(CFG.marginThreshold) + ')');
-        sp.value = r.sellingPrice; sp.readOnly = true;
-        const pct = o.getPct ? Number(o.getPct()) : 0;
-        const sold = st.sale && pct > 0 && pct <= 90 ? Math.max(1, Math.round(r.sellingPrice * (100 - pct) / 100)) : r.sellingPrice;
-        const gain = sold - r.finalCp, margin = r.finalCp ? gain / r.finalCp * 100 : 0;
-        const line = q('profit');
-        line.className = 'pf-profit' + (gain < 0 ? ' pf-loss' : '');
-        line.textContent = gain < 0
-          ? `At ${rup0(sold)} you would lose ${rup(-gain)} on every piece — the sale price is below your Final CP.`
-          : `You earn ${rup(gain)} on each piece sold at ${rup0(sold)} (${margin.toFixed(0)}% on your cost).`;
+        q('gst').value = rup(r.gstAmount); q('cp').value = rup(r.finalCp); q('margin').value = marginText(r); q('spx').value = rup(r.exactPrice);
+        if(forceGenerated || !st.manual) sp.value = r.sellingPrice;
+        sp.readOnly = false;
+        hint(r); profitLine(r);
       }else{
-        ['gst', 'cp', 'margin'].forEach(k => { q(k).value = '—'; });
-        q('profit').textContent = '';
+        ['gst', 'cp', 'margin', 'spx'].forEach(k => { q(k).value = '—'; });
+        q('profit').textContent = ''; q('sphint').innerHTML = '';
+        st.manual = false;
         if(o.requireCost){ sp.value = ''; sp.readOnly = true; }
         else { sp.readOnly = false; }   // a colour priced by hand before buying prices existed keeps its typed price
       }
       if(o.onChange) o.onChange(r);
     }
-    cost.addEventListener('input', refresh);
+    // a new buying price starts again from the generated price
+    cost.addEventListener('input', () => { st.manual = false; refresh(true); });
+    sp.addEventListener('input', () => {
+      const r = calc(cost.value);
+      if(r){ st.manual = Number(sp.value) !== r.sellingPrice; hint(r); profitLine(r); }
+      if(o.onChange) o.onChange(r);
+    });
     refresh();
     return {
-      refresh,
-      setCost(v){ cost.value = v; refresh(); },
+      refresh: () => refresh(),
+      setCost(v){ cost.value = v; st.manual = false; refresh(true); },
       getCost(){ return cost.value; },
+      isManual(){ return st.manual; },
       setSale(on){
         st.sale = !!on;
-        q('splabel').textContent = on ? 'Actual price (₹) — before the sale' : 'Final selling price (₹)';
+        q('splabel').textContent = on ? 'Final actual price (₹) — before the sale' : 'Final selling price (₹)';
         if(on) sp.setAttribute('data-sale-actual', ''); else sp.removeAttribute('data-sale-actual');
         refresh();
       }
@@ -236,5 +276,5 @@ const AdminColours = (function(){
       focusName(){ name.focus(); }, nameInput: name, priceInput: price };
   }
 
-  return { tip, blockHTML, wire, suggestShade, shadeOptionsHTML, esc, setConfig, getConfig, calc, pricingHTML, wirePricing };
+  return { tip, blockHTML, wire, suggestShade, shadeOptionsHTML, esc, setConfig, getConfig, calc, marginText, pricingHTML, wirePricing };
 })();

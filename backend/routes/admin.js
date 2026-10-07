@@ -135,15 +135,19 @@ function adminProductShape(row) {
     ...v,
     costPrice: raw[v.id] && raw[v.id].cost_price != null ? Number(raw[v.id].cost_price) : null,
     finalCp: raw[v.id] && raw[v.id].final_cp != null ? Number(raw[v.id].final_cp) : null,
-    marginPct: raw[v.id] && raw[v.id].margin_pct != null ? Number(raw[v.id].margin_pct) : null
+    marginPct: raw[v.id] && raw[v.id].margin_pct != null ? Number(raw[v.id].margin_pct) : null,
+    priceManual: !!(raw[v.id] && raw[v.id].price_manual)
   }));
   return { ...p, variantCount: p.variants.length, totalStock: p.variants.reduce((sum, v) => sum + v.stock, 0) };
 }
 
-// A colour's price when the admin types a BUYING PRICE: the shop works out Final CP and the selling price from the
-// Settings (shipping, GST, margin), so the price can never disagree with the cost. Without a buying price the colour is priced by
-// hand exactly as before (and its profit is simply not tracked). `existing` = the colour's current row, when editing.
-//  - costPrice given         -> recalculated from it (price/mrp come from the formula; for a Sale saree that is the ACTUAL price)
+// A colour's price when the admin types a BUYING PRICE: the shop works out Final CP, the selling price and the Final selling price
+// (rounded to the nearest 10 rupees) from the Settings, so the price can never disagree with the cost. The admin may type a different
+// Final selling price: it is accepted and remembered (price_manual) so later recalculations leave it alone.
+// Without a buying price the colour is priced by hand exactly as before (and its profit is simply not tracked).
+// `existing` = the colour's current row, when editing.
+//  - costPrice given         -> recalculated from it; `price` (if different from the generated one) is the admin's own Final selling price
+//                               (for a Sale saree that is the ACTUAL price, before the % off)
 //  - costPrice "" / null     -> the buying price is removed; the typed price is used
 //  - costPrice not sent      -> an already-costed colour keeps its cost and its actual price; only the sale % may change
 async function priceForColour({ costPrice, price, mrp, salePercent, onSale, existing }) {
@@ -152,9 +156,15 @@ async function priceForColour({ costPrice, price, mrp, salePercent, onSale, exis
   if (parsed.error) return { error: parsed.error };
   if (given && !parsed.empty) {
     const pricing = profit.computePricing(parsed.cost, await profit.getProfitSettings());
-    const prices = resolvePrices({ onSale, price: pricing.sellingPrice, salePercent });   // the old original price must not leak into the new one
+    let actual = pricing.sellingPrice, manual = false;
+    if (price !== undefined && price !== null && String(price).trim() !== '') {
+      const typed = wholeNumber(price, { min: 1, max: MAX_PRICE });
+      if (typed === null) return { error: 'Final selling price must be a whole number of rupees, for example 5530.' };
+      if (typed !== pricing.sellingPrice) { actual = typed; manual = true; }
+    }
+    const prices = resolvePrices({ onSale, price: actual, salePercent });   // the old original price must not leak into the new one
     if (prices.error) return { error: prices.error };
-    return { price: prices.price, mrp: prices.mrp, cols: profit.variantCostColumns(pricing), pricing };
+    return { price: prices.price, mrp: prices.mrp, cols: profit.variantCostColumns(pricing, manual), pricing, manual };
   }
   if (!given && existing && existing.cost_price != null) {
     const actual = existing.mrp > existing.price ? existing.mrp : existing.price;
@@ -1436,7 +1446,7 @@ router.put('/settings/profit', asyncRoute(async (req, res) => {
 // every colour that has a buying price were worked out again with today's settings, and (apply: true) does it.
 async function repricePlan() {
   const settings = await profit.getProfitSettings();
-  const variants = await fetchAllRows(() => supabase.from('product_variants').select('id, product_id, color_name, price, mrp, cost_price, final_cp, margin_pct')
+  const variants = await fetchAllRows(() => supabase.from('product_variants').select('id, product_id, color_name, price, mrp, cost_price, final_cp, margin_pct, price_manual')
     .eq('archived', false).not('cost_price', 'is', null).order('id'), 'reprice:variants');
   const productIds = [...new Set(variants.map(v => v.product_id))];
   const products = productIds.length ? await fetchAllByIds(productIds, c => supabase.from('products').select('id, name, badge').in('id', c).order('id'), 'reprice:products') : [];
@@ -1447,14 +1457,16 @@ async function repricePlan() {
     if (!pricing) continue;
     const onSale = (productById[v.product_id] || {}).badge === 'sale';
     const pct = onSale && v.mrp > v.price ? Math.round((1 - v.price / v.mrp) * 100) : 0;
-    const newMrp = pricing.sellingPrice;
-    const newPrice = pct ? Math.max(1, Math.round(newMrp * (100 - pct) / 100)) : newMrp;
+    // a price the admin typed by hand stays; only its cost figures are refreshed
+    const manual = !!v.price_manual;
+    const newMrp = manual ? v.mrp : pricing.sellingPrice;
+    const newPrice = manual ? v.price : (pct ? Math.max(1, Math.round(newMrp * (100 - pct) / 100)) : newMrp);
     const same = newPrice === v.price && newMrp === v.mrp && Number(v.final_cp) === pricing.finalCp && Number(v.margin_pct) === pricing.marginPct;
     if (same) continue;
     items.push({
-      variantId: v.id, productId: v.product_id, product: (productById[v.product_id] || {}).name || '', colour: v.color_name, buyingPrice: Number(v.cost_price),
+      variantId: v.id, productId: v.product_id, product: (productById[v.product_id] || {}).name || '', colour: v.color_name, buyingPrice: Number(v.cost_price), manual,
       oldPrice: v.price, newPrice, oldFinalCp: v.final_cp != null ? Number(v.final_cp) : null, newFinalCp: pricing.finalCp, oldMargin: v.margin_pct != null ? Number(v.margin_pct) : null, newMargin: pricing.marginPct,
-      columns: { price: newPrice, mrp: newMrp, ...profit.variantCostColumns(pricing) }
+      columns: { price: newPrice, mrp: newMrp, ...profit.variantCostColumns(pricing, manual) }
     });
   }
   return { settings, items, total: variants.length };

@@ -1,18 +1,31 @@
 // Cost price, Final CP, selling price and net profit.
 //
-//   Final CP       = (buying price + shipping) + GST on that            e.g. (3,000 + 79) + 5%  = 3,232.95
-//   margin         = 70% if Final CP is up to the threshold, else 50%   (all four numbers are editable in Admin -> Settings)
-//   Final selling  = Final CP + margin on the Final CP                  e.g. 3,232.95 + 70%     = 5,496
+//   Final CP       = (buying price + shipping) + GST on that              e.g. (3,000 + 100) + 5%   = 3,255.00
+//   margin         = the first rule that fits the BUYING PRICE (default) or the Final CP, as chosen in Settings
+//                    e.g. up to 1,000 -> 60%, more than 1,000 and up to 10,000 -> 70%, above 10,000 -> 50%
+//   Selling price  = Final CP + margin on the Final CP                     e.g. 3,255.00 + 70%       = 5,533.50
+//   Final selling  = the selling price rounded to the nearest 10 rupees    e.g. 5,533.50             -> 5,530   (…5 and above goes up, …4 and below goes down)
 //
-// The selling price is a whole rupee (that is what the shop stores and shows); Final CP keeps its paise.
+// The margin rules are a list in Admin -> Settings (any number of "Final CP up to ₹X -> margin Y%" rules, plus one margin for
+// everything above the highest limit). The admin may type a different Final selling price on a colour; that choice is remembered
+// (price_manual) and is what the shop shows and what profit is measured against.
 // Net profit comes from what was really sold: what customers paid minus what the sarees cost (the Final CP saved on each
 // order line when it was placed), minus refunds, minus the payment gateway fee when one is entered in Settings.
 const { supabase, must, fetchAllRows, fetchAllByIds, getSetting } = require('./db');
 
-const DEFAULTS = { gstRate: 5, shippingCost: 79, marginThreshold: 10000, marginAbove: 50, marginAtOrBelow: 70, gatewayFeePct: 0 };
+const DEFAULTS = {
+  gstRate: 5, shippingCost: 79,
+  marginTiers: [{ upTo: 1000, margin: 60 }, { upTo: 10000, margin: 70 }],
+  marginAbove: 50,
+  marginBasis: 'buying',   // what the margin rules are compared with: 'buying' (the buying price typed) or 'cp' (the Final CP)
+  gatewayFeePct: 0
+};
 const MAX_COST = 10000000;
+const MAX_TIERS = 20;
 
 const round2 = n => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+// 2155, 2156, 2159 -> 2160 ; 2154, 2152 -> 2150 (the unit digit 5 or more rounds up to the next ten, 4 or less down). Never below 10.
+const roundToTen = n => Math.max(10, Math.round(Math.round(Number(n) * 100) / 100 / 10) * 10);
 
 async function getProfitSettings() {
   const raw = await getSetting('profit_settings', null);
@@ -25,11 +38,19 @@ async function getProfitSettings() {
   return s;
 }
 
+const sortTiers = tiers => tiers.slice().sort((a, b) => a.upTo - b.upTo);
+
 function normalizeSettings(raw) {
-  const out = { ...DEFAULTS };
-  for (const k of Object.keys(DEFAULTS)) {
-    const n = raw && raw[k] !== undefined && raw[k] !== null && raw[k] !== '' ? Number(raw[k]) : NaN;
-    if (Number.isFinite(n)) out[k] = n;
+  const out = { ...DEFAULTS, marginTiers: DEFAULTS.marginTiers.map(t => ({ ...t })) };
+  const num = v => (v !== undefined && v !== null && v !== '' ? Number(v) : NaN);
+  for (const k of ['gstRate', 'shippingCost', 'marginAbove', 'gatewayFeePct']) { const n = num(raw && raw[k]); if (Number.isFinite(n)) out[k] = n; }
+  if (raw && (raw.marginBasis === 'buying' || raw.marginBasis === 'cp')) out.marginBasis = raw.marginBasis;
+  if (raw && Array.isArray(raw.marginTiers)) {
+    const tiers = raw.marginTiers.map(t => ({ upTo: num(t && t.upTo), margin: num(t && t.margin) })).filter(t => Number.isFinite(t.upTo) && Number.isFinite(t.margin));
+    out.marginTiers = sortTiers(tiers);
+  } else if (raw && Number.isFinite(num(raw.marginThreshold)) && Number.isFinite(num(raw.marginAtOrBelow))) {
+    // settings saved by the first version (one limit, two margins)
+    out.marginTiers = [{ upTo: num(raw.marginThreshold), margin: num(raw.marginAtOrBelow) }];
   }
   return out;
 }
@@ -37,52 +58,73 @@ function normalizeSettings(raw) {
 // Checks what the admin typed in Settings. Returns { error } or { value }.
 function validateSettings(body) {
   const b = body || {};
-  const num = (key, label, { min = 0, max, gt } = {}) => {
-    const v = b[key];
+  const one = (v, label, { min = 0, max }) => {
     if (v === undefined || v === null || String(v).trim() === '') return { error: `${label} is required.` };
     const n = Number(v);
     if (!Number.isFinite(n)) return { error: `${label} must be a number.` };
-    if (gt !== undefined ? n <= gt : n < min) return { error: gt !== undefined ? `${label} must be more than ${gt}.` : `${label} cannot be less than ${min}.` };
+    if (n < min) return { error: `${label} cannot be less than ${min}.` };
     if (max !== undefined && n > max) return { error: `${label} cannot be more than ${max}.` };
     return { n };
   };
-  const checks = [
-    ['gstRate', 'GST on product', { min: 0, max: 100 }],
-    ['shippingCost', 'Shipping cost', { min: 0, max: 100000 }],
-    ['marginThreshold', 'The cost limit between the two margins', { gt: 0, max: MAX_COST }],
-    ['marginAbove', 'Margin for sarees above the limit', { min: 0, max: 1000 }],
-    ['marginAtOrBelow', 'Margin for sarees up to the limit', { min: 0, max: 1000 }],
-    ['gatewayFeePct', 'Payment gateway fee', { min: 0, max: 20 }]
-  ];
   const value = {};
-  for (const [key, label, opts] of checks) {
-    const r = num(key, label, opts);
+  for (const [key, label, opts] of [['gstRate', 'GST on product', { max: 100 }], ['shippingCost', 'Shipping cost', { max: 100000 }], ['marginAbove', 'The margin for sarees above the highest limit', { max: 1000 }], ['gatewayFeePct', 'Payment gateway fee', { max: 20 }]]) {
+    const r = one(b[key], label, opts);
     if (r.error) return { error: r.error };
     value[key] = round2(r.n);
   }
+  if (b.marginBasis !== undefined && b.marginBasis !== 'buying' && b.marginBasis !== 'cp') return { error: 'Choose whether the margin rules compare the buying price or the Final CP.' };
+  value.marginBasis = b.marginBasis === 'cp' ? 'cp' : 'buying';
+  const rules = b.marginTiers;
+  if (!Array.isArray(rules)) return { error: 'Margin rules are required.' };
+  if (rules.length > MAX_TIERS) return { error: `Use at most ${MAX_TIERS} margin rules.` };
+  const tiers = [];
+  for (const [i, t] of rules.entries()) {
+    const up = one(t && t.upTo, `Margin rule ${i + 1}: the Final CP limit`, { min: 0.01, max: MAX_COST });
+    if (up.error) return { error: up.error };
+    const mg = one(t && t.margin, `Margin rule ${i + 1}: the margin`, { max: 1000 });
+    if (mg.error) return { error: mg.error };
+    tiers.push({ upTo: round2(up.n), margin: round2(mg.n) });
+  }
+  const sorted = sortTiers(tiers);
+  for (let i = 1; i < sorted.length; i++) if (sorted[i].upTo === sorted[i - 1].upTo) return { error: `Two margin rules have the same limit (₹${sorted[i].upTo}) - each limit can be used once.` };
+  value.marginTiers = sorted;
   return { value };
 }
 
+// Which margin an amount gets: the first rule (lowest limit first) whose limit it does not pass, else the "above" margin.
+// `from` is the previous rule's limit, so a rule reads "more than <from> and up to <upTo>".
+function marginFor(amount, s) {
+  let from = null;
+  for (const t of s.marginTiers) {
+    if (amount <= t.upTo) return { pct: t.margin, upTo: t.upTo, from, above: false };
+    from = t.upTo;
+  }
+  return { pct: s.marginAbove, upTo: null, from, above: true };
+}
+
 // Buying price in, everything the product form shows out. `s` = profit settings.
+//  sellingPrice  = Final CP + margin (exact, with paise)        sellingPrice rounded -> finalPrice (the one the shop shows)
 function computePricing(buyingPrice, s) {
   const cost = Number(buyingPrice);
   if (!Number.isFinite(cost) || cost <= 0) return null;
   const baseCents = Math.round(cost * 100) + Math.round(s.shippingCost * 100);
   const gstCents = Math.round(baseCents * s.gstRate / 100);
   const finalCp = (baseCents + gstCents) / 100;
-  const marginPct = finalCp > s.marginThreshold ? s.marginAbove : s.marginAtOrBelow;
-  const sellingPrice = Math.max(1, Math.round(finalCp * (1 + marginPct / 100)));
+  const m = marginFor(s.marginBasis === 'cp' ? finalCp : round2(cost), s);
+  const exact = round2(finalCp * (1 + m.pct / 100));
+  const finalPrice = roundToTen(exact);
   return {
     buyingPrice: round2(cost), shipping: round2(s.shippingCost), gstRate: s.gstRate, gstAmount: gstCents / 100,
-    finalCp: round2(finalCp), marginPct, sellingPrice, profitPerPiece: round2(sellingPrice - finalCp)
+    finalCp: round2(finalCp), marginPct: m.pct, marginUpTo: m.upTo, marginFrom: m.from, marginAbove: m.above,
+    exactPrice: exact, sellingPrice: finalPrice, profitPerPiece: round2(finalPrice - finalCp)
   };
 }
 
-// What to save on a colour when its buying price is typed (the columns the migration added).
-function variantCostColumns(pricing) {
+// What to save on a colour when its buying price is typed (the columns the migrations added). `manual` = the admin typed the price.
+function variantCostColumns(pricing, manual) {
   return pricing
-    ? { cost_price: pricing.buyingPrice, final_cp: pricing.finalCp, margin_pct: pricing.marginPct }
-    : { cost_price: null, final_cp: null, margin_pct: null };
+    ? { cost_price: pricing.buyingPrice, final_cp: pricing.finalCp, margin_pct: pricing.marginPct, price_manual: !!manual }
+    : { cost_price: null, final_cp: null, margin_pct: null, price_manual: false };
 }
 
 // "" / null / undefined -> no buying price given. Returns { empty } | { error } | { cost }.
@@ -213,4 +255,4 @@ async function loadProfitReport(range) {
   return { range: range || 'all', from: from ? from.toISOString() : null, settings, ...report };
 }
 
-module.exports = { DEFAULTS, getProfitSettings, normalizeSettings, validateSettings, computePricing, variantCostColumns, parseBuyingPrice, buildProfitReport, loadProfitReport, rangeStart, round2 };
+module.exports = { DEFAULTS, getProfitSettings, normalizeSettings, validateSettings, computePricing, marginFor, roundToTen, variantCostColumns, parseBuyingPrice, buildProfitReport, loadProfitReport, rangeStart, round2 };
