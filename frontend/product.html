@@ -96,7 +96,9 @@
   }
 
   let galleryAutoplayTimer = null;
+  let galleryWarmTimer = null;
 
+  // The gallery order customers see: 1st the main photo, 2nd the product video (if the colour has one), then more photos.
   function galleryHTML(v){
     const images = variantImages(v);
     if (!images.length) {
@@ -108,36 +110,62 @@
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const shown = Math.min(1200, (window.innerWidth <= 760 ? window.innerWidth : 640) * dpr);
     const base = (currentProduct ? currentProduct.name : 'Saree') + (v && v.colorName ? ' — ' + v.colorName : '');
-    const slides = images.map((m, i) =>
-      `<div class="pd-flip-slide${i===0?' active':''}"><img src="${escHTML(sizedPhoto(m.url, shown, 78))}" alt="${escHTML(m.alt || (base + (images.length > 1 ? ' — photo ' + (i + 1) : '')))}" ${i===0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" draggable="false"></div>`
-    ).join('');
-    if (images.length === 1) return `<div class="pd-media-flip">${slides}</div>`;
-    const dots = images.map((_, i) => `<span class="pd-media-dot${i===0?' active':''}" data-index="${i}"></span>`).join('');
+    const items = orderedMedia(v.media);
+    let imgIndex = -1;
+    const slides = items.map((m, i) => {
+      if (m.type === 'video') {
+        // No data is used until the page has settled (see wireGallery): the poster is the main photo, so the slide is never blank.
+        const poster = escHTML(sizedPhoto(items[0].url, shown, 70));
+        return `<div class="pd-flip-slide pd-video-slide" data-video="1"><video muted playsinline preload="none" data-src="${escHTML(m.url)}" poster="${poster}" aria-label="${escHTML(base + ' — video')}" disablepictureinpicture></video></div>`;
+      }
+      imgIndex++;
+      return `<div class="pd-flip-slide${i===0?' active':''}" data-img="${imgIndex}"><img src="${escHTML(sizedPhoto(m.url, shown, 78))}" alt="${escHTML(m.alt || (base + (images.length > 1 ? ' — photo ' + (imgIndex + 1) : '')))}" ${i===0 ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async" draggable="false"></div>`;
+    }).join('');
+    if (items.length === 1) return `<div class="pd-media-flip">${slides}</div>`;
+    const dots = items.map((m, i) => `<span class="pd-media-dot${i===0?' active':''}" data-index="${i}"></span>`).join('');
     return `
       <div class="pd-media-flip">${slides}</div>
       <div class="pd-media-dots">${dots}</div>
-      <button type="button" class="pd-media-arrow prev" aria-label="Previous photo">&#8249;</button>
-      <button type="button" class="pd-media-arrow next" aria-label="Next photo">&#8250;</button>`;
+      <button type="button" class="pd-media-arrow prev" aria-label="Previous">&#8249;</button>
+      <button type="button" class="pd-media-arrow next" aria-label="Next">&#8250;</button>`;
   }
 
-  // Book-style page flip: the outgoing photo rotates away in 3D while the
-  // incoming one rotates in from the other side. Auto-advances every 4.5s
-  // when there's more than one photo, pausing on hover/touch so it never
-  // fights someone actually looking at a photo; a dot/arrow/swipe jumps
-  // straight to that photo with the same flip. Respects
-  // prefers-reduced-motion by skipping the animation and the autoplay.
+  // Book-style page flip: the outgoing slide rotates away in 3D while the incoming one rotates in from the other side.
+  // Auto-advances every 4.5s when there's more than one slide, pausing on hover/touch so it never fights someone actually
+  // looking at a photo; a dot/arrow/swipe jumps straight to that slide with the same flip. Respects prefers-reduced-motion
+  // by skipping the animation and the autoplay.
+  // The product video (2nd slide) is fetched quietly once the page has settled, so it is ready - and starts playing at once,
+  // from the beginning - the moment the slide comes round; it is paused again when the slide leaves. While it plays the
+  // autoplay waits, then moves on when the video ends (or replays it if the shopper is hovering).
   function wireGallery(){
     const wrap = document.getElementById('pdMedia');
+    // listeners of an earlier render of this gallery (another colour was picked) are removed, so they never pile up
+    if (wrap._galleryOff) wrap._galleryOff();
+    clearInterval(galleryAutoplayTimer);
+    clearTimeout(galleryWarmTimer);
+    galleryAutoplayTimer = null;
     const slides = [...wrap.querySelectorAll('.pd-flip-slide')];
     const dots = [...wrap.querySelectorAll('.pd-media-dot')];
     const prevBtn = wrap.querySelector('.pd-media-arrow.prev');
     const nextBtn = wrap.querySelector('.pd-media-arrow.next');
-    clearInterval(galleryAutoplayTimer);
-    galleryAutoplayTimer = null;
     if (slides.length <= 1) return;
 
     const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const saveData = !!(navigator.connection && navigator.connection.saveData);
+    const vids = slides.map(s => s.querySelector('video'));
     let active = 0;
+    let hovering = false;
+    const offs = [];
+    const on = (el, ev, fn, opts) => { if (!el) return; el.addEventListener(ev, fn, opts); offs.push(() => el.removeEventListener(ev, fn, opts)); };
+
+    function playVideo(v){
+      if (!v) return;
+      if (!v.getAttribute('src') && v.dataset.src) v.src = v.dataset.src;
+      try { v.currentTime = 0; } catch (e) { /* not ready yet - it starts from 0 anyway */ }
+      const p = v.play();
+      if (p && p.catch) p.catch(() => {});
+    }
+    function stopVideo(v){ if (v) v.pause(); }
 
     function goTo(index){
       const target = ((index % slides.length) + slides.length) % slides.length;
@@ -146,6 +174,7 @@
       const current = slides[active];
       const next = slides[target];
 
+      stopVideo(vids[active]);
       next.style.transition = 'none';
       next.classList.remove('active');
       next.classList.add(forward ? 'from-right' : 'from-left');
@@ -165,32 +194,53 @@
       dots[target] && dots[target].classList.add('active');
       active = target;
       wrap.dataset.active = target;
+      wrap.classList.toggle('zoomable', !vids[target]);   // a photo opens the full-screen viewer; the video does not
+      if (vids[target]) playVideo(vids[target]);
     }
 
     function startAutoplay(){
       if (reduceMotion) return;
       clearInterval(galleryAutoplayTimer);
-      galleryAutoplayTimer = setInterval(() => goTo(active + 1), 4500);
+      galleryAutoplayTimer = setInterval(() => { if (vids[active]) return; goTo(active + 1); }, 4500);   // a playing video moves on by itself when it ends
     }
-    function pauseAutoplay(){ clearInterval(galleryAutoplayTimer); }
+    function pauseAutoplay(){ hovering = true; clearInterval(galleryAutoplayTimer); }
+    function resumeAutoplay(){ hovering = false; startAutoplay(); }
 
-    dots.forEach(dot => dot.addEventListener('click', () => { goTo(Number(dot.dataset.index)); startAutoplay(); }));
-    if (prevBtn) prevBtn.addEventListener('click', () => { goTo(active - 1); startAutoplay(); });
-    if (nextBtn) nextBtn.addEventListener('click', () => { goTo(active + 1); startAutoplay(); });
+    vids.forEach((v, i) => on(v, 'ended', () => {
+      if (hovering || reduceMotion) { playVideo(v); return; }   // replay while someone is looking at it
+      if (active === i) { goTo(active + 1); startAutoplay(); }
+    }));
 
-    wrap.addEventListener('mouseenter', pauseAutoplay);
-    wrap.addEventListener('mouseleave', startAutoplay);
+    dots.forEach(dot => on(dot, 'click', () => { goTo(Number(dot.dataset.index)); if (!hovering) startAutoplay(); }));
+    on(prevBtn, 'click', () => { goTo(active - 1); if (!hovering) startAutoplay(); });
+    on(nextBtn, 'click', () => { goTo(active + 1); if (!hovering) startAutoplay(); });
+
+    on(wrap, 'mouseenter', pauseAutoplay);
+    on(wrap, 'mouseleave', resumeAutoplay);
 
     // Swipe: a real horizontal drag (not just a tap) flips forward/back.
     let touchStartX = null;
-    wrap.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; pauseAutoplay(); }, { passive: true });
-    wrap.addEventListener('touchend', (e) => {
+    on(wrap, 'touchstart', (e) => { touchStartX = e.touches[0].clientX; clearInterval(galleryAutoplayTimer); }, { passive: true });
+    on(wrap, 'touchend', (e) => {
       if (touchStartX === null) return;
       const dx = e.changedTouches[0].clientX - touchStartX;
       if (Math.abs(dx) > 40) goTo(active + (dx < 0 ? 1 : -1));
       touchStartX = null;
       startAutoplay();
     });
+
+    // Warm the video up once the first photo is on screen and the browser is idle (not on a data-saver connection).
+    if (vids.some(Boolean) && !saveData) {
+      const warm = () => vids.forEach(v => {
+        if (v && v.dataset.src && !v.getAttribute('src')) { v.preload = 'auto'; v.src = v.dataset.src; try { v.load(); } catch (e) { /* ignore */ } }
+      });
+      const first = slides[0].querySelector('img');
+      const kick = () => { galleryWarmTimer = setTimeout(() => ('requestIdleCallback' in window ? requestIdleCallback(warm, { timeout: 2500 }) : warm()), 600); };
+      if (!first || first.complete) kick(); else on(first, 'load', kick, { once: true });
+    }
+
+    offs.push(() => { clearInterval(galleryAutoplayTimer); clearTimeout(galleryWarmTimer); vids.forEach(stopVideo); });
+    wrap._galleryOff = () => { offs.splice(0).forEach(f => f()); wrap._galleryOff = null; };
 
     startAutoplay();
   }
@@ -362,14 +412,18 @@
   function bindViewer(){
     const wrap = document.getElementById('pdMedia');
     if(!wrap) return;
+    // the photo showing now (the viewer lists photos only, so the video slide is skipped and does not open it)
+    const shownPhoto = () => { const slide = wrap.querySelectorAll('.pd-flip-slide')[Number(wrap.dataset.active) || 0]; return slide && slide.dataset.img !== undefined ? Number(slide.dataset.img) : (slide && slide.dataset.video ? -1 : 0); };
     wrap.addEventListener('click', e => {
       if(e.target.closest('.pd-media-arrow, .pd-media-dot')) return;
       if(!variantImages(selectedVariant).length) return;
-      openViewer(Number(wrap.dataset.active) || 0);
+      const i = shownPhoto(); if(i < 0) return;
+      openViewer(i);
     });
     wrap.addEventListener('keydown', e => {
       if((e.key === 'Enter' || e.key === ' ') && e.target === wrap && variantImages(selectedVariant).length){
-        e.preventDefault(); openViewer(Number(wrap.dataset.active) || 0);
+        const i = shownPhoto(); if(i < 0) return;
+        e.preventDefault(); openViewer(i);
       }
     });
   }
@@ -393,6 +447,7 @@
     return `
     <div class="product-card ${soldOut?'sold-out':''}" data-pid="${p.id}" data-qty="${cartQty}">
       <a href="/product?id=${p.id}" class="product-media" style="background:${productBg(p)};display:block;">
+        ${cardVideoHTML(p)}
         ${soldOut ? `<div class="sold-out-ribbon"><span class="ribbon-lotus">${LOTUS_GLYPH_SVG}</span>Sold Out</div>` : (badgeLabel ? `<span class="product-badge ${p.badge}">${badgeLabel}</span>` : '')}
         <button class="wishlist-toggle ${isWished?'active':''}" aria-label="${isWished?'Remove from wishlist':'Add to wishlist'}" onclick="event.preventDefault();quickWish(${p.id}, this);">
           <svg viewBox="0 0 24 24" aria-hidden="true">

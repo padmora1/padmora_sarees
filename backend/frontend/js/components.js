@@ -952,6 +952,58 @@ function showConfirmDialog(message, opts) {
 // instantly and the server catches up in the background.
 // ---------------------------------------------------------------------
 const CARD_PRODUCTS = new Map();
+// The product video inside a product card (hidden until it is playing). It loads nothing until the card is hovered.
+// A card without a video gets nothing at all, so those cards are exactly as before.
+function cardVideoHTML(p) {
+  const url = productVideoUrl(p);
+  return url ? `<video class="card-video" muted loop playsinline preload="none" tabindex="-1" aria-hidden="true" disablepictureinpicture data-src="${String(url).replace(/"/g, '&quot;')}"></video>` : '';
+}
+// Hovering a card with a video plays it (after a short pause, so sweeping the mouse across a grid starts nothing); leaving
+// stops it. Mouse devices only - phones and tablets keep the photo - and nothing plays for shoppers who asked for reduced
+// motion or a data saver. Listeners sit on the document, so cards drawn later (filters, "load more") work without any setup.
+(function cardVideos() {
+  const fine = () => !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+  const calm = () => !!((window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) || (navigator.connection && navigator.connection.saveData));
+  let timer = null, current = null;
+  const videoOf = card => card && card.querySelector('.card-video');
+  function stop(card) {
+    const v = videoOf(card);
+    if (!v) return;
+    v.pause();
+    try { v.currentTime = 0; } catch (e) { /* not loaded yet */ }
+    const box = v.closest('.product-media');
+    if (box) box.classList.remove('is-playing');
+  }
+  function start(card) {
+    const v = videoOf(card);
+    if (!v) return;
+    if (!v.getAttribute('src') && v.dataset.src) v.src = v.dataset.src;
+    const p = v.play();
+    if (p && p.catch) p.catch(() => { /* blocked or failed: the photo simply stays */ });
+  }
+  // the video fades in only once it is really playing, so a slow video never shows a black box
+  document.addEventListener('playing', e => {
+    const v = e.target;
+    if (v && v.classList && v.classList.contains('card-video') && v.closest('.product-card:hover')) { const box = v.closest('.product-media'); if (box) box.classList.add('is-playing'); }
+  }, true);
+  document.addEventListener('mouseover', e => {
+    const card = e.target.closest && e.target.closest('.product-card');
+    if (!card || card === current) return;
+    if (current) stop(current);
+    current = card;
+    clearTimeout(timer);
+    if (!videoOf(card) || !fine() || calm()) return;
+    timer = setTimeout(() => start(card), 140);
+  });
+  document.addEventListener('mouseout', e => {
+    const card = e.target.closest && e.target.closest('.product-card');
+    if (!card || (e.relatedTarget && card.contains(e.relatedTarget))) return;
+    clearTimeout(timer);
+    stop(card);
+    if (current === card) current = null;
+  });
+})();
+
 function registerCardProducts(list) { (list || []).forEach(p => CARD_PRODUCTS.set(p.id, p)); }
 function defaultVariantOf(p) { return (p && p.variants && (p.variants.find(v => v.isDefault) || p.variants[0])) || null; }
 

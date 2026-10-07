@@ -191,6 +191,23 @@ function primaryPhotoOf(media) {
   const m = imgs.find(x => x.isPrimary) || imgs[0];
   return m ? m.url : '';
 }
+// A colour's media in the order customers see it: 1st the main photo, 2nd the product video (if there is one), then the
+// other photos. Whatever order the admin uploaded them in, a video is never first and never lands among the photos.
+function orderedMedia(media) {
+  const list = media || [];
+  const images = list.filter(m => m.type === 'image');
+  const main = images.find(m => m.isPrimary) || images[0] || null;
+  if (!main) return [];
+  const video = list.find(m => m.type === 'video') || null;
+  return [main, video, ...images.filter(m => m !== main)].filter(Boolean);
+}
+// The product video of the colour a card shows (its default colour), or ''. Only used when the colour also has a photo.
+function productVideoUrl(p) {
+  const vs = (p && p.variants) || [];
+  const def = vs.find(v => v.isDefault) || vs[0];
+  const m = def ? orderedMedia(def.media).find(x => x.type === 'video') : null;
+  return m ? m.url : '';
+}
 function productPhotoUrl(p) {
   const vs = (p && p.variants) || [];
   const def = vs.find(v => v.isDefault) || vs[0];

@@ -63,11 +63,19 @@ function isUniqueViolation(err) {
 // (reels) are exempt; they have their own larger cap in middleware/upload.js.
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
-function uploadSingle(req, res, next) {
-  upload.single('file')(req, res, async (err) => {
+function uploadSingle(req, res, next) { return uploadChecked()(req, res, next); }
+
+// `validate(req)` (optional, may be async) runs once the file is received and BEFORE it is stored; return a message to refuse it.
+function uploadChecked(validate) {
+  return (req, res, next) => upload.single('file')(req, res, async (err) => {
     if (err) {
       const tooBig = err.code === 'LIMIT_FILE_SIZE';
-      return res.status(400).json({ message: tooBig ? 'That file is over 25MB. For a reel, trim it to 8–15 seconds or export it at a lower quality, then upload it again.' : (err.message || 'Upload failed.') });
+      return res.status(400).json({ message: tooBig ? 'That file is over 25MB. For a video (a reel or a product video), trim it to 8–15 seconds or export it at a lower quality, then upload it again.' : (err.message || 'Upload failed.') });
+    }
+    if (req.file && validate) {
+      let why = null;
+      try { why = await validate(req); } catch (e) { console.error('upload validation failed:', e); why = 'Could not check this file. Please try again.'; }
+      if (why) return res.status(400).json({ message: why });
     }
     if (req.file && req.file.mimetype.startsWith('image/') && req.file.size > MAX_IMAGE_BYTES) {
       const mb = (req.file.size / 1024 / 1024).toFixed(1);
@@ -526,7 +534,52 @@ router.delete('/variants/:id(\\d{1,9})', asyncRoute(async (req, res) => {
 }));
 
 // ---- Variant media ----
-router.post('/variants/:id(\\d{1,9})/media', uploadSingle, asyncRoute(async (req, res) => {
+// A colour's gallery is ordered: 1st the main photo, 2nd the (optional) product video, then any number of more photos.
+// Only the 2nd slide can be a video, and a colour has at most one. The video is a short, light MP4 / WebM: customers see it
+// play when they hover a product card and on the second slide of the product page, so it has to be small and quick to start.
+const PRODUCT_VIDEO_TYPES = ['video/mp4', 'video/webm'];
+const PRODUCT_VIDEO_MAX_BYTES = 20 * 1024 * 1024;
+
+// Rewrites sort_order so the gallery is always [main photo, video, other photos...] and exactly one photo is the primary.
+// Safe to call after any add / delete / "make main" - it only reorders and never touches the files.
+async function normalizeVariantMedia(variantId) {
+  const rows = must(await supabase.from('variant_media').select('id, type, is_primary, sort_order').eq('variant_id', variantId).order('sort_order').order('id'), 'normalizeMedia:read');
+  const images = rows.filter(r => r.type === 'image');
+  const video = rows.find(r => r.type === 'video') || null;
+  const extraVideos = rows.filter(r => r.type === 'video' && r !== video);
+  const main = images.find(r => r.is_primary) || images[0] || null;
+  const rest = images.filter(r => r !== main);
+  const order = [main, video, ...rest, ...extraVideos].filter(Boolean);
+  for (const [i, r] of order.entries()) {
+    const wantPrimary = !!main && r === main;
+    if (r.sort_order !== i || !!r.is_primary !== wantPrimary) {
+      must(await supabase.from('variant_media').update({ sort_order: i, is_primary: wantPrimary }).eq('id', r.id), 'normalizeMedia:write');
+    }
+  }
+}
+
+// Checks a product video before it is stored: type, size, a main photo first, and only one video per colour.
+async function checkProductMedia(req) {
+  const file = req.file;
+  if (!file || !file.mimetype.startsWith('video')) return null;
+  if (!PRODUCT_VIDEO_TYPES.includes(file.mimetype)) {
+    return 'The product video must be an MP4 or WEBM file. A .mov from an iPhone often will not play in every browser - export it as MP4 (H.264) first.';
+  }
+  if (file.size > PRODUCT_VIDEO_MAX_BYTES) {
+    return `That video is ${(file.size / 1024 / 1024).toFixed(1)}MB. Keep the product video under 20MB (about 15 seconds at a normal phone quality) so it starts quickly for customers.`;
+  }
+  const variantId = Number(req.params.id);
+  const rows = must(await supabase.from('variant_media').select('type').eq('variant_id', variantId), 'checkMedia:rows');
+  if (!rows.some(r => r.type === 'image')) return 'Add the main photo first - the video is always the second slide, after the main photo.';
+  if (rows.some(r => r.type === 'video')) return 'This colour already has a video. Remove it first to upload a different one.';
+  return null;
+}
+
+router.post('/variants/:id(\\d{1,9})/media', uploadChecked(async req => {
+  const exists = must(await supabase.from('product_variants').select('id').eq('id', Number(req.params.id)).maybeSingle(), 'addMedia:exists');
+  if (!exists) return 'Variant not found.';
+  return checkProductMedia(req);
+}), asyncRoute(async (req, res) => {
   const variantId = Number(req.params.id);
   const variant = must(await supabase.from('product_variants').select('*').eq('id', variantId).maybeSingle(), 'addMedia:variant');
   if (!variant) return res.status(404).json({ message: 'Variant not found.' });
@@ -539,8 +592,9 @@ router.post('/variants/:id(\\d{1,9})/media', uploadSingle, asyncRoute(async (req
   const sortOrder = (maxSort[0]?.sort_order ?? -1) + 1;
 
   const inserted = must(await supabase.from('variant_media').insert({
-    variant_id: variantId, type, url, alt_text: cleanText(req.body.alt, 200) || '', is_primary: !hasAny, sort_order: sortOrder
+    variant_id: variantId, type, url, alt_text: cleanText(req.body.alt, 200) || '', is_primary: type === 'image' && !hasAny, sort_order: sortOrder
   }).select().single(), 'addMedia:insert');
+  await normalizeVariantMedia(variantId);   // a video always lands second, more photos after it
 
   res.status(201).json({ media: inserted });
 }));
@@ -551,10 +605,7 @@ router.delete('/media/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   if (!media) return res.status(404).json({ message: 'Media not found.' });
 
   must(await supabase.from('variant_media').delete().eq('id', id), 'deleteMedia:delete');
-  if (media.is_primary) {
-    const next = must(await supabase.from('variant_media').select('id').eq('variant_id', media.variant_id).order('sort_order').order('id').limit(1), 'deleteMedia:next');
-    if (next[0]) must(await supabase.from('variant_media').update({ is_primary: true }).eq('id', next[0].id), 'deleteMedia:promote');
-  }
+  await normalizeVariantMedia(media.variant_id);   // the next photo becomes the main one; the video stays second
   // Best-effort file cleanup — never let a missing file block the API response.
   await removeUpload(media.url);
 
@@ -576,8 +627,10 @@ router.put('/media/:id(\\d{1,9})/alt', asyncRoute(async (req, res) => {
 router.put('/media/:id(\\d{1,9})/primary', asyncRoute(async (req, res) => {
   const media = must(await supabase.from('variant_media').select('*').eq('id', Number(req.params.id)).maybeSingle(), 'primaryMedia:lookup');
   if (!media) return res.status(404).json({ message: 'Media not found.' });
+  if (media.type !== 'image') return res.status(400).json({ message: 'Only a photo can be the main photo. The video always stays second.' });
   must(await supabase.from('variant_media').update({ is_primary: false }).eq('variant_id', media.variant_id), 'primaryMedia:clear');
   must(await supabase.from('variant_media').update({ is_primary: true }).eq('id', media.id), 'primaryMedia:set');
+  await normalizeVariantMedia(media.variant_id);
   res.json({ message: 'Set as primary.' });
 }));
 

@@ -198,10 +198,14 @@ const AdminColours = (function(){
         <div class="form-field"><label>Low-stock alert at ${tip('When stock falls to this number (or below) the colour is marked “Low stock” in Admin and you get a low-stock alert, so you can restock in time.')}</label>
           <input type="number" class="admin-input" style="width:100%;" data-cb="lowStockThreshold" min="0" step="1" value="${o.low != null ? esc(o.low) : '2'}"></div>
       </div>
-      <div class="form-field"><label>Photos of this colour ${tip('Add 2–3 clear photos (the first one is the main photo customers see first). You can add more, remove any, and change the main photo later.')}</label>
-        <div class="variant-media-strip" data-cb-photos>
-          <label class="upload-label" title="Add photos">+<input type="file" accept="image/*,video/*" multiple style="display:none;" data-cb-file></label>
-        </div>
+      <div class="media-slots">
+        <div class="form-field media-slot"><label>Main photo — shown first ${tip('The photo customers see first, on the product card and on the product page.')}</label>
+          <div class="variant-media-strip" data-cb-strip="main"><label class="upload-label" title="Choose the main photo">+<input type="file" accept="image/*" style="display:none;" data-cb-main></label></div></div>
+        <div class="form-field media-slot"><label>Product video — shown second (optional) ${tip('One short MP4 or WEBM, up to 30 seconds and 20MB (8–15 seconds is ideal). Customers see it play when they hover the product card and as the second slide on the product page. Add the main photo first.')}</label>
+          <div class="variant-media-strip" data-cb-strip="video"><label class="upload-label upload-video" title="Choose the product video">+<input type="file" accept="video/mp4,video/webm" style="display:none;" data-cb-video disabled></label></div>
+          <span class="media-note" data-cb-videonote>Add the main photo first.</span></div>
+        <div class="form-field media-slot"><label>More photos — any number ${tip('Extra photos shown after the video. You can add more, remove any, and change the main photo later.')}</label>
+          <div class="variant-media-strip" data-cb-strip="more"><label class="upload-label" title="Add more photos">+<input type="file" accept="image/*" multiple style="display:none;" data-cb-more></label></div></div>
       </div>
     </div>`;
   }
@@ -238,24 +242,62 @@ const AdminColours = (function(){
     pct.addEventListener('input', () => { st.pctTouched = true; salePreview(); if(pricing) pricing.refresh(); if(o.onPriceInput) o.onPriceInput(pct.value, 'pct'); });
     price.addEventListener('change', salePreview);
 
-    const strip = q('[data-cb-photos]'), fileInput = q('[data-cb-file]'), addBtn = strip.querySelector('.upload-label');
+    // Photos: the main photo, an optional product video (always second) and any number of more photos.
+    st.main = null; st.video = null; st.more = [];
+    const inMain = q('[data-cb-main]'), inVideo = q('[data-cb-video]'), inMore = q('[data-cb-more]'), note = q('[data-cb-videonote]');
+    const stripOf = k => q(`[data-cb-strip="${k}"]`);
+    const allFiles = () => [st.main, st.video, ...st.more].filter(Boolean);   // upload order: main, video, more
+    const say = (msg, kind) => { if(typeof toast === 'function') toast(msg, kind); };
+    const thumbHTML = (f, u, key, badge) =>
+      (f.type.startsWith('video') ? `<video src="${u}#t=0.1" muted preload="metadata"></video><span class="media-badge">▶ Video</span>` : `<img src="${u}" alt="">`) +
+      `<div class="media-del" data-cb-rm="${key}" title="Remove">×</div>` + (badge ? `<div class="media-primary-btn" style="pointer-events:none;">${badge}</div>` : '');
     const drawPhotos = () => {
       st.urls.forEach(u => URL.revokeObjectURL(u)); st.urls = [];
-      strip.querySelectorAll('.media-thumb').forEach(n => n.remove());
-      st.files.forEach((f, i) => {
+      ['main', 'video', 'more'].forEach(k => stripOf(k).querySelectorAll('.media-thumb').forEach(n => n.remove()));
+      const put = (k, f, key, badge, primary) => {
         const u = URL.createObjectURL(f); st.urls.push(u);
         const d = document.createElement('div');
-        d.className = 'media-thumb' + (i === 0 ? ' is-primary' : '');
-        d.innerHTML = (f.type.startsWith('video') ? `<video src="${u}" muted preload="metadata"></video>` : `<img src="${u}" alt="">`) +
-          `<div class="media-del" data-cb-del="${i}" title="Remove">×</div>` + (i === 0 ? '<div class="media-primary-btn" style="pointer-events:none;">Main</div>' : '');
-        strip.insertBefore(d, addBtn);
-      });
+        d.className = 'media-thumb' + (primary ? ' is-primary' : '');
+        d.innerHTML = thumbHTML(f, u, key, badge);
+        stripOf(k).insertBefore(d, stripOf(k).querySelector('.upload-label'));
+      };
+      if(st.main) put('main', st.main, 'main', 'Main', true);
+      if(st.video) put('video', st.video, 'video', 'Video', false);
+      st.more.forEach((f, i) => put('more', f, 'more:' + i, '', false));
+      stripOf('main').querySelector('.upload-label').style.display = st.main ? 'none' : '';
+      stripOf('video').querySelector('.upload-label').style.display = st.video ? 'none' : '';
+      inVideo.disabled = !st.main;
+      note.textContent = st.video ? '' : (st.main ? 'Optional — a short MP4 or WEBM (up to 30 seconds, 20MB).' : 'Add the main photo first.');
     };
-    fileInput.addEventListener('change', () => { st.files.push(...fileInput.files); fileInput.value = ''; drawPhotos(); });
-    strip.addEventListener('click', e => {
-      const del = e.target.closest('[data-cb-del]'); if(!del) return;
-      st.files.splice(Number(del.dataset.cbDel), 1); drawPhotos();
+    inMain.addEventListener('change', () => {
+      const f = inMain.files[0]; inMain.value = '';
+      if(!f) return;
+      if(!f.type.startsWith('image/')){ say('The main photo must be a picture (JPG, PNG or WEBP).', 'error'); return; }
+      st.main = f; drawPhotos();
     });
+    inVideo.addEventListener('change', async () => {
+      const f = inVideo.files[0]; inVideo.value = '';
+      if(!f) return;
+      note.textContent = 'Checking the video…';
+      const r = await AdminMedia.checkVideo(f);
+      if(!r.ok){ say(r.error, 'error'); drawPhotos(); return; }
+      st.video = f; drawPhotos();
+    });
+    inMore.addEventListener('change', () => {
+      const picked = [...inMore.files]; inMore.value = '';
+      const imgs = picked.filter(f => f.type.startsWith('image/'));
+      if(imgs.length < picked.length) say('Only photos can be added here — the video goes in the "Product video" box.', 'error');
+      st.more.push(...imgs); drawPhotos();
+    });
+    q('.media-slots').addEventListener('click', e => {
+      const rm = e.target.closest('[data-cb-rm]'); if(!rm) return;
+      const key = rm.dataset.cbRm;
+      if(key === 'main'){ st.main = null; if(st.video){ st.video = null; say('The video was removed too — it needs a main photo before it.'); } }
+      else if(key === 'video') st.video = null;
+      else st.more.splice(Number(key.split(':')[1]), 1);
+      drawPhotos();
+    });
+    drawPhotos();
 
     function setSale(on){
       st.sale = !!on;
@@ -267,7 +309,7 @@ const AdminColours = (function(){
     function read(){
       return {
         colorName: name.value.trim(), swatch: shade.value, price: price.value, costPrice: costInput ? costInput.value : undefined, salePercent: st.sale ? pct.value : undefined,
-        stock: q('[data-cb="stock"]').value, lowStockThreshold: q('[data-cb="lowStockThreshold"]').value, files: st.files.slice()
+        stock: q('[data-cb="stock"]').value, lowStockThreshold: q('[data-cb="lowStockThreshold"]').value, files: allFiles()
       };
     }
     function destroy(){ st.urls.forEach(u => URL.revokeObjectURL(u)); st.urls = []; }
