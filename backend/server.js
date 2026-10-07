@@ -86,6 +86,35 @@ if (compression) app.use(compression());
 app.use(cors());
 app.use(express.json());
 
+// ---- Speed: HTTP caching of public data, and emptying the in-memory caches after changes ----
+const { invalidateAll } = require('./utils/cache');
+// Read-only storefront data any visitor may see. The browser (and a CDN, if one is ever put in front) may reuse it for 15 s
+// and keep showing it for up to a minute while it fetches a fresh copy - repeat visits and back/forward are instant.
+// Anything personal (cart, wishlist, orders, account) is never in this list. A product page carries a "you already pre-booked
+// this" flag for a signed-in shopper, so a request with credentials is never stored or shared.
+const PUBLIC_GET = /^\/(products(\/(reels|lookup|facets|\d{1,9}))?|collections(\/[^/]+)?|fabrics|occasions|content\/[a-z-]+|settings\/(store|footer|shipping|return-policy|tax)|bootstrap|home|faq|upcoming-sarees)$/;
+app.use('/api', (req, res, next) => {
+  if (req.method === 'GET' && PUBLIC_GET.test(req.path)) {
+    res.setHeader('Vary', 'Authorization');
+    if (req.headers.authorization) res.setHeader('Cache-Control', 'private, no-cache');
+    else {
+      res.setHeader('Cache-Control', 'public, max-age=15, stale-while-revalidate=60');
+      const send = res.json.bind(res);
+      res.json = body => { if (res.statusCode >= 400) res.setHeader('Cache-Control', 'no-store'); return send(body); };   // never keep an error
+    }
+  }
+  next();
+});
+// A change made through this server shows at once: the admin's edits, an order (stock), a pre-booking, a review, a return.
+// (A change made by the other app shows within ~15 s, when the cached copy ages out.)
+const CHANGES_DATA = /^\/(admin|orders|checkout|payments|returns|products)(\/|$)/;
+app.use('/api', (req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS' && CHANGES_DATA.test(req.path)) {
+    res.on('finish', () => { if (res.statusCode < 400 || /^\/admin/.test(req.path)) invalidateAll(); });
+  }
+  next();
+});
+
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
@@ -144,9 +173,9 @@ const escAttr = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/
 async function productMeta(id) {
   const hit = productMetaCache.get(id);
   if (hit && Date.now() - hit.at < PRODUCT_META_TTL) return hit.meta;
-  const { getProductById } = require('./utils/db');
+  const { getProductByIdFast } = require('./utils/db');
   const { richToPlain } = require('./utils/richText');
-  const p = await getProductById(id);
+  const p = await getProductByIdFast(id);
   let meta = null;
   if (p && p.status !== 'archived') {
     const variants = (p.variants || []).filter(v => !v.archived);
@@ -165,18 +194,68 @@ async function productMeta(id) {
   productMetaCache.set(id, { at: Date.now(), meta });
   return meta;
 }
-let productHtml = null;
+
+// ---- Pages with versioned scripts and styles ----
+// Each page's <script src="js/api.js"> / <link href="css/style.css"> gets ?v=<fingerprint of the file>. The address changes
+// whenever the file does, so the browser can keep the file for a year with no revalidation round trip (the main reason a
+// second page view used to wait on the network for files it already had), and a deploy still shows up at once because the
+// page itself is always revalidated (cheap 304 when unchanged).
+const fs = require('fs');
+const crypto = require('crypto');
+const assetVersions = new Map();   // relative path -> { mtime, v }
+function assetVersion(rel) {
+  try {
+    const full = path.join(FRONTEND_DIR, rel);
+    const mtime = fs.statSync(full).mtimeMs;
+    const hit = assetVersions.get(rel);
+    if (hit && hit.mtime === mtime) return hit.v;
+    const v = crypto.createHash('md5').update(fs.readFileSync(full)).digest('hex').slice(0, 10);
+    assetVersions.set(rel, { mtime, v });
+    return v;
+  } catch (e) { return null; }
+}
+const ASSET_REF = /((?:src|href)=")(\/?)((?:js|css)\/[\w.-]+\.(?:js|css))(")/g;
+const pageCache = new Map();   // page file -> { at, mtime, raw, html }
+function pageHtml(name) {
+  const file = path.join(FRONTEND_DIR, name);
+  const hit = pageCache.get(name);
+  const now = Date.now();
+  if (hit && now - hit.at < 2000) return hit.html;   // look at the disk at most every 2 s
+  const mtime = fs.statSync(file).mtimeMs;
+  const raw = hit && hit.mtime === mtime ? hit.raw : fs.readFileSync(file, 'utf8');
+  const html = raw.replace(ASSET_REF, (m, a, slash, rel, q) => { const v = assetVersion(rel); return v ? `${a}${slash}${rel}?v=${v}${q}` : m; });
+  pageCache.set(name, { at: now, mtime, raw, html });
+  return html;
+}
+// The data every storefront page needs first (menu, announcement bar, footer - and, on the home page, the hero, weaves,
+// shop-all band and reels) is written into the page itself, so the browser has it the instant the HTML arrives instead of
+// asking the server for it again after the scripts have loaded: one network round trip less before anything can be drawn.
+// If anything goes wrong the page simply asks for the data the usual way.
+const NO_BOOT = new Set(['admin.html', 'admin-login.html', 'packing-slip.html']);
+const jsonForScript = v => JSON.stringify(v).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+async function pageWithData(name) {
+  const html = pageHtml(name);
+  if (NO_BOOT.has(name)) return html;
+  try {
+    const pub = require('./utils/publicData');
+    const [boot, home] = await Promise.all([pub.bootstrap(), name === 'index.html' ? pub.home() : null]);
+    const tag = `<script>window.__BOOT__=${jsonForScript(boot)};${home ? `window.__HOME__=${jsonForScript(home)};` : ''}</script>\n`;
+    return html.replace('</head>', () => tag + '</head>');
+  } catch (e) { return html; }
+}
+async function sendPage(res, name) {
+  try { res.set('Cache-Control', 'no-cache').type('html').send(await pageWithData(name)); }
+  catch (e) { res.sendFile(path.join(FRONTEND_DIR, name)); }
+}
 app.get('/product', async (req, res) => {
-  const file = path.join(FRONTEND_DIR, 'product.html');
   const id = Number(req.query.id);
   try {
-    if (!Number.isInteger(id) || id < 1) return res.sendFile(file);
+    if (!Number.isInteger(id) || id < 1) return sendPage(res, 'product.html');
     const meta = await productMeta(id);
     if (!meta) return sendNotFound(req, res);   // a saree that does not exist (or was removed) is a real 404, not a blank page
-    if (!productHtml || productHtml.at < require('fs').statSync(file).mtimeMs) productHtml = { at: Date.now(), html: require('fs').readFileSync(file, 'utf8') };
     const base = process.env.SITE_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
     const url = `${base}/product?id=${id}`;
-    let html = productHtml.html
+    let html = (await pageWithData('product.html'))
       .replace(/<title>[^<]*<\/title>/, `<title>${escAttr(meta.title)}</title>`)
       .replace(/(<meta name="description" id="metaDescription" content=")[^"]*(")/, `$1${escAttr(meta.description)}$2`)
       .replace(/(<meta property="og:title" id="ogTitle" content=")[^"]*(")/, `$1${escAttr(meta.title)}$2`)
@@ -186,12 +265,12 @@ app.get('/product', async (req, res) => {
     res.set('Cache-Control', 'no-cache').type('html').send(html);
   } catch (err) {
     console.error('GET /product meta failed:', err.message);
-    res.sendFile(file);
+    sendPage(res, 'product.html');
   }
 });
 
 CLEAN_PAGES.forEach(name => {
-  app.get(`/${name}`, (req, res) => res.sendFile(path.join(FRONTEND_DIR, `${name}.html`)));
+  app.get(`/${name}`, (req, res) => sendPage(res, `${name}.html`));
   app.get(`/${name}.html`, (req, res) => res.redirect(301, withQuery(req, `/${name}`)));
 });
 app.get('/index.html', (req, res) => res.redirect(301, withQuery(req, '/')));
@@ -203,7 +282,7 @@ app.get('/index.html', (req, res) => res.redirect(301, withQuery(req, '/')));
 // A collection page is the shop listing scoped to that collection's tagged
 // products (shop.html reads ?slug=), so it shares the same grid, filters,
 // sorting and pagination instead of duplicating them.
-app.get('/collection', (req, res) => res.sendFile(path.join(FRONTEND_DIR, 'shop.html')));
+app.get('/collection', (req, res) => sendPage(res, 'shop.html'));
 app.get('/collection.html', (req, res) => res.redirect(301, withQuery(req, '/collection')));
 
 // Admin pages — same clean-URL pattern as above, but only reachable from
@@ -211,7 +290,7 @@ app.get('/collection.html', (req, res) => res.redirect(301, withQuery(req, '/col
 // covers the raw ".html" filename here, so express.static below never gets
 // a chance to serve admin.html/admin-login.html directly on the main domain.
 ['admin', 'admin-login'].forEach(name => {
-  app.get(`/${name}`, adminHostOnly, (req, res) => res.sendFile(path.join(FRONTEND_DIR, `${name}.html`)));
+  app.get(`/${name}`, adminHostOnly, (req, res) => sendPage(res, `${name}.html`));
   app.get(`/${name}.html`, adminHostOnly, (req, res) => res.redirect(301, withQuery(req, `/${name}`)));
 });
 // The admin subdomain's own root shows the admin panel directly instead of
@@ -219,15 +298,17 @@ app.get('/collection.html', (req, res) => res.redirect(301, withQuery(req, '/col
 // redirects to /admin-login on its own if there's no valid session, so
 // "logged in vs not" needs no handling here.
 app.get('/', (req, res, next) => {
-  if (!isAdminHost(req)) return next();
-  res.sendFile(path.join(FRONTEND_DIR, 'admin.html'));
+  sendPage(res, isAdminHost(req) ? 'admin.html' : 'index.html');
 });
 
-// Pages, scripts and styles are always revalidated (cheap 304 when unchanged, so a deploy shows up straight away);
-// pictures and fonts rarely change and are the heavy part, so the browser may keep them for a day.
+// A script or style asked for with its ?v= fingerprint can never change under that address, so it is kept for a year; asked
+// for without one it is always revalidated (cheap 304). Fonts never change. Pictures rarely do, so a week.
 app.use(express.static(FRONTEND_DIR, {
+  index: false,   // '/' is served by the route above, with versioned assets
   setHeaders(res, filePath) {
-    if (/\.(png|jpe?g|webp|gif|svg|ico|woff2?|ttf)$/i.test(filePath)) res.setHeader('Cache-Control', 'public, max-age=86400');
+    if (/\.woff2?$/i.test(filePath)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    else if (/\.(png|jpe?g|webp|gif|svg|ico|ttf)$/i.test(filePath)) res.setHeader('Cache-Control', 'public, max-age=604800');
+    else if (/\.(js|css)$/i.test(filePath) && res.req && res.req.query && /^[a-f0-9]{6,32}$/.test(res.req.query.v || '')) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     else res.setHeader('Cache-Control', 'no-cache');
   }
 }));

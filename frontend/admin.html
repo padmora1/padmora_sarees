@@ -10,8 +10,8 @@
 <title>Store Dashboard — Padmora Admin</title>
 <meta name="description" content="Padmora store dashboard.">
 <meta name="robots" content="noindex, nofollow">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preload" href="/fonts/jost-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/marcellus-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body data-page="admin.html">
@@ -366,6 +366,7 @@
 <script src="js/admin-api.js"></script>
 <script src="js/admin-lists.js"></script>
 <script src="js/admin-colours.js"></script>
+<script src="js/admin-media.js"></script>
 <script>
   const STAGE_NAMES = ['Confirmed','Packed','Shipped','Out for Delivery','Delivered'];
 
@@ -1080,14 +1081,14 @@
     });
   }
 
-  function mediaThumbHTML(m){
+  function mediaThumbHTML(m, i){
     const inner = m.type === 'video'
-      ? `<video src="${m.url}" muted preload="metadata"></video>`
+      ? `<video src="${m.url}#t=0.1" muted preload="metadata"></video><span class="media-badge">▶ Video</span>`
       : `<img src="${m.url}" alt="${m.alt||''}" loading="lazy" decoding="async">`;
-    return `<div class="media-thumb ${m.isPrimary?'is-primary':''}">
+    return `<div class="media-thumb ${m.type === 'image' && m.isPrimary?'is-primary':''}">
       ${inner}
       <div class="media-del" data-del-media="${m.id}">×</div>
-      ${!m.isPrimary?`<div class="media-primary-btn" data-primary-media="${m.id}">Set primary</div>`:''}
+      ${m.type === 'image' && !m.isPrimary ? `<div class="media-primary-btn" data-primary-media="${m.id}">Make main</div>` : (m.type === 'image' ? '<div class="media-primary-btn" style="pointer-events:none;">Main</div>' : '')}
     </div>`;
   }
 
@@ -1123,12 +1124,18 @@
           <button class="btn btn-sm btn-primary" data-save-variant="${v.id}">Save Variant</button>
 
           <div style="margin-top:16px;">
-            <label style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;">Media</label>
-            <p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 8px;">Add 2-3 photos for this colour — customers can flip through them on the product page. Click + again for each extra photo, and "Set primary" to choose which one shows first.</p>
+            <label style="font-size:11px;color:var(--ink-soft);text-transform:uppercase;">Photos &amp; video</label>
+            <p class="media-help">Customers see them in this order: <strong>1st the main photo</strong>, <strong>2nd the product video</strong> (optional, plays when they hover the product card and on the second slide of the product page), then <strong>any number of more photos</strong>.</p>
             <div class="variant-media-strip">
-              ${v.media.map(mediaThumbHTML).join('')}
-              <label class="upload-label">+<input type="file" accept="image/*,video/*" multiple style="display:none;" data-upload-media="${v.id}"></label>
+              ${AdminMedia.ordered(v.media).map(mediaThumbHTML).join('')}
             </div>
+            <div class="media-add-row">
+              ${!v.media.some(m => m.type === 'image') ? `<label class="btn btn-sm btn-outline media-add">+ Main photo<input type="file" accept="image/*" style="display:none;" data-upload-media="${v.id}" data-kind="main"></label>` : ''}
+              ${v.media.some(m => m.type === 'image') && !v.media.some(m => m.type === 'video') ? `<label class="btn btn-sm btn-outline media-add">+ Product video<input type="file" accept="video/mp4,video/webm" style="display:none;" data-upload-media="${v.id}" data-kind="video"></label>` : ''}
+              <label class="btn btn-sm btn-outline media-add">+ More photos<input type="file" accept="image/*" multiple style="display:none;" data-upload-media="${v.id}" data-kind="more"></label>
+            </div>
+            <p class="media-status" data-media-status="${v.id}"></p>
+            ${!v.media.some(m => m.type === 'video') ? '<p class="media-help">Video: one MP4 or WEBM, up to 30 seconds and 20MB (8–15 seconds is ideal).</p>' : ''}
             ${v.media.some(m => m.type === 'image') ? `
             <div class="alt-list">
               <p class="alt-title">Photo descriptions (alt text) ${AdminColours.tip('A short description of what the photo shows, for example “Mustard Maheshwari saree with zari border, front view”. Screen readers read it out and Google uses it for image search. Leave it empty and the saree’s name and colour are used.')}</p>
@@ -1220,30 +1227,37 @@
     // shrunk first. The label shows progress so a slow connection never looks
     // like a frozen page.
     body.querySelectorAll('[data-upload-media]').forEach(input=>input.addEventListener('change', async (e)=>{
-      const files = [...e.target.files];
+      const kind = input.dataset.kind;
+      let files = [...e.target.files];
+      e.target.value = '';
       if(!files.length) return;
-      const label = input.closest('.upload-label');
-      const idleText = label.firstChild.textContent;
-      input.disabled = true;
+      const status = body.querySelector(`[data-media-status="${input.dataset.uploadMedia}"]`);
+      const say = (t) => { if(status) status.textContent = t; };
+      if(kind !== 'video'){
+        const imgs = files.filter(f => f.type.startsWith('image/'));
+        if(imgs.length < files.length) toast('Only photos can be added here — the video has its own button.', 'error');
+        files = kind === 'main' ? imgs.slice(0, 1) : imgs;
+        if(!files.length) return;
+      }else{
+        say('Checking the video…');
+        const r = await AdminMedia.checkVideo(files[0]);
+        if(!r.ok){ say(''); toast(r.error, 'error'); return; }
+        files = files.slice(0, 1);
+      }
+      const labelEl = input.closest('label');
+      body.querySelectorAll('.media-add input, .media-add').forEach(x => { if(x.tagName === 'INPUT') x.disabled = true; });
       let done = 0;
       try{
-        for(const original of files){
-          label.firstChild.textContent = `${done + 1}/${files.length}…`;
-          const file = await prepareImageForUpload(original);
-          const fd = new FormData();
-          fd.append('file', file);
-          const r = await fetch('/api/admin/variants/' + input.dataset.uploadMedia + '/media', {
-            method:'POST', headers: { Authorization: 'Bearer ' + getAdminToken() }, body: fd
-          });
-          if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.message || 'Upload failed'); }
-          done++;
-        }
-        toast(done === 1 ? 'Photo uploaded' : `${done} photos uploaded`);
+        done = await AdminMedia.uploadSet(input.dataset.uploadMedia, files, (d, total, pct, file) => {
+          const what = file.type.startsWith('video') ? 'video' : 'photo';
+          say(`Uploading ${what}${total > 1 ? ' ' + (d + 1) + '/' + total : ''}… ${pct}%${what === 'video' && pct >= 100 ? ' — saving…' : ''}`);
+        });
+        toast(kind === 'video' ? 'Product video uploaded' : (done === 1 ? 'Photo uploaded' : `${done} photos uploaded`));
       }catch(err){
-        toast(done ? `${done} uploaded, then: ${escHTML(err.message)}` : err.message, 'error');
+        toast(err.uploaded ? `${err.uploaded} uploaded, then: ${err.message}` : err.message, 'error');
       }finally{
-        label.firstChild.textContent = idleText;
-        input.disabled = false;
+        say('');
+        body.querySelectorAll('.media-add input').forEach(x => { x.disabled = false; });
       }
       await refreshProduct(p.id);
     }));
@@ -1277,17 +1291,8 @@
   // Uploads one colour's photos one after another (so the first becomes the main photo and the order is kept),
   // each shrunk first. Different colours can upload side by side. Calls onStep(done, total) after each photo.
   async function uploadVariantPhotos(variantId, files, onStep){
-    let done = 0;
-    for(const original of files){
-      const file = await prepareImageForUpload(original);
-      const fd = new FormData();
-      fd.append('file', file);
-      const r = await fetch('/api/admin/variants/' + variantId + '/media', { method:'POST', headers: { Authorization: 'Bearer ' + getAdminToken() }, body: fd });
-      if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.message || 'Upload failed'); }
-      done++;
-      if(onStep) onStep(done, files.length);
-    }
-    return done;
+    // main photo first, then the video, then more photos - the order they are given in (see js/admin-media.js)
+    return AdminMedia.uploadSet(variantId, files, (d, total, pct, file, phase) => { if(phase === 'done' && onStep) onStep(d, total); });
   }
 
   // The form is static HTML that is shown and hidden, not rebuilt each time. Without an explicit reset, whatever was

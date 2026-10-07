@@ -12,10 +12,11 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="Shop All Sarees — Padmora Sarees by Yashi">
 <meta property="og:description" content="Browse our full collection of handloom sarees, filterable by fabric, occasion and price.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fxjlgsatgajagzqdokbe.supabase.co" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preload" href="/fonts/jost-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/marcellus-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/style.css">
+<style>main{min-height:85vh;}</style>
 </head>
 <body data-page="shop.html">
 <script>
@@ -183,33 +184,37 @@
     priceRangeEl().value = shown;
     document.getElementById('priceLabel').textContent = shown.toLocaleString('en-IN');
   }
-  function applyPriceCap(list){
-    let top = 0, bottom = Infinity;
-    (list || []).forEach(p => [p.price].concat((p.variants || []).map(v => v.price)).forEach(x => { if(x > top) top = x; if(x > 0 && x < bottom) bottom = x; }));
+  function applyPriceCap(top, bottom){
     priceCap = top > 0 ? Math.max(5000, Math.ceil(top / 5000) * 5000) : 25000;
     const r = priceRangeEl();
     r.max = priceCap;
-    r.min = Math.max(0, isFinite(bottom) ? Math.min(1500, Math.floor(bottom / 500) * 500) : 1500);
+    r.min = Math.max(0, bottom > 0 ? Math.min(1500, Math.floor(bottom / 500) * 500) : 1500);
     if(state.maxPrice > priceCap) state.maxPrice = priceCap;
     syncPriceUI();
   }
 
-  async function loadTaxonomy(){
+  // The filter lists come from three small answers (weaves, occasions, and the colours / weaves / price range of what is
+  // for sale) instead of downloading the whole catalogue just to work them out. `slug` scopes them to a collection;
+  // returns false when that collection does not exist.
+  async function loadTaxonomy(slug){
     try{
-      const [{fabrics}, {occasions}, {products}] = await Promise.all([apiFetch('/fabrics'), apiFetch('/occasions'), apiFetch('/products')]);
+      const [{fabrics}, {occasions}, facets] = await Promise.all([
+        apiFetch('/fabrics'), apiFetch('/occasions'),
+        apiFetch('/products/facets' + (slug ? '?collection=' + encodeURIComponent(slug) : '')).catch(() => null)
+      ]);
+      if(!facets && slug) return false;
+      if(!facets) throw new Error('no filter data');
       // A taxonomy fabric with zero products yet (admin added it ahead of
       // stocking it) would just filter down to an empty grid — hide it from
       // the checklist until there's something to actually show.
       allFabrics = fabrics.filter(f=>f.productCount > 0).map(f=>f.name);
       allOccasions = occasions.map(o=>o.name);
-      allColors = [...new Set(products.map(p=>String(p.swatch||'').trim().toLowerCase()).filter(Boolean))].sort();
-      applyPriceCap(collectionData ? collectionData.products : products);
+      allColors = facets.colors;
+      applyPriceCap(facets.priceTop, facets.priceBottom);
       // Inside a collection, only offer fabrics/colours that exist in it.
-      if(collectionData){
-        const inColl = collectionData.products;
-        const fabricsHere = new Set(inColl.map(p=>p.fabric));
+      if(slug){
+        const fabricsHere = new Set(facets.fabrics);
         allFabrics = allFabrics.filter(f=>fabricsHere.has(f));
-        allColors = [...new Set(inColl.map(p=>String(p.swatch||'').trim().toLowerCase()).filter(Boolean))].sort();
       }
     }catch(e){
       // Backend unreachable — fall back to the last-known catalog shape so the
@@ -218,6 +223,7 @@
       allOccasions = ['Wedding','Festive','Party','Casual','Office'];
       allColors = ['maroon','emerald','ivory','teal','blush','sand','mustard','powder','wine','indigo','fuchsia','peacock'];
     }
+    return true;
   }
 
   function renderFilterOptions(){
@@ -316,7 +322,24 @@
   // What is in the bag lives in cardCart (js/api.js): cards show a +/- stepper for a saree already there, and
   // Add / + / - change it on screen instantly (see cardActionsInner in js/components.js).
 
-  function productCardHTML(p){
+  // The first few cards load their photo at once; the rest get it as they near the screen, so a long grid does not
+  // download twenty photos (and the video-card extras) before the shopper has seen the first row.
+  const EAGER_CARDS = 8;
+  let lazyPhotos = null;
+  function loadLazyPhotos(root){
+    const els = (root || document).querySelectorAll('.product-media[data-bg]');
+    if(!els.length) return;
+    if(!('IntersectionObserver' in window)){ els.forEach(el => { el.style.background = el.dataset.bg; el.removeAttribute('data-bg'); }); return; }
+    if(!lazyPhotos) lazyPhotos = new IntersectionObserver(entries => entries.forEach(en => {
+      if(!en.isIntersecting) return;
+      const el = en.target;
+      lazyPhotos.unobserve(el);
+      if(el.dataset.bg){ el.style.background = el.dataset.bg; el.removeAttribute('data-bg'); }
+    }), { rootMargin: '700px 0px' });
+    els.forEach(el => lazyPhotos.observe(el));
+  }
+
+  function productCardHTML(p, idx){
     // A product with no badge set (p.badge is null/'') must show no badge at
     // all — the old fallthrough ternary defaulted anything that wasn't
     // 'sale'/'new' to 'Bestseller', which mislabeled every plain product.
@@ -327,7 +350,8 @@
     const cartQty = defaultVariant ? cardCart.qty(defaultVariant.id) : 0;
     return `
     <div class="product-card ${soldOut?'sold-out':''}" data-pid="${p.id}" data-qty="${cartQty}">
-      <a href="/product?id=${p.id}" class="product-media" style="background:${productBg(p)};display:block;">
+      <a href="/product?id=${p.id}" class="product-media" ${idx >= EAGER_CARDS ? `data-bg="${esc(productBg(p))}" style="background:${swatchBg(p.swatch)};display:block;"` : `style="background:${productBg(p)};display:block;"`}>
+        ${cardVideoHTML(p)}
         ${soldOut ? `<div class="sold-out-ribbon"><span class="ribbon-lotus">${LOTUS_GLYPH_SVG}</span>Sold Out</div>` : (badgeLabel ? `<span class="product-badge ${p.badge}">${badgeLabel}</span>` : '')}
         <button class="wishlist-toggle ${isWished?'active':''}" aria-label="${isWished?'Remove from wishlist':'Add to wishlist'}" onclick="event.preventDefault();quickWish(${p.id}, this);">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -361,9 +385,25 @@
     }catch(e){ toast(e.message, 'error'); }
   }
 
-  window.refreshProductGrid = loadProducts;
+  // Who the shopper is (their saved sarees and bag) is fetched once per page - not again for every filter click or
+  // "load more" - and again only when something else changed it (refreshProductGrid).
+  // The saved-sarees list is waited for (the hearts are drawn with the cards); the bag is NOT - its steppers fill in a
+  // moment later by themselves (cardCart tells the cards when it has loaded), so a slow bag lookup never delays the grid.
+  let userData = null;
+  function loadUserData(force){
+    if(!userData || force){
+      userData = {
+        wish: wishlistIdsGet().then(ids => { wishlistedIds = new Set(ids); }).catch(() => {}),
+        cart: cardCart.load().catch(() => {})
+      };
+    }
+    return userData.wish;
+  }
+  const PAGE = 20;
+  let rendered = 0;     // cards on screen
+  let requestSeq = 0;   // only the newest request may draw (a slower, older answer is dropped)
 
-  async function loadProducts(){
+  function productsQuery(offset, limit){
     const q = new URLSearchParams();
     if(state.collection) q.set('collection', state.collection);
     if(state.fabric.size) q.set('fabric', [...state.fabric].join(','));
@@ -373,21 +413,44 @@
     if(state.minPrice) q.set('minPrice', state.minPrice);
     if(state.search) q.set('search', state.search);
     if(state.sort) q.set('sort', state.sort);
-    q.set('limit', state.loadedCount);
+    q.set('limit', limit);
+    if(offset) q.set('offset', offset);
+    return q.toString();
+  }
+  const fetchProducts = (offset, limit) => apiFetch('/products?' + productsQuery(offset, limit));
 
+  window.refreshProductGrid = () => loadProducts({ refreshUser: true, limit: Math.max(PAGE, rendered) });
+
+  // opts: append (add the next page under the cards already shown), prefetched (an answer already on its way),
+  // refreshUser (re-read the saved sarees / bag), limit (how many to draw from the start)
+  async function loadProducts(opts){
+    opts = opts || {};
+    const my = ++requestSeq;
+    const append = !!opts.append;
+    const offset = append ? rendered : 0;
     try{
-      const [{products, total}, wishData, cart] = await Promise.all([apiFetch('/products?' + q.toString()), wishlistGet(), cardCart.load()]);
-      wishlistedIds = new Set(wishData.products.map(p=>p.id));
+      const [{products, total}] = await Promise.all([opts.prefetched || fetchProducts(offset, opts.limit || PAGE), loadUserData(opts.refreshUser)]);
+      if(my !== requestSeq) return;
       registerCardProducts(products);
       totalCount = total;
-      document.getElementById('resultCount').textContent = products.length < total
-        ? `Showing ${products.length} of ${total} saree${total!==1?'s':''}`
+      const grid = document.getElementById('productGrid');
+      if(append){
+        grid.insertAdjacentHTML('beforeend', products.map((p, i) => productCardHTML(p, offset + i)).join(''));
+        rendered += products.length;
+      }else{
+        grid.innerHTML = products.length ? products.map((p, i) => productCardHTML(p, i)).join('') :
+          `<div class="empty-state" style="grid-column:1/-1;">No sarees match these filters just yet. Try widening your search.</div>`;
+        rendered = products.length;
+      }
+      loadLazyPhotos(grid);
+      document.getElementById('resultCount').textContent = rendered < total
+        ? `Showing ${rendered} of ${total} saree${total!==1?'s':''}`
         : `${total} saree${total!==1?'s':''}`;
-      document.getElementById('productGrid').innerHTML = products.length ? products.map(productCardHTML).join('') :
-        `<div class="empty-state" style="grid-column:1/-1;">No sarees match these filters just yet. Try widening your search.</div>`;
-      document.getElementById('loadMoreWrap').style.display = products.length < total ? '' : 'none';
+      document.getElementById('loadMoreWrap').style.display = rendered < total ? '' : 'none';
       updateFilterSummary(total);
     }catch(e){
+      if(my !== requestSeq) return;
+      if(append) return;   // the next scroll tries again
       document.getElementById('resultCount').textContent = '';
       document.getElementById('productGrid').innerHTML = `<p style="grid-column:1/-1;text-align:center;color:var(--ink-soft);">Could not load products — is the backend server running?</p>`;
       document.getElementById('loadMoreWrap').style.display = 'none';
@@ -398,11 +461,10 @@
   // the sentinel an IntersectionObserver watches, so scrolling it into view
   // loads the next batch on its own without anyone needing to click it.
   async function loadMore(){
-    if(loadingMore || state.loadedCount >= totalCount) return;
+    if(loadingMore || rendered >= totalCount) return;
     loadingMore = true;
-    state.loadedCount += 20;
-    await loadProducts();
-    loadingMore = false;
+    try{ await loadProducts({ append: true }); }
+    finally{ loadingMore = false; }
   }
   document.getElementById('loadMoreBtn').addEventListener('click', loadMore);
   new IntersectionObserver((entries)=>{
@@ -412,11 +474,28 @@
   async function init(){
     setSort(state.sort);
     document.getElementById('searchInput').value = state.search;
-    await fetchCollection();
-    await loadTaxonomy();
+    // The collection, the filter lists, the shopper's lists and the first sarees are all asked for at once (they used to
+    // be asked one after the other, each waiting for the last).
+    const wanted = state.collection;
+    const collPromise = fetchCollection();
+    const taxPromise = loadTaxonomy(wanted);
+    loadUserData();
+    let firstQuery = productsQuery(0, PAGE);
+    let first = fetchProducts(0, PAGE);
+    first.catch(() => {});
+    const [, taxOk] = await Promise.all([collPromise, taxPromise]);
+    if(wanted && (!state.collection || !taxOk)){
+      // that collection does not exist: show All Sarees, as before
+      state.collection = '';
+      collectionData = null;
+      await loadTaxonomy('');
+      first = null;
+    }
+    // the price limit can change once the real price range is known; ask again only if the question changed
+    if(!first || productsQuery(0, PAGE) !== firstQuery) first = fetchProducts(0, PAGE);
     renderFilterOptions();
     renderCollectionHeader();
-    loadProducts();
+    loadProducts({ prefetched: first });
   }
   init();
 </script>

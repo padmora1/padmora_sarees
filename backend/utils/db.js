@@ -9,6 +9,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const { splitOccasions } = require('./occasions');
 const { createClient } = require('@supabase/supabase-js');
+const { swr } = require('./cache');
 
 // Defensive — server.js already loads backend/.env before requiring any
 // route file, but any script that requires this module directly (a one-off
@@ -158,9 +159,18 @@ async function attachVariants(products) {
   return products.map(p => ({ ...p, variants: variantsByProduct[p.id] || [] }));
 }
 
-async function getProducts() {
+async function loadCatalogue() {
   const rows = await fetchAllRows(() => supabase.from('products_blended').select('*').order('id'), 'getProducts');
   return attachVariants(rows.map(shapeBlended));
+}
+// The whole catalogue (products + colours + photos) is the most-read thing in the shop - every listing, the menu, search, the
+// home page. It is kept in memory (see utils/cache.js): served instantly, refreshed in the background every ~15 s, and emptied
+// the moment this server changes something. The rows are SHARED between callers, so a caller must only read them (all the
+// shaping helpers build new objects). Admin screens ask for { fresh: true } to always see the database.
+const catalogueCache = swr(loadCatalogue, { fresh: 15000 });
+async function getProducts({ fresh = false } = {}) {
+  if (fresh) { catalogueCache.invalidate(); return catalogueCache(); }
+  return catalogueCache();
 }
 
 // Just the products and colours a bag or checkout needs - one query each, run side by side - instead of loading the
@@ -186,6 +196,16 @@ async function getProductById(id) {
   if (!row) return null;
   const [withVariants] = await attachVariants([shapeBlended(row)]);
   return withVariants;
+}
+// For what a shopper looks at (a product page, a share preview): taken from the in-memory catalogue when it holds the
+// saree, so a page view costs no database round trip. Anything that must be exact (cart, checkout, admin) keeps using
+// getProductById.
+async function getProductByIdFast(id) {
+  try {
+    const hit = (await getProducts()).find(p => p.id === id);
+    if (hit) return hit;
+  } catch (e) { /* fall through to the database */ }
+  return getProductById(id);
 }
 
 // Sarees in Motion — a curated, reorderable list of reel_items rows (Phase 4),
@@ -213,7 +233,7 @@ async function getReelItems({ activeOnly = true } = {}) {
 async function getReelProducts() {
   const items = await getReelItems({ activeOnly: true });
   const products = await Promise.all(items.map(async r => {
-    const product = await getProductById(r.product_id);
+    const product = await getProductByIdFast(r.product_id);
     if (!product) return null;
     return { ...product, reel_video: r.video_url, reel_thumbnail: r.thumbnail_url, reel_item_id: r.id };
   }));
@@ -267,8 +287,14 @@ async function getCollectionProductIds(collectionId) {
 async function getCollections({ activeOnly = true } = {}) {
   let query = supabase.from('collections').select('*').order('display_order').order('name');
   if (activeOnly) query = query.eq('active', true);
-  const rows = must(await query, 'getCollections');
-  return Promise.all(rows.map(async c => ({ ...c, productIds: await getCollectionProductIds(c.id) })));
+  // one read for every collection's saree list (it used to be one read per collection)
+  const [rows, links] = await Promise.all([
+    query.then(r => must(r, 'getCollections')),
+    fetchAllRows(() => supabase.from('collection_products').select('collection_id, product_id').order('collection_id').order('product_id'), 'getCollections:links')
+  ]);
+  const idsByCollection = {};
+  links.forEach(l => (idsByCollection[l.collection_id] || (idsByCollection[l.collection_id] = [])).push(l.product_id));
+  return rows.map(c => ({ ...c, productIds: idsByCollection[c.id] || [] }));
 }
 
 async function getCollectionBySlug(slug) {
@@ -586,7 +612,7 @@ const ready = (async () => {
 
 module.exports = {
   supabase, ready, fetchAllRows, fetchAllByIds,
-  getProducts, getProductById, getProductsByIds, getProductsFullByIds, getVariantsByIds, getReelProducts,
+  getProducts, getProductById, getProductByIdFast, getProductsByIds, getProductsFullByIds, getVariantsByIds, getReelProducts,
   getVariants, getVariantById, getVariantMedia, getPrimaryImagesByVariantIds, getDefaultVariant, syncProductMirrorFromDefaultVariant,
   getSetting, setSetting,
   getFabrics, getOccasions, getBadges, getCollections, getCollectionBySlug, getCollectionProductIds,

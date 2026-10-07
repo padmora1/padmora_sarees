@@ -77,12 +77,20 @@ function isAdminRealm() {
 // collection shows up here with no frontend changes. If this fails or comes
 // back empty, both dropdown/caret just stay unpopulated and the "Collections"
 // link itself still works as a plain link to /collections either way.
+// The menu, announcement bar, shipping threshold and footer used to be five separate requests on every page; one
+// /api/bootstrap response carries them all. If it ever fails (an older server), each piece falls back to its own request.
+let bootstrapRequest = null;
+function siteData(key, legacyPath, pick) {
+  if (!bootstrapRequest) bootstrapRequest = window.__BOOT__ ? Promise.resolve(window.__BOOT__) : apiFetch('/bootstrap').catch(() => null);
+  return bootstrapRequest.then(b => (b && b[key] !== undefined) ? b[key] : apiFetch(legacyPath).then(pick));
+}
+
 async function loadNavCollectionsDropdown() {
   const desktopPanel = document.getElementById('navDropdown-collections.html');
   const mobilePanel = document.getElementById('mobileNavDropdown-collections.html');
   if (!desktopPanel && !mobilePanel) return;
   try {
-    const { collections } = await apiFetch('/collections');
+    const collections = await siteData('collections', '/collections', r => r.collections);
     if (!collections.length) return;
     const rows = collections.map(c => `
       <a href="/collection?slug=${encodeURIComponent(c.slug)}">
@@ -101,7 +109,7 @@ function initHeader(activeHref) {
     mount.innerHTML = `
       <header class="site-header">
         <div class="header-inner">
-          <a href="/admin" class="logo"><img src="images/padmora-lotus-sm.png" alt="" class="logo-mark" width="40" height="28">Padmora</a>
+          <a href="/admin" class="logo"><img src="images/padmora-lotus-sm.webp" alt="" class="logo-mark" width="40" height="28">Padmora</a>
           <a href="/" class="admin-view-store" target="_blank" rel="noopener noreferrer">View Store ↗</a>
         </div>
       </header>`;
@@ -115,7 +123,7 @@ function initHeader(activeHref) {
         <button class="hamburger" id="hamburgerBtn" aria-label="Open menu">
           <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
         </button>
-        <a href="/" class="logo" aria-label="Padmora — home"><img src="images/padmora-lotus-sm.png" alt="" class="logo-mark" width="40" height="28"><span class="logo-text-stage" aria-hidden="true"><span class="logo-text-el active" id="logoTextEn">Padmora</span><span class="logo-text-el lang-mr" id="logoTextMr">पद्मोरा</span></span></a>
+        <a href="/" class="logo" aria-label="Padmora — home"><img src="images/padmora-lotus-sm.webp" alt="" class="logo-mark" width="40" height="28"><span class="logo-text-stage" aria-hidden="true"><span class="logo-text-el active" id="logoTextEn">Padmora</span><span class="logo-text-el lang-mr" id="logoTextMr">पद्मोरा</span></span></a>
         <nav class="main-nav">
           ${NAV_LINKS.map(l => l.dropdown ? `
             <div class="nav-item">
@@ -192,11 +200,11 @@ function initHeader(activeHref) {
   try { cachedBar = JSON.parse(localStorage.getItem(ANNOUNCEMENT_CACHE_KEY) || 'null'); } catch (e) { /* private mode */ }
   renderAnnouncementBar(cachedBar || { cfg: ANNOUNCEMENT_DEFAULT, threshold: 1999 });
   Promise.all([
-    apiFetch('/content/announcement').catch(() => null),
-    apiFetch('/settings/shipping').catch(() => null)
+    siteData('announcement', '/content/announcement', r => r.announcement).catch(() => null),
+    siteData('shipping', '/settings/shipping', r => r.shipping).catch(() => null)
   ]).then(([ann, ship]) => {
-    const cfg = ann && ann.announcement ? ann.announcement : (cachedBar ? cachedBar.cfg : ANNOUNCEMENT_DEFAULT);
-    const threshold = ship && ship.shipping && ship.shipping.freeShippingThreshold ? ship.shipping.freeShippingThreshold : (cachedBar ? cachedBar.threshold : 1999);
+    const cfg = ann ? ann : (cachedBar ? cachedBar.cfg : ANNOUNCEMENT_DEFAULT);
+    const threshold = ship && ship.freeShippingThreshold ? ship.freeShippingThreshold : (cachedBar ? cachedBar.threshold : 1999);
     const state = { cfg, threshold };
     renderAnnouncementBar(state);
     try { localStorage.setItem(ANNOUNCEMENT_CACHE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
@@ -352,12 +360,12 @@ function initFooter() {
       </div>`).join('');
   }
   renderFooterContent(FOOTER_DEFAULT);
-  apiFetch('/settings/footer').then(({ footer }) => { if (footer) renderFooterContent(footer); }).catch(() => {});
+  siteData('footer', '/settings/footer', r => r.footer).then(footer => { if (footer) renderFooterContent(footer); }).catch(() => {});
 
   // Patched in after the initial paint (Phase 7 store settings) — the footer
   // still renders instantly with sensible defaults even if this fetch is slow
   // or the API is briefly unavailable.
-  apiFetch('/settings/store').then(({ store }) => {
+  siteData('store', '/settings/store', r => r.store).then(store => {
     if (!store) return;
     if (store.contactEmail) {
       const mailLink = document.getElementById('footerMailLink');
@@ -952,6 +960,58 @@ function showConfirmDialog(message, opts) {
 // instantly and the server catches up in the background.
 // ---------------------------------------------------------------------
 const CARD_PRODUCTS = new Map();
+// The product video inside a product card (hidden until it is playing). It loads nothing until the card is hovered.
+// A card without a video gets nothing at all, so those cards are exactly as before.
+function cardVideoHTML(p) {
+  const url = productVideoUrl(p);
+  return url ? `<video class="card-video" muted loop playsinline preload="none" tabindex="-1" aria-hidden="true" disablepictureinpicture data-src="${String(url).replace(/"/g, '&quot;')}"></video>` : '';
+}
+// Hovering a card with a video plays it (after a short pause, so sweeping the mouse across a grid starts nothing); leaving
+// stops it. Mouse devices only - phones and tablets keep the photo - and nothing plays for shoppers who asked for reduced
+// motion or a data saver. Listeners sit on the document, so cards drawn later (filters, "load more") work without any setup.
+(function cardVideos() {
+  const fine = () => !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+  const calm = () => !!((window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) || (navigator.connection && navigator.connection.saveData));
+  let timer = null, current = null;
+  const videoOf = card => card && card.querySelector('.card-video');
+  function stop(card) {
+    const v = videoOf(card);
+    if (!v) return;
+    v.pause();
+    try { v.currentTime = 0; } catch (e) { /* not loaded yet */ }
+    const box = v.closest('.product-media');
+    if (box) box.classList.remove('is-playing');
+  }
+  function start(card) {
+    const v = videoOf(card);
+    if (!v) return;
+    if (!v.getAttribute('src') && v.dataset.src) v.src = v.dataset.src;
+    const p = v.play();
+    if (p && p.catch) p.catch(() => { /* blocked or failed: the photo simply stays */ });
+  }
+  // the video fades in only once it is really playing, so a slow video never shows a black box
+  document.addEventListener('playing', e => {
+    const v = e.target;
+    if (v && v.classList && v.classList.contains('card-video') && v.closest('.product-card:hover')) { const box = v.closest('.product-media'); if (box) box.classList.add('is-playing'); }
+  }, true);
+  document.addEventListener('mouseover', e => {
+    const card = e.target.closest && e.target.closest('.product-card');
+    if (!card || card === current) return;
+    if (current) stop(current);
+    current = card;
+    clearTimeout(timer);
+    if (!videoOf(card) || !fine() || calm()) return;
+    timer = setTimeout(() => start(card), 140);
+  });
+  document.addEventListener('mouseout', e => {
+    const card = e.target.closest && e.target.closest('.product-card');
+    if (!card || (e.relatedTarget && card.contains(e.relatedTarget))) return;
+    clearTimeout(timer);
+    stop(card);
+    if (current === card) current = null;
+  });
+})();
+
 function registerCardProducts(list) { (list || []).forEach(p => CARD_PRODUCTS.set(p.id, p)); }
 function defaultVariantOf(p) { return (p && p.variants && (p.variants.find(v => v.isDefault) || p.variants[0])) || null; }
 

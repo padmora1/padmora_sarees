@@ -12,10 +12,11 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="Sale — Padmora Sarees by Yashi">
 <meta property="og:description" content="Limited-time discounted sarees — handloom weaves at special prices.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fxjlgsatgajagzqdokbe.supabase.co" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preload" href="/fonts/jost-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/marcellus-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/style.css">
+<style>main{min-height:85vh;}</style>
 </head>
 <body data-page="sale.html">
 
@@ -60,6 +61,7 @@
     return `
     <div class="product-card ${soldOut?'sold-out':''}" data-pid="${p.id}" data-qty="${cartQty}">
       <a href="/product?id=${p.id}" class="product-media" style="background:${productBg(p)};display:block;">
+        ${cardVideoHTML(p)}
         ${soldOut ? `<div class="sold-out-ribbon"><span class="ribbon-lotus">${LOTUS_GLYPH_SVG}</span>Sold Out</div>` : (badgeLabel ? `<span class="product-badge ${p.badge}">${badgeLabel}</span>` : '')}
         <button class="wishlist-toggle ${isWished?'active':''}" aria-label="${isWished?'Remove from wishlist':'Add to wishlist'}" onclick="event.preventDefault();quickWish(${p.id}, this);">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -101,8 +103,8 @@
 
   async function loadProducts(){
     try{
-      const [{products, total}, wishData, cart] = await Promise.all([apiFetch('/products?badge=sale&limit=' + loadedCount), wishlistGet(), cardCart.load()]);
-      wishlistedIds = new Set(wishData.products.map(p=>p.id));
+      const [{products, total}, wishIds] = await Promise.all([apiFetch('/products?badge=sale&limit=' + loadedCount), wishlistIdsGet(), cardCart.load()]);
+      wishlistedIds = new Set(wishIds);
       registerCardProducts(products);
       totalCount = total;
       document.getElementById('resultCount').textContent = products.length < total

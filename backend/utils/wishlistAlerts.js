@@ -21,7 +21,7 @@ async function checkWishlistAlerts() {
   const users = must(await supabase.from('users').select('id, email, name').in('id', userIds), 'checkWishlistAlerts:users');
   const userById = Object.fromEntries(users.map(u => [u.id, u]));
 
-  const products = await getProducts();
+  const products = await getProducts({ fresh: true });
   let priceDrops = 0, restocks = 0;
 
   for (const row of rows) {
