@@ -1427,7 +1427,10 @@ body.rv-modal-open{overflow:hidden;}
      end of the whole info column (not .pd-actions specifically), so it
      shows up as breathing room after the last thing in the panel rather
      than as an odd gap wherever .pd-actions happens to sit in the order. */
-  .pd-info{padding-bottom:70px;}
+  /* (No extra bottom padding on .pd-info: it used to add 70px here, which stacked on the section's own padding and left a big
+     empty band between the buttons and "Ratings & Reviews". The page always continues below the details, so the fixed
+     bar never hides anything that has no space after it.) */
+  #pdWrap{padding-bottom:40px;}
 }
 
 /* ================= Animated order tracker ================= */
