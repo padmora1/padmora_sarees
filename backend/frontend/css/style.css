@@ -1618,3 +1618,5 @@ body.oi-open{overflow:hidden;}
 .pf-tier-del{color:var(--maroon);}
 .pf-sphint{display:block;font-size:12px;color:var(--ink-soft);margin-top:4px;}
 .pf-reset{color:var(--maroon);text-decoration:underline;font-size:12px;margin-left:4px;}
+
+.pf-tier-text{min-width:0;}

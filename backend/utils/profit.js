@@ -1,7 +1,8 @@
 // Cost price, Final CP, selling price and net profit.
 //
 //   Final CP       = (buying price + shipping) + GST on that              e.g. (3,000 + 100) + 5%   = 3,255.00
-//   margin         = the first rule that fits the Final CP                 e.g. up to 1,000 -> 60%, up to 10,000 -> 70%, above -> 50%
+//   margin         = the first rule that fits the BUYING PRICE (default) or the Final CP, as chosen in Settings
+//                    e.g. up to 1,000 -> 60%, more than 1,000 and up to 10,000 -> 70%, above 10,000 -> 50%
 //   Selling price  = Final CP + margin on the Final CP                     e.g. 3,255.00 + 70%       = 5,533.50
 //   Final selling  = the selling price rounded to the nearest 10 rupees    e.g. 5,533.50             -> 5,530   (…5 and above goes up, …4 and below goes down)
 //
@@ -16,6 +17,7 @@ const DEFAULTS = {
   gstRate: 5, shippingCost: 79,
   marginTiers: [{ upTo: 1000, margin: 60 }, { upTo: 10000, margin: 70 }],
   marginAbove: 50,
+  marginBasis: 'buying',   // what the margin rules are compared with: 'buying' (the buying price typed) or 'cp' (the Final CP)
   gatewayFeePct: 0
 };
 const MAX_COST = 10000000;
@@ -42,6 +44,7 @@ function normalizeSettings(raw) {
   const out = { ...DEFAULTS, marginTiers: DEFAULTS.marginTiers.map(t => ({ ...t })) };
   const num = v => (v !== undefined && v !== null && v !== '' ? Number(v) : NaN);
   for (const k of ['gstRate', 'shippingCost', 'marginAbove', 'gatewayFeePct']) { const n = num(raw && raw[k]); if (Number.isFinite(n)) out[k] = n; }
+  if (raw && (raw.marginBasis === 'buying' || raw.marginBasis === 'cp')) out.marginBasis = raw.marginBasis;
   if (raw && Array.isArray(raw.marginTiers)) {
     const tiers = raw.marginTiers.map(t => ({ upTo: num(t && t.upTo), margin: num(t && t.margin) })).filter(t => Number.isFinite(t.upTo) && Number.isFinite(t.margin));
     out.marginTiers = sortTiers(tiers);
@@ -69,6 +72,8 @@ function validateSettings(body) {
     if (r.error) return { error: r.error };
     value[key] = round2(r.n);
   }
+  if (b.marginBasis !== undefined && b.marginBasis !== 'buying' && b.marginBasis !== 'cp') return { error: 'Choose whether the margin rules compare the buying price or the Final CP.' };
+  value.marginBasis = b.marginBasis === 'cp' ? 'cp' : 'buying';
   const rules = b.marginTiers;
   if (!Array.isArray(rules)) return { error: 'Margin rules are required.' };
   if (rules.length > MAX_TIERS) return { error: `Use at most ${MAX_TIERS} margin rules.` };
@@ -86,11 +91,15 @@ function validateSettings(body) {
   return { value };
 }
 
-// Which margin a Final CP gets: the first rule (lowest limit first) whose limit it does not pass, else the "above" margin.
-function marginFor(finalCp, s) {
-  for (const t of s.marginTiers) if (finalCp <= t.upTo) return { pct: t.margin, upTo: t.upTo, above: false };
-  const top = s.marginTiers.length ? s.marginTiers[s.marginTiers.length - 1].upTo : null;
-  return { pct: s.marginAbove, upTo: top, above: true };
+// Which margin an amount gets: the first rule (lowest limit first) whose limit it does not pass, else the "above" margin.
+// `from` is the previous rule's limit, so a rule reads "more than <from> and up to <upTo>".
+function marginFor(amount, s) {
+  let from = null;
+  for (const t of s.marginTiers) {
+    if (amount <= t.upTo) return { pct: t.margin, upTo: t.upTo, from, above: false };
+    from = t.upTo;
+  }
+  return { pct: s.marginAbove, upTo: null, from, above: true };
 }
 
 // Buying price in, everything the product form shows out. `s` = profit settings.
@@ -101,12 +110,12 @@ function computePricing(buyingPrice, s) {
   const baseCents = Math.round(cost * 100) + Math.round(s.shippingCost * 100);
   const gstCents = Math.round(baseCents * s.gstRate / 100);
   const finalCp = (baseCents + gstCents) / 100;
-  const m = marginFor(finalCp, s);
+  const m = marginFor(s.marginBasis === 'cp' ? finalCp : round2(cost), s);
   const exact = round2(finalCp * (1 + m.pct / 100));
   const finalPrice = roundToTen(exact);
   return {
     buyingPrice: round2(cost), shipping: round2(s.shippingCost), gstRate: s.gstRate, gstAmount: gstCents / 100,
-    finalCp: round2(finalCp), marginPct: m.pct, marginUpTo: m.upTo, marginAbove: m.above,
+    finalCp: round2(finalCp), marginPct: m.pct, marginUpTo: m.upTo, marginFrom: m.from, marginAbove: m.above,
     exactPrice: exact, sellingPrice: finalPrice, profitPerPiece: round2(finalPrice - finalCp)
   };
 }

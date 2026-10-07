@@ -45,10 +45,13 @@ const AdminColours = (function(){
   // Same arithmetic as backend/utils/profit.js computePricing (whole paise, so no floating-point drift).
   const roundToTen = n => Math.max(10, Math.round(Math.round(Number(n) * 100) / 100 / 10) * 10);
   const sortedTiers = c => (c.marginTiers || []).map(t => ({ upTo: Number(t.upTo), margin: Number(t.margin) })).filter(t => Number.isFinite(t.upTo) && Number.isFinite(t.margin)).sort((a, b) => a.upTo - b.upTo);
-  function marginFor(finalCp, c){
-    const tiers = sortedTiers(c);
-    for(const t of tiers) if(finalCp <= t.upTo) return { pct: t.margin, upTo: t.upTo, above: false };
-    return { pct: Number(c.marginAbove), upTo: tiers.length ? tiers[tiers.length - 1].upTo : null, above: true };
+  function marginFor(amount, c){
+    let from = null;
+    for(const t of sortedTiers(c)){
+      if(amount <= t.upTo) return { pct: t.margin, upTo: t.upTo, from, above: false };
+      from = t.upTo;
+    }
+    return { pct: Number(c.marginAbove), upTo: null, from, above: true };
   }
   function calc(buying, cfg){
     const cost = Number(buying), c = cfg || CFG;
@@ -56,14 +59,15 @@ const AdminColours = (function(){
     const baseCents = Math.round(cost * 100) + Math.round(c.shippingCost * 100);
     const gstCents = Math.round(baseCents * c.gstRate / 100);
     const finalCp = (baseCents + gstCents) / 100;
-    const m = marginFor(finalCp, c);
+    const m = marginFor(c.marginBasis === 'cp' ? finalCp : Math.round(cost * 100) / 100, c);
     const exactPrice = Math.round(finalCp * (1 + m.pct / 100) * 100) / 100;
-    return { shipping: c.shippingCost, gstAmount: gstCents / 100, finalCp, marginPct: m.pct, marginUpTo: m.upTo, marginAbove: m.above, exactPrice, sellingPrice: roundToTen(exactPrice) };
+    return { shipping: c.shippingCost, gstAmount: gstCents / 100, finalCp, marginPct: m.pct, marginUpTo: m.upTo, marginFrom: m.from, marginAbove: m.above, marginBasis: c.marginBasis === 'cp' ? 'cp' : 'buying', exactPrice, sellingPrice: roundToTen(exactPrice) };
   }
-  // "70% (Final CP up to ₹10,000)" - says which rule was used
+  // "70% (buying price more than ₹1,000 and up to ₹10,000)" - says which rule was used
   function marginText(r){
-    if(r.marginUpTo == null) return r.marginPct + '% (every Final CP)';
-    return r.marginPct + '% (Final CP ' + (r.marginAbove ? 'above ' : 'up to ') + rup0(r.marginUpTo) + ')';
+    const what = r.marginBasis === 'cp' ? 'Final CP' : 'buying price';
+    if(r.marginAbove) return r.marginPct + '% (' + (r.marginFrom == null ? 'every ' + what : what + ' above ' + rup0(r.marginFrom)) + ')';
+    return r.marginPct + '% (' + what + ' ' + (r.marginFrom == null ? 'up to ' + rup0(r.marginUpTo) : 'more than ' + rup0(r.marginFrom) + ' and up to ' + rup0(r.marginUpTo)) + ')';
   }
 
   // attr: the data attribute the form reads its values from ("cb" in the new-colour block, "vf" in a saved colour's card).
@@ -87,7 +91,7 @@ const AdminColours = (function(){
           <input type="text" ${ro} data-pf="cp" value="—"></div>
       </div>
       <div class="form-row-2">
-        <div class="form-field"><label>Margin on Final CP ${tip('Chosen automatically from the margin rules in Settings: the first rule the Final CP fits.')}</label>
+        <div class="form-field"><label>Margin ${tip('Chosen automatically from the margin rules in Settings (they compare the ' + (c.marginBasis === 'cp' ? 'Final CP' : 'buying price') + '): the first rule it fits.')}</label>
           <input type="text" ${ro} data-pf="margin" value="—"></div>
         <div class="form-field"><label>Selling price (₹) ${tip('Final CP + the margin, exactly as calculated. The Final selling price below is this rounded to the nearest ₹10.')}</label>
           <input type="text" ${ro} data-pf="spx" value="—"></div>

@@ -469,7 +469,9 @@
 
         <div class="pf-tiers">
           <h4>Margin rules</h4>
-          <p>Your margin on the Final CP depends on how much the saree costs you. The rules are checked from the lowest limit upwards and the <strong>first one the Final CP fits</strong> is used. Add as many as you like.</p>
+          <p>Your margin depends on how much the saree costs you. The rules are checked from the lowest limit upwards and the <strong>first one it fits</strong> is used, so each rule after the first means “more than the rule before and up to its own limit”. Add as many as you like.</p>
+          <div class="form-field" style="max-width:340px;margin-bottom:12px;"><label for="pfBasis">The limits are compared with</label>
+            <select id="pfBasis" class="admin-input" style="width:100%;"><option value="buying" ${st.marginBasis === 'buying' ? 'selected' : ''}>The buying price you type</option><option value="cp" ${st.marginBasis === 'cp' ? 'selected' : ''}>The Final CP (buying + shipping + GST)</option></select></div>
           <div id="pfTierRows"></div>
           <button type="button" class="btn btn-outline btn-sm" id="pfAddTier">+ Add a condition</button>
           <div class="pf-tier pf-tier-above">
@@ -500,7 +502,7 @@
       const paintTiers = () => {
         document.getElementById('pfTierRows').innerHTML = tiers.length ? tiers.map((t, i) => `
           <div class="pf-tier" data-tier="${i}">
-            <span>If Final CP is up to ₹</span><input type="number" min="0.01" step="0.01" class="admin-input pf-tier-input pf-tier-limit" data-tf="upTo" value="${t.upTo}" aria-label="Final CP limit, rule ${i + 1}">
+            <span class="pf-tier-text" data-tier-text></span><input type="number" min="0.01" step="0.01" class="admin-input pf-tier-input pf-tier-limit" data-tf="upTo" value="${t.upTo}" aria-label="Final CP limit, rule ${i + 1}">
             <span>→ margin</span><input type="number" min="0" max="1000" step="0.01" class="admin-input pf-tier-input" data-tf="margin" value="${t.margin}" aria-label="Margin, rule ${i + 1}"><span>%</span>
             <button type="button" class="btn btn-sm pf-tier-del" data-tier-del="${i}" aria-label="Remove rule ${i + 1}">Remove</button>
           </div>`).join('') : '<p class="field-hint" style="margin:0 0 8px;">No conditions yet — every saree gets the margin below.</p>';
@@ -511,17 +513,25 @@
         document.querySelectorAll('[data-tier-del]').forEach(b => b.addEventListener('click', () => { tiers.splice(Number(b.dataset.tierDel), 1); paintTiers(); paintAbove(); paintTry(); }));
         paintAbove();
       };
+      // "If the buying price is up to ₹ [1000]" / "…is more than ₹1,000 and up to ₹ [10000]" / "…is above ₹10,000" - follows what is typed
       const paintAbove = () => {
-        const limits = tiers.map(t => Number(t.upTo)).filter(Number.isFinite);
-        document.getElementById('pfAboveLabel').textContent = limits.length ? 'Above ₹' + Math.max(...limits).toLocaleString('en-IN') + ' (the highest limit)' : 'For every saree';
+        const word = document.getElementById('pfBasis').value === 'cp' ? 'Final CP' : 'buying price';
+        const limits = tiers.map(t => Number(t.upTo)).filter(n => Number.isFinite(n) && n > 0);
+        document.querySelectorAll('[data-tier]').forEach(row => {
+          const mine = Number(tiers[Number(row.dataset.tier)].upTo);
+          const before = limits.filter(l => l < mine);
+          const prev = before.length ? Math.max(...before) : null;
+          row.querySelector('[data-tier-text]').textContent = `If the ${word} is ` + (prev == null ? 'up to ₹' : 'more than ₹' + prev.toLocaleString('en-IN') + ' and up to ₹');
+        });
+        document.getElementById('pfAboveLabel').textContent = limits.length ? `If the ${word} is above ₹` + Math.max(...limits).toLocaleString('en-IN') : 'For every saree';
       };
       const read = () => ({
-        gstRate: num('pfGst'), shippingCost: num('pfShip'), marginAbove: num('pfAbove'), gatewayFeePct: num('pfFee'),
+        gstRate: num('pfGst'), shippingCost: num('pfShip'), marginAbove: num('pfAbove'), gatewayFeePct: num('pfFee'), marginBasis: num('pfBasis'),
         marginTiers: tiers.map(t => ({ upTo: t.upTo, margin: t.margin }))
       });
       function paintTry(){
         const v = read();
-        const cfg = { gstRate: Number(v.gstRate), shippingCost: Number(v.shippingCost), marginAbove: Number(v.marginAbove), marginTiers: v.marginTiers };
+        const cfg = { gstRate: Number(v.gstRate), shippingCost: Number(v.shippingCost), marginAbove: Number(v.marginAbove), marginTiers: v.marginTiers, marginBasis: v.marginBasis };
         const ok = Number.isFinite(cfg.gstRate) && Number.isFinite(cfg.shippingCost) && Number.isFinite(cfg.marginAbove);
         const r = ok ? AdminColours.calc(document.getElementById('pfTry').value, cfg) : null;
         document.getElementById('pfTryOut').innerHTML = r
@@ -529,6 +539,7 @@
           : '<span style="color:var(--ink-soft);">Fill in the numbers above to see an example.</span>';
       }
       host.querySelectorAll('#pfGst, #pfShip, #pfAbove, #pfFee, #pfTry').forEach(i => i.addEventListener('input', paintTry));
+      document.getElementById('pfBasis').addEventListener('change', () => { paintAbove(); paintTry(); });
       document.getElementById('pfAddTier').addEventListener('click', () => {
         const top = tiers.length ? Math.max(...tiers.map(t => Number(t.upTo) || 0)) : 0;
         tiers.push({ upTo: top ? top * 2 : 1000, margin: '' }); paintTiers(); paintTry();
