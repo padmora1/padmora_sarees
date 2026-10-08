@@ -174,6 +174,25 @@ function refundBoxHTML(o) {
   </div>`;
 }
 
+// What a customer sees about an order whose RETURN was refunded: that the order is returned & refunded, how much, when and how
+// the money went back (empty for any other order). The order's status is final from then on.
+function returnedBoxHTML(o) {
+  const rr = o && o.returnRefund;
+  if (!rr) return '';
+  const day = d => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  const on = rr.refundedAt ? ' on ' + day(rr.refundedAt) : '';
+  const how = rr.method === 'store_credit'
+    ? 'Issued as store credit' + on + (rr.couponCode ? ' — use code <strong>' + escHTML(rr.couponCode) + '</strong> at checkout.' : '.')
+    : rr.method === 'bank_transfer'
+      ? 'Transferred to the bank / UPI details you gave us' + on + '. It can take a few working days to show.'
+      : 'Sent back to your original payment method' + on + '. It usually reaches your account within 5–7 working days.';
+  return `<div class="refund-box refund-done" data-refund-status="returned">
+    <div class="refund-box-head"><span class="refund-pill">${rr.full ? 'Returned &amp; refunded' : 'Part returned &amp; refunded'}</span></div>
+    <strong>${money(rr.amount)} refunded</strong>
+    <p>${how}</p>
+  </div>`;
+}
+
 // Escapes text that came from another customer (a review, a name, anything
 // user-submitted) before it's dropped into an HTML template string. Without
 // this, a review body like "<img src=x onerror=...>" runs as real HTML for

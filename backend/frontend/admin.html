@@ -324,7 +324,11 @@
 
             <h3 style="font-size:15px;margin:28px 0 6px;">Order Confirmation Notifications</h3>
             <p style="font-size:13px;color:var(--ink-soft);margin-bottom:16px;">Every order automatically triggers a confirmation email and SMS attempt. Delivery only goes out for real once an SMTP account and SMS provider are configured on the server (backend/.env: SMTP_HOST/SMTP_USER/SMTP_PASS and TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_FROM_NUMBER) — until then every attempt is logged here as "skipped, not configured" rather than silently pretending to send.</p>
-            <div id="notifyConfigStatus" style="display:flex;gap:10px;margin-bottom:14px;"></div>
+            <div id="notifyConfigStatus" style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;"></div>
+            <div style="margin:-4px 0 16px;">
+              <button type="button" class="btn btn-sm btn-outline" id="rzpCheckBtn">Check Razorpay connection</button>
+              <p id="rzpCheckResult" role="status" aria-live="polite" style="font-size:12.5px;margin-top:8px;"></p>
+            </div>
             <div style="overflow-x:auto;">
               <table class="admin-table" id="notificationsLogTable"></table>
             </div>
@@ -1653,13 +1657,12 @@
           <td style="font-size:12.5px;">${o.items.map(i=>`${hl(i.name)}${i.color?' ('+escHTML(i.color)+')':''} ×${i.qty}`).join('<br>')}</td>
           <td>${money(o.total)}${o.returnRefund ? `<br><span class="refund-note" title="Handed back for returned sarees. Total Revenue and Net Profit count only what is left.">−${money(o.returnRefund.amount)} refunded<br>Net ${money(o.total - o.returnRefund.amount)}</span>` : ''}</td>
           <td>
-            ${o.status === 'Cancelled' ? '<span class="order-status cancelled">Cancelled</span>' : o.cancelRequestStatus === 'Requested' ? `<span class="order-locked-note" title="The status cannot be changed until the customer's cancellation request is approved or rejected">Status locked: ${escHTML(o.status)}</span>` : `
+            ${o.status === 'Cancelled' ? '<span class="order-status cancelled">Cancelled</span>' : o.cancelRequestStatus === 'Requested' ? `<span class="order-locked-note" title="The status cannot be changed until the customer's cancellation request is approved or rejected">Status locked: ${escHTML(o.status)}</span>` : o.returnRefund ? `<span class="order-status returned" data-returned-badge="${o.returnRefund.full ? 'full' : 'partial'}">${o.returnRefund.full ? 'Returned &amp; refunded' : 'Part returned &amp; refunded'}</span><br><span class="order-locked-note" title="The money has gone back, so the status can no longer be changed">Status locked · was ${escHTML(o.status)}</span>` : `
             <select class="admin-input" data-order-status="${escHTML(o.id)}">
               <option value="auto" ${!o.manualStatus?'selected':''}>Auto (${o.status})</option>
               ${STAGE_NAMES.map(s=>`<option value="${s}" ${o.manualStatus===s?'selected':''}>${s}</option>`).join('')}
             </select>${o.manualStatus?'<span class="manual-override-flag">Override</span>':''}`}
             ${o.cancelRequestStatus === 'Requested' ? '<br><span class="order-status" style="background:var(--gold);color:#fff;">Cancellation Requested</span>' : ''}
-            ${o.returnRefund ? `<br><span class="order-status returned" data-returned-badge="${o.returnRefund.full ? 'full' : 'partial'}">${o.returnRefund.full ? 'Returned &amp; refunded' : 'Part returned &amp; refunded'}</span>` : ''}
           </td>
           <td><button class="btn btn-sm btn-outline" data-view-order="${escHTML(o.id)}">${openOrderId === o.id ? 'Close' : 'View'}</button></td>
         </tr>`).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--ink-soft);padding:24px;">${ordersCache.length ? 'No orders match this search and date range.' : 'No orders in this status.'}</td></tr>`}</tbody>`;
@@ -1819,11 +1822,12 @@
           </div>` : `
           <div style="margin-top:10px;">
             ${o.cancelRequestStatus === 'Rejected' ? `<p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">A cancellation request for this order was rejected${o.cancelAdminNote ? ': '+o.cancelAdminNote : ''}.</p>` : ''}
+            ${o.returnRefund ? `<p style="font-size:12.5px;color:var(--ink-soft);" data-status-locked>Status locked: this order was returned and refunded (was ${escHTML(o.status)}), so its status can no longer be changed.</p>` : `
             <label style="font-size:12px;color:var(--ink-soft);">Status</label><br>
             <select class="admin-input" style="margin-top:6px;" data-order-status="${o.id}">
               <option value="auto" ${!o.manualStatus?'selected':''}>Auto (${o.status})</option>
               ${STAGE_NAMES.map(s=>`<option value="${s}" ${o.manualStatus===s?'selected':''}>${s}</option>`).join('')}
-            </select>
+            </select>`}
           </div>`}
         </div>`;
 
@@ -1945,7 +1949,7 @@
           <td style="font-size:12.5px;">${o.items.map(i => `${hl(i.name)}<br><span style="font-size:11.5px;color:var(--ink-soft);">Code: ${hl(i.code || '—')}</span>`).join('<br>')}</td>
           <td style="font-size:12.5px;">${escHTML(o.payment || '')}</td>
           <td>${money(o.total)}</td>
-          <td>${o.status === 'Cancelled' ? '<span class="order-status cancelled">Cancelled</span>' : `
+          <td>${o.status === 'Cancelled' ? '<span class="order-status cancelled">Cancelled</span>' : o.cancelRequestStatus === 'Requested' ? `<span class="order-locked-note" title="The status cannot be changed until the customer's cancellation request is approved or rejected">Status locked: ${escHTML(o.status)}</span>` : o.returnRefund ? `<span class="order-status returned" data-returned-badge="${o.returnRefund.full ? 'full' : 'partial'}">${o.returnRefund.full ? 'Returned &amp; refunded' : 'Part returned &amp; refunded'}</span><br><span class="order-locked-note">Status locked · was ${escHTML(o.status)}</span>` : `
             <select class="admin-input" data-ig-status="${escHTML(o.id)}">
               <option value="auto" ${!o.manualStatus ? 'selected' : ''}>Auto (${o.status})</option>
               ${STAGE_NAMES.map(s => `<option value="${s}" ${o.manualStatus === s ? 'selected' : ''}>${s}</option>`).join('')}
@@ -2652,6 +2656,23 @@
       });
     }catch(e){ toast(e.message, 'error'); }
   }
+
+  // "Check Razorpay connection": asks the server whether Razorpay accepts the keys it has (read-only; never shows the secret).
+  document.getElementById('rzpCheckBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('rzpCheckBtn'), out = document.getElementById('rzpCheckResult');
+    btn.disabled = true; out.style.color = 'var(--ink-soft)'; out.textContent = 'Checking with Razorpay…';
+    try{
+      const r = await adminApiFetch('/admin/settings/razorpay-check', {method:'POST'});
+      if(r.ok){
+        out.style.color = 'var(--teal)';
+        out.textContent = '✓ Connected to Razorpay in ' + r.mode.toUpperCase() + ' mode (key ' + r.keyId + ').' + (r.mode === 'test' ? ' Test payments only: no real money moves. Switch to the live keys to take real orders.' : '');
+      }else{
+        out.style.color = 'var(--maroon)';
+        out.textContent = '✗ ' + r.message + (r.keyId ? ' (this server is using key ' + r.keyId + ')' : '');
+      }
+    }catch(e){ out.style.color = 'var(--maroon)'; out.textContent = '✗ ' + e.message; }
+    btn.disabled = false;
+  });
 
   async function loadNotificationsLog(){
     try{

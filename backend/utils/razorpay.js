@@ -75,4 +75,29 @@ function refundErrorMessage(err) {
   return (err && err.error && err.error.description) || (err && err.message) || 'Razorpay refund failed.';
 }
 
-module.exports = { razorpay, isConfigured, createOrder, verifySignature, refundPayment, refundErrorMessage, KEY_ID };
+// A read-only check that the keys on this server are accepted by Razorpay (it just asks for the newest order). Used by the
+// "Check Razorpay connection" button in Admin -> Settings, so a wrong, expired or half-set key is found without placing a test order.
+// Never returns the secret; the key id is public (the checkout page already sends it to the browser).
+async function checkConnection() {
+  if (!isConfigured()) {
+    return { ok: false, reason: 'not_configured', message: 'RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are not both set on this server. Add them in the hosting settings and restart the app.' };
+  }
+  const mode = /^rzp_live_/.test(KEY_ID) ? 'live' : /^rzp_test_/.test(KEY_ID) ? 'test' : 'unknown';
+  try {
+    const res = await fetch('https://api.razorpay.com/v1/orders?count=1', { headers: { Authorization: 'Basic ' + Buffer.from(`${KEY_ID}:${KEY_SECRET}`).toString('base64') } });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) return { ok: true, mode, keyId: KEY_ID };
+    const description = (body.error && body.error.description) || `Razorpay answered ${res.status}`;
+    const authFailed = res.status === 401 || /authentication failed/i.test(description);
+    return {
+      ok: false, mode, keyId: KEY_ID, status: res.status, reason: authFailed ? 'rejected' : 'error',
+      message: authFailed
+        ? 'Razorpay does not accept these keys (Authentication failed). The Key ID and Key Secret must be a pair from the same Razorpay account and the same mode (Test or Live), and the Secret must be the current one. Fix both in the hosting settings, then restart the app.'
+        : description
+    };
+  } catch (err) {
+    return { ok: false, mode, keyId: KEY_ID, reason: 'unreachable', message: 'This server could not reach Razorpay: ' + err.message };
+  }
+}
+
+module.exports = { razorpay, isConfigured, createOrder, verifySignature, refundPayment, refundErrorMessage, checkConnection, KEY_ID };

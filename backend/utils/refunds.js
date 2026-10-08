@@ -6,7 +6,7 @@ const { supabase, fetchAllRows, fetchAllByIds } = require('./db');
 
 // orderIds omitted = every order. Returns { [orderId]: { amount, returnedUnits, returns: [{ id, amount, refundedAt, method }] } }
 async function loadRefundsByOrder(orderIds) {
-  const cols = 'id, order_id, final_refund_amount, computed_refund_amount, refunded_at, refund_method';
+  const cols = 'id, order_id, final_refund_amount, computed_refund_amount, refunded_at, refund_method, coupon_code';
   let rows;
   if (orderIds) {
     if (!orderIds.length) return {};
@@ -24,7 +24,7 @@ async function loadRefundsByOrder(orderIds) {
     const o = out[r.order_id] || (out[r.order_id] = { amount: 0, returnedUnits: 0, returns: [] });
     o.amount += amount;
     o.returnedUnits += unitsByReturn[r.id] || 0;
-    o.returns.push({ id: r.id, amount, refundedAt: r.refunded_at, method: r.refund_method });
+    o.returns.push({ id: r.id, amount, refundedAt: r.refunded_at, method: r.refund_method, couponCode: r.refund_method === 'store_credit' ? r.coupon_code : null });
   }
   return out;
 }

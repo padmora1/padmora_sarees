@@ -16,6 +16,8 @@ const { parseSheet, findAlreadyImported, findOrCreateCustomer, readTable, public
 const { sendOrderConfirmation, smsConfigured } = require('../utils/notify');
 const { shapeOrder } = require('./orders');
 const { getProfitSettings } = require('../utils/profit');
+const { loadRefundsByOrder } = require('../utils/refunds');
+const itemsTotal = list => (list || []).reduce((n, i) => n + Number(i.qty || 0), 0);
 
 module.exports = function instagramRoutes({ asyncRoute, record }) {
   const router = express.Router();
@@ -142,6 +144,7 @@ module.exports = function instagramRoutes({ asyncRoute, record }) {
     const users = userIds.length ? await fetchAllByIds(userIds, c => supabase.from('users').select('id, email').in('id', c).order('id'), 'instagram:users') : [];
     const emailByUser = Object.fromEntries(users.map(u => [u.id, publicEmail(u.email)]));
 
+    const refunds = await loadRefundsByOrder(ids);   // returned & refunded orders: their status is final
     const shaped = [];
     for (const o of orders) {
       const status = await computeStatus(o);
@@ -152,7 +155,8 @@ module.exports = function instagramRoutes({ asyncRoute, record }) {
         address: { line1: o.address_line1, city: o.address_city, state: o.address_state, pincode: o.address_pincode },
         items: its.map(i => ({ name: i.name, code: i.product_code, qty: i.qty, price: i.price })),
         payment: o.payment, total: o.total, status, manualStatus: o.manual_status, viewedAt: o.admin_viewed_at,
-        cancelRequestStatus: o.cancel_request_status
+        cancelRequestStatus: o.cancel_request_status,
+        returnRefund: refunds[o.id] ? { amount: refunds[o.id].amount, full: itemsTotal(itemsByOrder[o.id]) <= refunds[o.id].returnedUnits } : null
       });
     }
     res.json({ orders: shaped, payments: PAYMENTS });

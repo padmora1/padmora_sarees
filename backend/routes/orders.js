@@ -6,6 +6,7 @@ const { requireAuth } = require('../middleware/auth');
 const { resolveCoupon, computeOrderTotals } = require('../utils/pricing');
 const { computeStatus, buildTimeline, isCancellable, CANCEL_REASONS } = require('../utils/orderStatus');
 const { getInquiryState } = require('../utils/inquiry');
+const { loadRefundsByOrder } = require('../utils/refunds');
 const { inquiryToken } = require('../utils/inquiryToken');
 const { isBlocked, recordFailure } = require('../utils/attemptLimiter');
 
@@ -25,6 +26,8 @@ async function shapeOrder(order) {
   const latestRequest = inquiry.requests[inquiry.requests.length - 1] || null;
   const cancellable = await isCancellable(order);
   const timeline = await buildTimeline(order);
+  // Money handed back for returned sarees (a return marked Refunded): shown on the order, which is final from then on.
+  const refundInfo = (await loadRefundsByOrder([order.id]))[order.id] || null;
   // "Write a review" is offered only once the order is delivered, and only for sarees the customer has not reviewed yet.
   const productIds = [...new Set(items.map(li => li.product_id).filter(Boolean))];
   const reviewedIds = new Set(
@@ -61,6 +64,13 @@ async function shapeOrder(order) {
     refundAmount: order.refund_amount != null ? order.refund_amount : order.total,
     refundProcessedAt: order.refund_processed_at,
     cancelledAt: order.cancelled_at,
+    returnRefund: refundInfo ? {
+      amount: refundInfo.amount,
+      full: items.length > 0 && refundInfo.returnedUnits >= items.reduce((n, li) => n + Number(li.qty || 0), 0),
+      refundedAt: refundInfo.returns.map(r => r.refundedAt).filter(Boolean).sort().pop() || null,
+      method: refundInfo.returns[refundInfo.returns.length - 1].method,
+      couponCode: refundInfo.returns.map(r => r.couponCode).filter(Boolean).pop() || null
+    } : null,
     cancelRequestStatus: order.cancel_request_status,
     cancelRequestReason: order.cancel_request_reason,
     cancelRequestDetail: order.cancel_request_detail,
