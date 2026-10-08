@@ -63,6 +63,15 @@
   .home-hero-link:hover .home-hero-btn::before,.home-hero-link:focus-visible .home-hero-btn::before{left:130%;}
   .home-hero-link:hover .home-hero-btn i,.home-hero-link:focus-visible .home-hero-btn i{background:var(--gold);}
   .home-hero-link:hover .home-hero-btn i svg,.home-hero-link:focus-visible .home-hero-btn i svg{transform:translateX(3px);}
+  /* On a computer or tablet the banner is half as tall as the whole picture (32:9 instead of 16:9), so the Shop by Weave row is
+     already on the first screen. The picture fills the strip and keeps its middle-upper part in view - the wordmark, the button
+     and the sarees; the button sits just under the wordmark. Phones are unchanged (the picture is already short there). */
+  @media (min-width:761px){
+    .home-hero-link,.home-hero-fallback{aspect-ratio:32/9;}
+    .home-hero-link{overflow:hidden;}
+    .home-hero-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 25%;}
+    .home-hero-btn{top:82%;left:85%;}
+  }
   @media (prefers-reduced-motion:reduce){
     .home-hero-img,.home-hero-btn,.home-hero-btn::before,.home-hero-btn i svg,.home-hero-link::after{transition:none;}
     .home-hero-link:hover .home-hero-img{transform:none;}
