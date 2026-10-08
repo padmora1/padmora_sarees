@@ -163,7 +163,7 @@ const FRONTEND_DIR = path.join(__dirname, 'frontend');
 const CLEAN_PAGES = [
   'shop', 'sale', 'collections', 'product', 'cart', 'checkout', 'account', 'wishlist', 'login', 'register',
   'forgot-password',
-  'track-order', 'order-inquiry', 'about', 'our-weaves', 'trousseau', 'faq', 'contact',
+  'track-order', 'order-inquiry', 'about', 'trousseau', 'faq', 'contact',
   'policies', 'packing-slip',
   'upcoming-sarees'
 ];
@@ -287,6 +287,8 @@ app.get('/index.html', (req, res) => res.redirect(301, withQuery(req, '/')));
 [['shipping-returns', 'shipping'], ['terms', 'terms'], ['privacy-policy', 'privacy']].forEach(([from, panel]) => {
   app.get([`/${from}`, `/${from}.html`], (req, res) => res.redirect(301, `/policies#${panel}`));
 });
+// The Our Weaves page was removed (the homepage's Shop by Weave row covers it): old links and bookmarks go to the homepage.
+app.get(['/our-weaves', '/our-weaves.html'], (req, res) => res.redirect(301, '/'));
 // A collection page is the shop listing scoped to that collection's tagged
 // products (shop.html reads ?slug=), so it shares the same grid, filters,
 // sorting and pagination instead of duplicating them.

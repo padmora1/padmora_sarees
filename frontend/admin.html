@@ -2961,10 +2961,9 @@
           <div class="form-field"><label>Story</label><textarea id="fStory" rows="2">${f.story||''}</textarea></div>
           ${!isNew ? `<div class="form-row-2">
             <div class="form-field"><label>Circle picture (shown in “Shop by Weave” on the homepage)</label><input type="file" accept="image/*" id="fThumbUpload">
-              <span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:4px;">A square photo works best (e.g. 800×800) — the middle of the picture is what shows in the circle.</span>
+              <span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:4px;">The picture fills the whole circle, edge to edge, inside a slim border. A square photo (e.g. 800×800) works best — otherwise the middle of it is shown.</span>
               ${f.thumbnail?`<div style="display:flex;align-items:center;gap:12px;margin-top:8px;"><img src="${f.thumbnail}" style="height:64px;width:64px;border-radius:50%;object-fit:cover;border:2px solid var(--gold-soft);"><button type="button" class="btn btn-sm" style="color:var(--maroon);" id="fThumbRemove">Remove</button></div>`:'<span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:6px;">None yet — the circle shows the colour above.</span>'}
             </div>
-            <div class="form-field"><label>Hero image (top of the Our Weaves page)</label><input type="file" accept="image/*" id="fHeroUpload">${f.hero_image?`<img src="${f.hero_image}" style="height:60px;margin-top:8px;border-radius:4px;">`:''}</div>
           </div>` : ''}
           <label style="font-size:12.5px;"><input type="checkbox" id="fActive" ${f.active?'checked':''}> Active</label>
           <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="fSave">${isNew?'Create Fabric':'Save Changes'}</button> <button class="btn btn-sm" id="fCancel">Cancel</button></div>
@@ -2991,8 +2990,6 @@
           const saved = isNew
             ? await adminApiFetch('/admin/fabrics', {method:'POST', body: JSON.stringify(payload)})
             : await adminApiFetch('/admin/fabrics/'+f.id, {method:'PUT', body: JSON.stringify(payload)});
-          const heroInput = document.getElementById('fHeroUpload');
-          if(heroInput && heroInput.files[0]) await uploadEntityImage('/api/admin/fabrics/'+(saved.fabric?.id||f.id)+'/image', 'file', heroInput.files[0], {slot:'hero'});
           const thumbInput = document.getElementById('fThumbUpload');
           if(thumbInput && thumbInput.files[0]) await uploadEntityImage('/api/admin/fabrics/'+(saved.fabric?.id||f.id)+'/image', 'file', thumbInput.files[0], {slot:'thumbnail'});
           toast(isNew?'Fabric created':'Fabric saved');
