@@ -23,6 +23,11 @@ const RETURN_REASONS = [
 
 const REASON_MAP = new Map(RETURN_REASONS.map(r => [r.key, r]));
 
+// What a customer may pick on a new inquiry. Only these two; the rest of RETURN_REASONS stays so inquiries made earlier (and the labels
+// the admin sees for them) keep working exactly as before.
+const INQUIRY_REASON_KEYS = ['wrong_item', 'damaged'];
+const INQUIRY_REASONS = RETURN_REASONS.filter(r => INQUIRY_REASON_KEYS.includes(r.key));
+
 function categoryForReason(reasonKey) {
   const r = REASON_MAP.get(reasonKey);
   return r ? r.category : 'customer_preference';
@@ -77,6 +82,6 @@ function defaultRestockFor(reasonKey) {
 }
 
 module.exports = {
-  RETURN_REASONS, categoryForReason, getReturnPolicy, isWithinReturnWindow,
+  RETURN_REASONS, INQUIRY_REASONS, categoryForReason, getReturnPolicy, isWithinReturnWindow,
   computeReturnRefund, defaultRestockFor
 };

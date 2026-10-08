@@ -11,7 +11,7 @@ const { computeStatus } = require('./orderStatus');
 const { isCustomerPhotoUrl } = require('./storage');
 const { sendEmail } = require('./notify');
 const { inquiryLink } = require('./inquiryToken');
-const { RETURN_REASONS, categoryForReason, getReturnPolicy, isWithinReturnWindow, computeReturnRefund } = require('./returns');
+const { RETURN_REASONS, INQUIRY_REASONS, categoryForReason, getReturnPolicy, isWithinReturnWindow, computeReturnRefund } = require('./returns');
 
 const INQUIRY_TYPES = [{ key: 'return_refund', label: 'Return and refund' }];
 const MAX_ATTEMPTS = 2;
@@ -25,23 +25,37 @@ const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g,
 async function getInquiryState(order, opts = {}) {
   const orderStatus = opts.status || await computeStatus(order);
   const policy = await getReturnPolicy();
-  const rows = must(await supabase.from('return_requests').select('id, attempt, status, admin_note, decided_at, requested_at').eq('order_id', order.id).order('attempt', { ascending: true }), 'inquiryState:rows');
-  const requests = rows.map(r => ({ id: r.id, attempt: r.attempt, status: r.status, adminNote: r.admin_note, decidedAt: r.decided_at, requestedAt: r.requested_at }));
-  const base = { orderStatus, policy: { enabled: policy.enabled, windowDays: policy.windowDays }, maxAttempts: MAX_ATTEMPTS, minPhotos: MIN_PHOTOS, maxPhotos: MAX_PHOTOS, requests, attemptsUsed: rows.length };
-  const last = rows[rows.length - 1];
-  const open = rows.find(r => r.status !== 'Rejected');
-  if (open) return { ...base, eligible: false, reason: 'already_requested', activeStatus: open.status };
-  if (last && rows.length >= MAX_ATTEMPTS) return { ...base, eligible: false, reason: 'final_rejected', finalRejected: true };
+  // An inquiry (attempt) can be several requests ("parts"), because the team may approve / reject / receive / refund its sarees separately.
+  const rows = must(await supabase.from('return_requests').select('id, attempt, part, status, admin_note, decided_at, requested_at').eq('order_id', order.id).order('attempt', { ascending: true }).order('part', { ascending: true }), 'inquiryState:rows');
+  const itemIdsByReturn = {};
+  if (rows.length) {
+    must(await supabase.from('return_request_items').select('return_id, order_item_id').in('return_id', rows.map(r => r.id)), 'inquiryState:items')
+      .forEach(i => (itemIdsByReturn[i.return_id] || (itemIdsByReturn[i.return_id] = [])).push(i.order_item_id));
+  }
+  const requests = rows.map(r => ({ id: r.id, attempt: r.attempt, part: r.part || 1, status: r.status, adminNote: r.admin_note, decidedAt: r.decided_at, requestedAt: r.requested_at, orderItemIds: itemIdsByReturn[r.id] || [] }));
+  const attemptsUsed = rows.length ? Math.max(...rows.map(r => r.attempt)) : 0;
+  const base = { orderStatus, policy: { enabled: policy.enabled, windowDays: policy.windowDays }, maxAttempts: MAX_ATTEMPTS, minPhotos: MIN_PHOTOS, maxPhotos: MAX_PHOTOS, requests, attemptsUsed };
+  const lastRows = rows.filter(r => r.attempt === attemptsUsed);
+  const open = rows.filter(r => r.status !== 'Rejected');
+  if (open.length) return { ...base, eligible: false, reason: 'already_requested', activeStatus: summarizeStatus(open.map(r => r.status)) };
+  if (lastRows.length && attemptsUsed >= MAX_ATTEMPTS) return { ...base, eligible: false, reason: 'final_rejected', finalRejected: true };
   if (orderStatus !== 'Delivered') return { ...base, eligible: false, reason: 'not_delivered' };
   if (!policy.enabled) return { ...base, eligible: false, reason: 'returns_off' };
-  const secondChance = !!last;   // the only way to get here with a row is a rejected first attempt
+  const secondChance = !!lastRows.length;   // the only way to get here with a row is a first attempt that was rejected in full
+  const lastDecided = lastRows.map(r => r.decided_at).filter(Boolean).sort().pop() || null;
   const windowEnds = order.delivered_at ? new Date(new Date(order.delivered_at).getTime() + policy.windowDays * DAY) : null;
-  const chanceEnds = secondChance && last.decided_at ? new Date(new Date(last.decided_at).getTime() + policy.windowDays * DAY) : null;
+  const chanceEnds = secondChance && lastDecided ? new Date(new Date(lastDecided).getTime() + policy.windowDays * DAY) : null;
   const inWindow = await isWithinReturnWindow(order);
   const inChance = !!chanceEnds && chanceEnds.getTime() >= Date.now();
   if (!inWindow && !inChance) return { ...base, eligible: false, reason: 'window_closed' };
   const deadline = [windowEnds, chanceEnds].filter(Boolean).sort((a, b) => b - a)[0] || null;
-  return { ...base, eligible: true, reason: null, attempt: rows.length + 1, secondChance, deadline: deadline ? deadline.toISOString() : null, reasons: RETURN_REASONS, types: INQUIRY_TYPES };
+  return { ...base, eligible: true, reason: null, attempt: attemptsUsed + 1, secondChance, deadline: deadline ? deadline.toISOString() : null, reasons: INQUIRY_REASONS, types: INQUIRY_TYPES };
+}
+
+// One status for a set of requests of the same inquiry: whatever still needs someone's attention comes first.
+const STATUS_ORDER = ['Requested', 'Approved', 'Received', 'Refunded', 'Rejected'];
+function summarizeStatus(statuses) {
+  return STATUS_ORDER.find(s => statuses.includes(s)) || statuses[0] || null;
 }
 
 // One short, honest sentence for every reason an inquiry cannot be made.
@@ -68,7 +82,7 @@ async function createInquiry({ order, userId, body }) {
 
   const { type, reason, description, items, photoUrls } = body || {};
   if (!INQUIRY_TYPES.some(t => t.key === type)) return { error: { status: 400, message: 'Choose what your inquiry is about.' } };
-  if (!RETURN_REASONS.some(r => r.key === reason)) return { error: { status: 400, message: 'Choose a reason.' } };
+  if (!INQUIRY_REASONS.some(r => r.key === reason)) return { error: { status: 400, message: 'Choose what went wrong: the wrong saree arrived, or it arrived damaged or defective.' } };
   const text = String(description || '').trim();
   if (text.length < 10) return { error: { status: 400, message: 'Please describe what is wrong, in at least a sentence.' } };
   if (text.length > 1000) return { error: { status: 400, message: 'Please keep the description under 1000 characters.' } };
@@ -136,23 +150,25 @@ async function notifySubmitted(order, userId, request, state) {
 
 // The e-mail a customer gets when an admin approves or rejects their inquiry. A first rejection carries the private link
 // for the second (last) chance.
-function decisionEmail({ approve, name, orderId, adminNote, attempt }) {
+function decisionEmail({ approve, name, orderId, adminNote, attempt, itemsText, allRejected }) {
   const first = String(name || '').trim().split(/\s+/)[0] || 'there';
   const subject = approve ? `Your inquiry for order ${orderId} was approved` : `Update on your inquiry for order ${orderId}`;
-  const again = !approve && (attempt || 1) < MAX_ATTEMPTS;
+  const everyPartRejected = allRejected !== false;   // (older callers don't say: a whole request was decided)
+  const again = !approve && everyPartRejected && (attempt || 1) < MAX_ATTEMPTS;
+  const forItems = itemsText ? ` for <strong>${esc(itemsText)}</strong>` : '';
   const html = `<div style="font-family:Georgia,serif;max-width:480px;margin:0 auto;color:#2b1015;">
     <h2 style="color:#7A1F2B;">${approve ? 'Return approved' : 'Update on your inquiry'}</h2>
     <p>Hi ${esc(first)},</p>
     <p>${approve
-      ? `Your inquiry for order <strong>${esc(orderId)}</strong> has been approved. Please ship the item(s) back to us &mdash; we will e-mail you again once we have received and inspected them, and then send your refund.`
-      : `We are sorry &mdash; we are not able to approve your inquiry for order <strong>${esc(orderId)}</strong>.`}</p>
+      ? `Your inquiry for order <strong>${esc(orderId)}</strong>${forItems} has been approved. Please ship the item(s) back to us &mdash; we will e-mail you again once we have received and inspected them, and then send your refund.`
+      : `We are sorry &mdash; we are not able to approve your inquiry for order <strong>${esc(orderId)}</strong>${forItems}.`}</p>
     ${adminNote ? `<p style="color:#6f5a5c;">Note from our team: ${esc(adminNote)}</p>` : ''}
     ${again ? `<p>You have <strong>one more chance</strong>. If something was missing &mdash; clearer photos, a fuller description &mdash; you can send a new inquiry here:</p>
     <p><a href="${esc(inquiryLink(orderId))}" style="display:inline-block;background:#ad3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:999px;font-family:Arial,sans-serif;font-weight:bold;">Send my second inquiry</a></p>
     <p style="font-size:12px;color:#8a6f6f;">It is available for 7 days. After that second inquiry, our decision is final.</p>` : ''}
-    ${!approve && !again ? `<p style="color:#6f5a5c;">This was your second inquiry for this order, so we cannot take it further here. If you think we have got something wrong, just reply to this e-mail.</p>` : ''}
+    ${!approve && !again && everyPartRejected ? `<p style="color:#6f5a5c;">This was your second inquiry for this order, so we cannot take it further here. If you think we have got something wrong, just reply to this e-mail.</p>` : ''}
   </div>`;
   return { subject, html };
 }
 
-module.exports = { getInquiryState, createInquiry, explain, decisionEmail, INQUIRY_TYPES, MAX_ATTEMPTS, MIN_PHOTOS, MAX_PHOTOS };
+module.exports = { getInquiryState, createInquiry, explain, decisionEmail, summarizeStatus, INQUIRY_TYPES, MAX_ATTEMPTS, MIN_PHOTOS, MAX_PHOTOS };

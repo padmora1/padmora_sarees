@@ -383,6 +383,7 @@
     const [tab, sub] = (location.hash || '').replace(/^#/, '').split('/');
     return ADMIN_TABS.includes(tab) ? { tab, sub: sub || '' } : null;
   }
+  const openedThisVisit = new Set();   // orders opened since the Orders tab was last entered (they stay in the "Not opened yet" list)
   function switchTab(tab){
     setHash(tab, tab === 'catalog' ? catalogTab : tab === 'storefront' ? storefrontTab : '');
     document.querySelectorAll('.account-nav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
@@ -397,7 +398,7 @@
     if(tab==='products') loadProducts();
     if(tab==='catalog') renderCatalogTab();
     if(tab==='storefront') renderStorefrontTab();
-    if(tab==='orders') loadOrders();
+    if(tab==='orders'){ openedThisVisit.clear(); loadOrders(); }
     if(tab==='instagram') loadInstagram();
     if(tab==='returns') loadReturns();
     if(tab==='inventory'){ loadInventory(); loadPrebooks(); }
@@ -1626,7 +1627,7 @@
       const q = orderFilter === 'Refund pending' ? '?status=Cancelled' : (orderFilter !== 'all' && !own.includes(orderFilter)) ? ('?status=' + encodeURIComponent(orderFilter)) : '';
       let {orders} = await adminApiFetch('/admin/orders' + q);
       if(orderFilter === 'Cancellation Requested') orders = orders.filter(o=>o.cancelRequestStatus === 'Requested');
-      if(orderFilter === 'Not opened yet') orders = orders.filter(o=>o.viewedAt === null);
+      if(orderFilter === 'Not opened yet') orders = orders.filter(o=>o.viewedAt === null || openedThisVisit.has(o.id));
       if(orderFilter === 'Refund pending') orders = orders.filter(o=>o.status === 'Cancelled' && o.refundStatus === 'Pending');
       if(orderFilter === 'Returned & refunded') orders = orders.filter(o=>!!o.returnRefund);
       ordersCache = orders;
@@ -1724,13 +1725,15 @@
       document.getElementById('orderDetail').style.display = 'none';
       return;
     }
-    const wrap = orderDetailHost();
+    let wrap = orderDetailHost();
     wrap.style.display = 'block';
     wrap.innerHTML = `<div class="loading-state"><span class="zari-spinner"></span>Loading order…</div>`;
 
     try{
       const {order: o} = await adminApiFetch('/admin/orders/' + openOrderId);
+      if(!openOrderId || openOrderId !== o.id) return;   // closed, or another order opened, while this one was loading
       markOrderViewed(o.id);
+      if(!wrap.isConnected) wrap = orderDetailHost();    // the list was redrawn meanwhile: write into the order's current place
       wrap.innerHTML = `
         <div class="editor-card">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -1847,14 +1850,14 @@
         rzpRefundBtn.disabled = true;
         try{
           await adminApiFetch('/admin/orders/' + o.id + '/refund/razorpay', {method:'POST'});
-          toast('Refund sent to Razorpay'); renderOrderDetail(); loadOrders();
+          toast('Refund sent to Razorpay'); refreshOrdersAndDetail();
         }catch(e){ toast(e.message, 'error'); rzpRefundBtn.disabled = false; }
       });
       const cancelApproveBtn = document.getElementById('cancelApproveBtn');
       if(cancelApproveBtn) cancelApproveBtn.addEventListener('click', async ()=>{
         try{
           await adminApiFetch('/admin/orders/' + o.id + '/cancel-decision', {method:'PUT', body: JSON.stringify({approve:true, adminNote: document.getElementById('cancelDecisionNote').value})});
-          toast('Order cancelled'); renderOrderDetail(); loadOrders();
+          toast('Order cancelled'); refreshOrdersAndDetail();
         }catch(e){ toast(e.message, 'error'); }
       });
       const cancelRejectBtn = document.getElementById('cancelRejectBtn');
@@ -1865,7 +1868,7 @@
         if(!ok) return;
         try{
           await adminApiFetch('/admin/orders/' + o.id + '/cancel-decision', {method:'PUT', body: JSON.stringify({approve:false, adminNote: note})});
-          toast('Cancellation request rejected'); renderOrderDetail(); loadOrders();
+          toast('Cancellation request rejected'); refreshOrdersAndDetail();
         }catch(e){ toast(e.message, 'error'); }
       });
       const statusSel = wrap.querySelector('[data-order-status]');
@@ -1873,16 +1876,24 @@
         try{
           await adminApiFetch('/admin/orders/' + o.id + '/status', {method:'PUT', body: JSON.stringify({status: statusSel.value})});
           toast('Order status updated');
-          renderOrderDetail();
-          loadOrders();
+          await refreshOrdersAndDetail();
         }catch(e){ toast(e.message, 'error'); }
       });
     }catch(e){ toast(e.message, 'error'); }
   }
 
+  // After a change made inside an open order: redraw the list FIRST, then the open order, one after the other. (They used to be
+  // redrawn at the same time, and the order's panel could be written into a part of the page the list redraw had just replaced,
+  // which showed a "Cannot read properties of null" message after the success message. Nothing was lost, it was only the screen.)
+  async function refreshOrdersAndDetail(){
+    await loadOrders();
+    await renderOrderDetail();
+  }
+
   // The first time an order is opened, tell the server (so every admin sees it as seen) and un-bold it in the list.
   function markOrderViewed(id){
     const o = ordersCache.find(x => x.id === id);
+    openedThisVisit.add(id);               // stays in the "Not opened yet" list for now, so what you are working on does not vanish under you
     if(o && o.viewedAt !== null) return;   // already seen (or the server has no such record to keep)
     if(o) o.viewedAt = new Date().toISOString();
     const cell = [...document.querySelectorAll('#ordersTable tr[data-order-row]')].find(r => r.dataset.orderRow === id);
@@ -2101,7 +2112,7 @@
   function visibleReturns(){
     const t = returnsTools, groups = t.groups();
     const rows = returnsCache.filter(r => AdminLists.inRange(r.requestedAt, t.state.from, t.state.to) && AdminLists.matches(groups, [
-      r.id, r.orderId, r.customerName, r.customerEmail, r.customerPhone, r.reasonLabel, r.status, r.refundMethod, (r.items || []).map(i => i.name).join(' ')
+      r.id, r.orderId, r.customerName, r.customerEmail, r.customerPhone, r.reasonLabel, r.status, r.refundMethod, (r.items || []).map(i => i.name).join(' '), r.partCount > 1 ? 'part ' + r.part : ''
     ].join(' ')));
     const by = { new: (x, y) => new Date(y.requestedAt) - new Date(x.requestedAt), old: (x, y) => new Date(x.requestedAt) - new Date(y.requestedAt), high: (x, y) => returnAmount(y) - returnAmount(x), low: (x, y) => returnAmount(x) - returnAmount(y) };
     return rows.sort(by[t.state.sort] || by.new);
@@ -2110,8 +2121,8 @@
     const rows = visibleReturns();
     if(!rows.length){ toast('Nothing to export for this search and date range.', 'error'); return; }
     AdminLists.downloadCsv('padmora-returns-' + AdminLists.today() + '.csv',
-      ['Return #','Requested at','Order ID','Customer','E-mail','Phone','Reason','Items','Refund method','Refund amount','Status'],
-      rows.map(r => [r.id, new Date(r.requestedAt).toLocaleString('en-IN'), r.orderId, r.customerName, r.customerEmail, r.customerPhone || '', r.reasonLabel,
+      ['Return #','Part','Requested at','Order ID','Customer','E-mail','Phone','Reason','Items','Refund method','Refund amount','Status'],
+      rows.map(r => [r.id, r.partCount > 1 ? r.part + ' of ' + r.partCount : '', new Date(r.requestedAt).toLocaleString('en-IN'), r.orderId, r.customerName, r.customerEmail, r.customerPhone || '', r.reasonLabel,
         (r.items || []).map(i => `${i.name} x${i.qty}`).join('; '), r.refundMethod || '', returnAmount(r), r.status]));
     toast(rows.length + ' return' + (rows.length === 1 ? '' : 's') + ' exported');
   }
@@ -2136,18 +2147,19 @@
     const hl = text => AdminLists.highlight(text, groups);
     returnsTools.setCount(returns.length, returnsCache.length);
     document.getElementById('returnsTable').innerHTML = `
-      <thead><tr><th>Return</th><th>Date</th><th>Order</th><th>Customer</th><th>Reason</th><th>Refund</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Return</th><th>Date</th><th>Order</th><th>Customer</th><th>Sarees</th><th>Reason</th><th>Refund</th><th>Status</th><th></th></tr></thead>
       <tbody>${returns.length ? returns.map(r=>`
         <tr>
-          <td>#${hl(r.id)}${(r.attempt || 1) > 1 ? '<br><span class="oi-attempt last">2nd &amp; last</span>' : ''}</td>
+          <td>#${hl(r.id)}${r.partCount > 1 ? `<br><span class="oi-attempt">Part ${r.part} of ${r.partCount}</span>` : ''}${(r.attempt || 1) > 1 ? '<br><span class="oi-attempt last">2nd &amp; last</span>' : ''}</td>
           <td style="white-space:nowrap;font-size:12.5px;">${AdminLists.fmtDate(r.requestedAt)}<br><span style="font-size:11px;color:var(--ink-soft);">${new Date(r.requestedAt).toLocaleTimeString('en-IN', {hour:'numeric', minute:'2-digit'})}</span></td>
           <td>#${hl(r.orderId)}</td>
           <td>${hl(r.customerName)}<br><span style="font-size:11px;color:var(--ink-soft);">${hl(r.customerEmail)}</span></td>
+          <td style="font-size:12.5px;">${(r.items || []).map(i => `${hl(i.name)}${i.qty > 1 ? ' × ' + i.qty : ''}`).join('<br>')}</td>
           <td style="font-size:12.5px;">${hl(r.reasonLabel)}</td>
           <td>${money(returnAmount(r))}</td>
           <td><span class="status-pill status-${r.status==='Rejected'?'cancelled':(r.status==='Refunded'?'confirmed':'pending')}">${r.status}</span></td>
           <td><button class="btn btn-sm btn-outline" data-view-return="${r.id}">View</button></td>
-        </tr>`).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--ink-soft);padding:24px;">${returnsCache.length ? 'No return requests match this search and date range.' : 'No return requests in this status.'}</td></tr>`}</tbody>`;
+        </tr>`).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--ink-soft);padding:24px;">${returnsCache.length ? 'No return requests match this search and date range.' : 'No return requests in this status.'}</td></tr>`}</tbody>`;
     document.querySelectorAll('[data-view-return]').forEach(btn=>btn.addEventListener('click', ()=>{
       openReturnId = btn.dataset.viewReturn;
       renderReturnDetail();
@@ -2163,13 +2175,17 @@
     try{
       const {return: r} = await adminApiFetch('/admin/returns/' + openReturnId);
       const itemsValue = r.items.reduce((s,i)=>s+i.price*i.qty, 0);
+      // With several sarees in one request the admin ticks the ones an action is for; the rest stay in this request, still waiting.
+      const pickable = r.items.length > 1 && ['Requested','Approved','Received'].includes(r.status);
+      const partNote = pickable ? `<p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;"><strong>Only the sarees ticked under “Items in this request” are affected.</strong> The others stay here, still pending, and keep showing in Returns and in the Overview counts.</p>` : '';
 
       let actionHTML = '';
       if(r.status === 'Requested'){
         actionHTML = `
           <div class="detail-block" style="border-color:var(--gold);">
             <h5>Decision</h5>
-            <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">${(r.attempt || 1) >= (r.maxAttempts || 2) ? '<strong style="color:var(--maroon);">This is the customer’s second and last inquiry.</strong> Rejecting it is final — they cannot send another for this order.' : 'If you reject this, the customer is e-mailed your note and gets <strong>one more chance</strong> (a second inquiry). Approving starts the return and refund.'}</p>
+            ${partNote}
+            <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">${(r.attempt || 1) >= (r.maxAttempts || 2) ? '<strong style="color:var(--maroon);">This is the customer’s second and last inquiry.</strong> Rejecting it is final — they cannot send another for this order.' : (pickable || r.partCount > 1) ? 'Rejecting e-mails the customer your note. They get <strong>one more chance</strong> (a second inquiry) only if none of the sarees in this inquiry end up approved.' : 'If you reject this, the customer is e-mailed your note and gets <strong>one more chance</strong> (a second inquiry). Approving starts the return and refund.'}</p>
             <div class="form-field"><label>Note (required to reject, optional to approve — the customer sees this)</label>
               <textarea class="admin-input" id="retDecisionNote" rows="2"></textarea>
             </div>
@@ -2182,9 +2198,10 @@
         actionHTML = `
           <div class="detail-block" style="border-color:var(--gold);">
             <h5>Mark Received</h5>
+            ${partNote}
             <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:8px;">Check off which items are resellable — unused, tags intact — to add them back to stock. Leave unchecked for anything damaged or not fit to resell.</p>
             ${r.items.map(i=>`
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0;">
+              <label data-restock-row="${i.returnItemId}" style="display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0;">
                 <input type="checkbox" data-restock-item="${i.returnItemId}" ${r.reasonCategory==='customer_preference'?'checked':''}>
                 ${escHTML(i.name)}${i.color?' — '+i.color:''} × ${i.qty}
               </label>`).join('')}
@@ -2194,6 +2211,7 @@
         actionHTML = `
           <div class="detail-block" style="border-color:var(--gold);">
             <h5>Process Refund</h5>
+            ${partNote}
             <div class="form-row-2">
               <div class="form-field"><label>Method</label>
                 <select class="admin-input" id="retRefundMethod">
@@ -2202,6 +2220,7 @@
               </div>
               <div class="form-field"><label>Amount (₹)</label>
                 <input class="admin-input" type="number" id="retRefundAmount" value="${r.computedRefundAmount}">
+                ${pickable ? '<span id="retRefundHint" style="font-size:11.5px;color:var(--ink-soft);"></span>' : ''}
               </div>
             </div>
             ${r.refundAccountDetail ? `<p style="font-size:12.5px;color:var(--ink-soft);">Customer's bank/UPI details: <strong>${escHTML(r.refundAccountDetail)}</strong></p>` : ''}
@@ -2212,7 +2231,7 @@
       wrap.innerHTML = `
         <div class="editor-card">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-            <h3 style="font-family:var(--font-body);font-size:16px;">Order inquiry #${r.id} — Order #${r.orderId} <span class="oi-attempt ${(r.attempt || 1) >= (r.maxAttempts || 2) ? 'last' : ''}">Inquiry ${r.attempt || 1} of ${r.maxAttempts || 2}${(r.attempt || 1) >= (r.maxAttempts || 2) ? ' · last chance' : ''}</span></h3>
+            <h3 style="font-family:var(--font-body);font-size:16px;">Order inquiry #${r.id} — Order #${r.orderId} ${r.partCount > 1 ? `<span class="oi-attempt">Part ${r.part} of ${r.partCount}</span> ` : ''}<span class="oi-attempt ${(r.attempt || 1) >= (r.maxAttempts || 2) ? 'last' : ''}">Inquiry ${r.attempt || 1} of ${r.maxAttempts || 2}${(r.attempt || 1) >= (r.maxAttempts || 2) ? ' · last chance' : ''}</span></h3>
             <button class="btn btn-sm" id="closeReturnDetail">Close ×</button>
           </div>
           <div class="detail-grid">
@@ -2232,10 +2251,18 @@
                 : `<p style="color:var(--ink-soft);font-size:13px;">${r.reasonCategory==='seller_fault' ? 'None attached — unusual for this reason, worth a follow-up.' : 'None attached.'}</p>`}
             </div>
             <div class="detail-block">
-              <h5>Items being returned</h5>
-              ${r.items.map(i=>`<p>${escHTML(i.name)}${i.color?' — '+i.color:''} × ${i.qty} — ${money(i.price*i.qty)}</p>`).join('')}
+              <h5>${pickable ? 'Items in this request' : 'Items being returned'}</h5>
+              ${pickable ? `<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:2px 0 6px;color:var(--ink-soft);"><input type="checkbox" id="retPickAll" checked> Select all</label>` : ''}
+              ${r.items.map(i=> pickable
+                ? `<label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;padding:5px 0;cursor:pointer;"><input type="checkbox" data-ret-pick="${i.returnItemId}" data-share="${i.refundShare}" checked style="margin-top:3px;"><span>${escHTML(i.name)}${i.color?' — '+escHTML(i.color):''} × ${i.qty} — ${money(i.price*i.qty)}</span></label>`
+                : `<p>${escHTML(i.name)}${i.color?' — '+escHTML(i.color):''} × ${i.qty} — ${money(i.price*i.qty)}</p>`).join('')}
               <p style="margin-top:6px;"><strong>Items value: ${money(itemsValue)}</strong></p>
             </div>
+            ${r.partCount > 1 ? `<div class="detail-block">
+              <h5>This inquiry’s other requests</h5>
+              <p style="font-size:12px;color:var(--ink-soft);margin-bottom:6px;">The sarees of this inquiry were decided in ${r.partCount} groups.</p>
+              ${r.siblings.map(sb => `<p style="display:flex;align-items:center;gap:8px;"><span>#${sb.id} · Part ${sb.part}${sb.id === r.id ? ' (this one)' : ''}</span><span class="status-pill status-${sb.status==='Rejected'?'cancelled':(sb.status==='Refunded'?'confirmed':'pending')}">${sb.status}</span>${sb.id === r.id ? '' : `<button class="btn btn-sm btn-outline" data-open-return="${sb.id}">View</button>`}</p>`).join('')}
+            </div>` : ''}
             <div class="detail-block">
               <h5>Refund</h5>
               <p>Requested method: <strong>${REFUND_METHOD_LABEL[r.refundMethod] || r.refundMethod}</strong></p>
@@ -2250,44 +2277,87 @@
         </div>`;
 
       document.getElementById('closeReturnDetail').addEventListener('click', ()=>{ openReturnId = null; renderReturnDetail(); });
+      document.querySelectorAll('[data-open-return]').forEach(b=>b.addEventListener('click', ()=>{ openReturnId = b.dataset.openReturn; renderReturnDetail(); }));
+
+      // the ticked sarees: the action applies to them only (a single-saree request has no ticks = the whole request)
+      const picks = [...document.querySelectorAll('[data-ret-pick]')];
+      const pickedIds = () => picks.filter(cb=>cb.checked).map(cb=>Number(cb.dataset.retPick));
+      let amountEdited = false;
+      const amountInput = document.getElementById('retRefundAmount');
+      if(amountInput) amountInput.addEventListener('input', ()=>{ amountEdited = true; });
+      function syncPicks(){
+        if(!picks.length) return;
+        const on = picks.filter(cb=>cb.checked);
+        const all = on.length === picks.length;
+        const allBox = document.getElementById('retPickAll');
+        if(allBox) allBox.checked = all;
+        picks.forEach(cb=>{ const row = document.querySelector('[data-restock-row="' + cb.dataset.retPick + '"]'); if(row){ row.style.opacity = cb.checked ? '' : '.35'; const box = row.querySelector('input'); if(box) box.disabled = !cb.checked; } });
+        if(amountInput){
+          const suggested = all ? r.computedRefundAmount : on.reduce((n,cb)=>n+Number(cb.dataset.share||0), 0);
+          if(!amountEdited) amountInput.value = suggested;
+          const hint = document.getElementById('retRefundHint');
+          if(hint) hint.textContent = all ? 'Suggested for the whole request.' : 'Suggested for the ' + on.length + ' ticked saree' + (on.length===1?'':'s') + ' only — edit if needed.';
+        }
+      }
+      picks.forEach(cb=>cb.addEventListener('change', syncPicks));
+      const pickAll = document.getElementById('retPickAll');
+      if(pickAll) pickAll.addEventListener('change', ()=>{ picks.forEach(cb=>{ cb.checked = pickAll.checked; }); syncPicks(); });
+      syncPicks();
+      // -> the part of the request body naming the ticked sarees, or null (with a message) when nothing is ticked
+      function pickBody(){
+        if(!picks.length) return {};
+        const ids = pickedIds();
+        if(!ids.length){ toast('Tick at least one saree first', 'error'); return null; }
+        return { itemIds: ids };
+      }
+      const afterAction = (done, out) => {
+        toast(out && out.split ? done + ' for the ticked sarees — the rest are still pending here' : done);
+        renderReturnDetail(); loadReturns();
+      };
 
       const approveBtn = document.getElementById('retApproveBtn');
       if(approveBtn) approveBtn.addEventListener('click', async ()=>{
+        const pb = pickBody(); if(!pb) return;
         try{
-          await adminApiFetch('/admin/returns/' + r.id + '/decision', {method:'PUT', body: JSON.stringify({approve:true, adminNote: document.getElementById('retDecisionNote').value})});
-          toast('Return approved'); renderReturnDetail(); loadReturns();
+          const out = await adminApiFetch('/admin/returns/' + r.id + '/decision', {method:'PUT', body: JSON.stringify({approve:true, adminNote: document.getElementById('retDecisionNote').value, ...pb})});
+          afterAction('Return approved', out);
         }catch(e){ toast(e.message, 'error'); }
       });
       const rejectBtn = document.getElementById('retRejectBtn');
       if(rejectBtn) rejectBtn.addEventListener('click', async ()=>{
         const note = document.getElementById('retDecisionNote').value;
         if(!note.trim()){ toast('Add a note explaining the rejection', 'error'); return; }
-        const ok = await showConfirmDialog((r.attempt || 1) >= (r.maxAttempts || 2) ? 'This is their last chance, so this is final. The customer will see your note.' : 'The customer will see your note and get one more chance to send a new inquiry.', {title:'Reject this inquiry?', confirmLabel:'Reject', danger:true});
+        const pb = pickBody(); if(!pb) return;
+        const several = picks.length > 1 || r.partCount > 1;
+        const ok = await showConfirmDialog((r.attempt || 1) >= (r.maxAttempts || 2) ? 'This is their last chance, so this is final. The customer will see your note.' : (several ? 'The customer will see your note. They get one more chance to send a new inquiry only if none of the sarees in this inquiry end up approved.' : 'The customer will see your note and get one more chance to send a new inquiry.'), {title: picks.length && pickedIds().length < picks.length ? 'Reject the ticked sarees?' : 'Reject this inquiry?', confirmLabel:'Reject', danger:true});
         if(!ok) return;
         try{
-          await adminApiFetch('/admin/returns/' + r.id + '/decision', {method:'PUT', body: JSON.stringify({approve:false, adminNote: note})});
-          toast('Return rejected'); renderReturnDetail(); loadReturns();
+          const out = await adminApiFetch('/admin/returns/' + r.id + '/decision', {method:'PUT', body: JSON.stringify({approve:false, adminNote: note, ...pb})});
+          afterAction('Return rejected', out);
         }catch(e){ toast(e.message, 'error'); }
       });
       const receiveBtn = document.getElementById('retReceiveBtn');
       if(receiveBtn) receiveBtn.addEventListener('click', async ()=>{
         const itemRestock = {};
         document.querySelectorAll('[data-restock-item]').forEach(cb=>{ itemRestock[cb.dataset.restockItem] = cb.checked; });
+        const pb = pickBody(); if(!pb) return;
         try{
-          await adminApiFetch('/admin/returns/' + r.id + '/receive', {method:'PUT', body: JSON.stringify({itemRestock})});
-          toast('Marked received'); renderReturnDetail(); loadReturns();
+          const out = await adminApiFetch('/admin/returns/' + r.id + '/receive', {method:'PUT', body: JSON.stringify({itemRestock, ...pb})});
+          afterAction('Marked received', out);
         }catch(e){ toast(e.message, 'error'); }
       });
       const refundBtn = document.getElementById('retRefundBtn');
       if(refundBtn) refundBtn.addEventListener('click', async ()=>{
+        const pb = pickBody(); if(!pb) return;
         const ok = await showConfirmDialog('This finalizes the refund — "Original payment method" sends real money back through Razorpay, and store credit creates a real one-time coupon immediately.', {title:'Process this refund?', confirmLabel:'Process Refund'});
         if(!ok) return;
         try{
-          await adminApiFetch('/admin/returns/' + r.id + '/refund', {method:'PUT', body: JSON.stringify({
+          const out = await adminApiFetch('/admin/returns/' + r.id + '/refund', {method:'PUT', body: JSON.stringify({
             refundMethod: document.getElementById('retRefundMethod').value,
-            finalAmount: Number(document.getElementById('retRefundAmount').value)
+            finalAmount: Number(document.getElementById('retRefundAmount').value),
+            ...pb
           })});
-          toast('Refund processed'); renderReturnDetail(); loadReturns();
+          afterAction('Refund processed', out);
         }catch(e){ toast(e.message, 'error'); }
       });
     }catch(e){ toast(e.message, 'error'); }
