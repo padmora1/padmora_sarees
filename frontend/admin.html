@@ -697,7 +697,7 @@
     try{
       const {stats, lowStock} = await adminApiFetch('/admin/stats');
       document.getElementById('statGrid').innerHTML = `
-        <div class="stat-card"><strong>${money(stats.revenue)}</strong><span>Total Revenue</span></div>
+        <div class="stat-card"><strong>${money(stats.revenue)}</strong><span>Total Revenue</span>${stats.refundedTotal > 0 ? `<em class="stat-sub">after ${money(stats.refundedTotal)} refunded on returns</em>` : ''}</div>
         <div class="stat-card"><strong>${stats.totalOrders}</strong><span>Active Orders</span></div>
         <div class="stat-card"><strong>${stats.cancelledOrders}</strong><span>Cancelled Orders</span></div>
         <div class="stat-card"><strong>${stats.userCount}</strong><span>Customers</span></div>
@@ -1485,7 +1485,7 @@
   let orderFilter = 'all';
   let openOrderId = null;
   let selectedOrderIds = new Set();
-  const ORDER_FILTERS = ['all', 'Not opened yet', 'Cancellation Requested', 'Refund pending', 'Confirmed', 'Packed', 'Shipped', 'Out for Delivery', 'Delivered', 'Cancelled'];
+  const ORDER_FILTERS = ['all', 'Not opened yet', 'Cancellation Requested', 'Refund pending', 'Returned & refunded', 'Confirmed', 'Packed', 'Shipped', 'Out for Delivery', 'Delivered', 'Cancelled'];
   const ORDER_SOURCES = [['all', 'All orders'], ['website', 'Website'], ['instagram', 'Instagram']];
   let orderSource = 'all';
 
@@ -1597,17 +1597,17 @@
     const rows = visibleOrders();
     if(!rows.length){ toast('Nothing to export for this search and date range.', 'error'); return; }
     AdminLists.downloadCsv('padmora-orders-' + AdminLists.today() + '.csv',
-      ['Order ID','Source','Placed at','Customer','E-mail','Status','Payment','Items (colour, SKU, qty)','Units','Subtotal','Discount','Shipping','Total','Coupon','City','State','Pincode'],
+      ['Order ID','Source','Placed at','Customer','E-mail','Status','Payment','Items (colour, SKU, qty)','Units','Subtotal','Discount','Shipping','Total','Refunded on return','Net after refund','Coupon','City','State','Pincode'],
       rows.map(o => [o.id, o.source === 'instagram' ? 'Instagram' : 'Website', new Date(o.placedAt).toLocaleString('en-IN'), o.customerName, o.customerEmail, o.status, o.payment || '',
         o.items.map(i => `${i.name}${i.color ? ' (' + i.color + ')' : ''}${i.sku ? ' [' + i.sku + ']' : ''} x${i.qty}`).join('; '), o.items.reduce((n, i) => n + i.qty, 0),
-        o.subtotal, o.discount, o.shippingFee, o.total, o.couponCode || '', o.address && o.address.city || '', o.address && o.address.state || '', o.address && o.address.pincode || '']));
+        o.subtotal, o.discount, o.shippingFee, o.total, o.returnRefund ? o.returnRefund.amount : 0, o.status === 'Cancelled' ? 0 : o.total - (o.returnRefund ? o.returnRefund.amount : 0), o.couponCode || '', o.address && o.address.city || '', o.address && o.address.state || '', o.address && o.address.pincode || '']));
     toast(rows.length + ' order' + (rows.length === 1 ? '' : 's') + ' exported');
   }
 
   async function loadOrders(){
     ensureOrdersTools();
     document.getElementById('orderStatusFilters').innerHTML = ORDER_FILTERS.map(f=>
-      `<button data-filter="${f}" class="${orderFilter===f?'active':''}">${f==='all'?'All':f}</button>`).join('');
+      `<button data-filter="${escHTML(f)}" class="${orderFilter===f?'active':''}">${f==='all'?'All':escHTML(f)}</button>`).join('');
     document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click', ()=>{ orderFilter = b.dataset.filter; loadOrders(); }));
     document.getElementById('orderSourceFilters').innerHTML = ORDER_SOURCES.map(([k, label])=>
       `<button data-source="${k}" class="${orderSource===k?'active':''}">${label}</button>`).join('');
@@ -1618,12 +1618,13 @@
     }));
     try{
       // Three filters are worked out here from the orders themselves; the rest are real statuses the server filters.
-      const own = ['Cancellation Requested', 'Not opened yet', 'Refund pending'];
+      const own = ['Cancellation Requested', 'Not opened yet', 'Refund pending', 'Returned & refunded'];
       const q = orderFilter === 'Refund pending' ? '?status=Cancelled' : (orderFilter !== 'all' && !own.includes(orderFilter)) ? ('?status=' + encodeURIComponent(orderFilter)) : '';
       let {orders} = await adminApiFetch('/admin/orders' + q);
       if(orderFilter === 'Cancellation Requested') orders = orders.filter(o=>o.cancelRequestStatus === 'Requested');
       if(orderFilter === 'Not opened yet') orders = orders.filter(o=>o.viewedAt === null);
       if(orderFilter === 'Refund pending') orders = orders.filter(o=>o.status === 'Cancelled' && o.refundStatus === 'Pending');
+      if(orderFilter === 'Returned & refunded') orders = orders.filter(o=>!!o.returnRefund);
       ordersCache = orders;
       renderOrdersTable();
     }catch(e){ toast(e.message, 'error'); }
@@ -1650,7 +1651,7 @@
           <td style="white-space:nowrap;font-size:12.5px;">${AdminLists.fmtDate(o.placedAt)}<br><span style="font-size:11px;color:var(--ink-soft);">${new Date(o.placedAt).toLocaleTimeString('en-IN', {hour:'numeric', minute:'2-digit'})}</span></td>
           <td>${hl(o.customerName)}<br><span style="font-size:11px;color:var(--ink-soft);">${hl(o.customerEmail)}</span></td>
           <td style="font-size:12.5px;">${o.items.map(i=>`${hl(i.name)}${i.color?' ('+escHTML(i.color)+')':''} ×${i.qty}`).join('<br>')}</td>
-          <td>${money(o.total)}</td>
+          <td>${money(o.total)}${o.returnRefund ? `<br><span class="refund-note" title="Handed back for returned sarees. Total Revenue and Net Profit count only what is left.">−${money(o.returnRefund.amount)} refunded<br>Net ${money(o.total - o.returnRefund.amount)}</span>` : ''}</td>
           <td>
             ${o.status === 'Cancelled' ? '<span class="order-status cancelled">Cancelled</span>' : o.cancelRequestStatus === 'Requested' ? `<span class="order-locked-note" title="The status cannot be changed until the customer's cancellation request is approved or rejected">Status locked: ${escHTML(o.status)}</span>` : `
             <select class="admin-input" data-order-status="${escHTML(o.id)}">
@@ -1658,6 +1659,7 @@
               ${STAGE_NAMES.map(s=>`<option value="${s}" ${o.manualStatus===s?'selected':''}>${s}</option>`).join('')}
             </select>${o.manualStatus?'<span class="manual-override-flag">Override</span>':''}`}
             ${o.cancelRequestStatus === 'Requested' ? '<br><span class="order-status" style="background:var(--gold);color:#fff;">Cancellation Requested</span>' : ''}
+            ${o.returnRefund ? `<br><span class="order-status returned" data-returned-badge="${o.returnRefund.full ? 'full' : 'partial'}">${o.returnRefund.full ? 'Returned &amp; refunded' : 'Part returned &amp; refunded'}</span>` : ''}
           </td>
           <td><button class="btn btn-sm btn-outline" data-view-order="${escHTML(o.id)}">${openOrderId === o.id ? 'Close' : 'View'}</button></td>
         </tr>`).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--ink-soft);padding:24px;">${ordersCache.length ? 'No orders match this search and date range.' : 'No orders in this status.'}</td></tr>`}</tbody>`;
@@ -1775,6 +1777,13 @@
               `).join('') : `<p style="color:var(--ink-soft);font-size:13px;">No notification attempts recorded.</p>`}
             </div>
           </div>
+
+          ${o.returnRefund ? `
+          <div class="detail-block" style="border-color:var(--teal);" data-returned-block>
+            <h5>${o.returnRefund.full ? 'Returned &amp; Refunded' : 'Part Returned &amp; Refunded'}</h5>
+            <p>${o.returnRefund.returnedUnits} of ${o.returnRefund.totalUnits} saree${o.returnRefund.totalUnits === 1 ? '' : 's'} came back. Refunded <strong>${money(o.returnRefund.amount)}</strong> of ${money(o.total)} — this order now counts <strong>${money(o.total - o.returnRefund.amount)}</strong> towards Total Revenue.</p>
+            ${o.returnRefund.returns.map(r => `<p style="font-size:12.5px;color:var(--ink-soft);margin-top:4px;">Return #${r.id} · ${money(r.amount)}${r.method ? ' · ' + escHTML(String(r.method).replace(/_/g, ' ')) : ''}${r.refundedAt ? ' · ' + new Date(r.refundedAt).toLocaleString('en-IN') : ''}</p>`).join('')}
+          </div>` : ''}
 
           ${o.status === 'Cancelled' ? `
           <div class="detail-block" style="border-color:var(--maroon);">

@@ -1130,6 +1130,9 @@ body.rv-modal-open{overflow:hidden;}
 .order-timeline .tl-label{font-size:10.5px;color:var(--ink-soft);}
 .order-timeline .tl-step.done .tl-label{color:var(--teal);font-weight:600;}
 .order-status.cancelled{background:var(--maroon);}
+.order-status.returned{background:var(--gold);color:var(--maroon-deep);}
+.refund-note{display:inline-block;margin-top:3px;font-size:11px;line-height:1.35;color:var(--maroon);font-weight:600;}
+.stat-card .stat-sub{display:block;margin-top:4px;font-size:10.5px;font-style:normal;color:var(--ink-soft);text-transform:none;letter-spacing:0;}
 .order-status.low{background:var(--gold);color:var(--maroon-deep);}
 .order-status.ok{background:var(--teal);}
 .cancel-order-btn{font-size:11.5px;color:var(--maroon);text-decoration:underline;margin-top:10px;cursor:pointer;}
