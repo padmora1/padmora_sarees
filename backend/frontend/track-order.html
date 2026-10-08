@@ -85,8 +85,9 @@
         <div class="tracker-card">
           <div class="cancelled-banner">
             <span class="tracker-icon-circle cancelled">${stageIcon('Cancelled')}</span>
-            <div><strong>Order Cancelled</strong><span>This order was cancelled and will not be delivered.${order.refundStatus === 'Pending' ? ' Your refund will be processed by our team.' : ''}</span></div>
+            <div><strong>Order Cancelled</strong><span>This order was cancelled and will not be delivered.</span></div>
           </div>
+          ${refundBoxHTML(order)}
           ${orderSummaryHTML(order)}
         </div>`;
       return;

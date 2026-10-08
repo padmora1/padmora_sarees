@@ -62,6 +62,7 @@
         <div class="account-panel">
           <div id="panel-overview">
             <h2>Overview</h2>
+            <section class="action-items" id="actionItems" style="display:none;" aria-label="Needs your attention"></section>
             <div class="stat-grid" id="statGrid"></div>
             <div id="profitPanel" class="profit-panel" style="display:none;"></div>
             <p id="lastBackupNote" style="font-size:12px;color:var(--ink-soft);margin-top:10px;"></p>
@@ -649,7 +650,50 @@
     panel.querySelectorAll('[data-range]').forEach(b => b.addEventListener('click', () => loadProfit(b.dataset.range)));
   }
 
+  // ---- Overview: what is waiting for you (shown above the figures) ----
+  // Each card says how many, and its button opens the screen that handles them, already filtered. Only the Super Admin and
+  // the Order Manager see it (the server refuses everyone else). Refreshed when Overview opens and every minute while it is open.
+  const ACTION_ITEMS = [
+    { key: 'newOrders', label: 'New orders to open', hint: 'Orders nobody has opened yet.', btn: 'View orders', go: () => { orderSource = 'all'; orderFilter = 'Not opened yet'; switchTab('orders'); } },
+    { key: 'cancelRequests', label: 'Cancellation requests', hint: 'Customers asking to cancel. Decide before the order moves on.', btn: 'Review requests', go: () => { orderSource = 'all'; orderFilter = 'Cancellation Requested'; switchTab('orders'); } },
+    { key: 'refundsDue', label: 'Cancelled orders to refund', hint: 'Paid online and cancelled: money to send back.', btn: 'View refunds', go: () => { orderSource = 'all'; orderFilter = 'Refund pending'; switchTab('orders'); } },
+    { key: 'returnsToRefund', label: 'Returns to refund', hint: 'The saree is back. Refund the customer.', btn: 'Refund returns', go: () => { returnFilter = 'Received'; switchTab('returns'); } },
+    { key: 'returnsToReceive', label: 'Returns on the way back', hint: 'Approved. Waiting for the saree to arrive.', btn: 'View returns', go: () => { returnFilter = 'Approved'; switchTab('returns'); } },
+    { key: 'inquiries', label: 'New order inquiries', hint: 'Return and refund inquiries waiting for a decision.', btn: 'Review inquiries', go: () => { returnFilter = 'Requested'; switchTab('returns'); } }
+  ];
+  function renderActionItems(a){
+    const box = document.getElementById('actionItems');
+    const total = ACTION_ITEMS.reduce((n, it) => n + (a[it.key] || 0), 0);
+    box.innerHTML = `
+      <div class="action-items-head">
+        <h3>Needs your attention</h3>
+        <span class="action-items-sum ${total ? 'has' : ''}">${total ? total + ' thing' + (total === 1 ? '' : 's') + ' waiting' : 'All caught up ✓'}</span>
+      </div>
+      <div class="action-grid">${ACTION_ITEMS.map(it => {
+        const n = a[it.key] || 0;
+        return `<div class="action-card ${n ? 'has' : ''}" data-action-card="${it.key}">
+          <strong class="n">${n}</strong>
+          <span class="lbl">${it.label}</span>
+          <span class="hint">${n ? it.hint : 'Nothing waiting ✓'}</span>
+          ${n ? `<button type="button" class="btn btn-sm btn-primary" data-action-go="${it.key}">${it.btn}</button>` : ''}
+        </div>`;
+      }).join('')}</div>`;
+    box.style.display = '';
+    box.querySelectorAll('[data-action-go]').forEach(b => b.addEventListener('click', () => ACTION_ITEMS.find(it => it.key === b.dataset.actionGo).go()));
+  }
+  async function loadActionItems(){
+    const box = document.getElementById('actionItems');
+    const me = getStoredAdmin();
+    if(!me || !['Super Admin', 'Order Manager'].includes(me.role)){ box.style.display = 'none'; return; }
+    try{
+      const {actions} = await adminApiFetch('/admin/orders/action-items');
+      renderActionItems(actions);
+    }catch(e){ box.style.display = 'none'; }   // never block the rest of the Overview
+  }
+  setInterval(() => { if(!document.hidden && document.getElementById('panel-overview').style.display !== 'none') loadActionItems(); }, 60000);
+
   async function loadOverview(){
+    loadActionItems();
     try{
       const {stats, lowStock} = await adminApiFetch('/admin/stats');
       document.getElementById('statGrid').innerHTML = `
@@ -1441,7 +1485,7 @@
   let orderFilter = 'all';
   let openOrderId = null;
   let selectedOrderIds = new Set();
-  const ORDER_FILTERS = ['all', 'Cancellation Requested', 'Confirmed', 'Packed', 'Shipped', 'Out for Delivery', 'Delivered', 'Cancelled'];
+  const ORDER_FILTERS = ['all', 'Not opened yet', 'Cancellation Requested', 'Refund pending', 'Confirmed', 'Packed', 'Shipped', 'Out for Delivery', 'Delivered', 'Cancelled'];
   const ORDER_SOURCES = [['all', 'All orders'], ['website', 'Website'], ['instagram', 'Instagram']];
   let orderSource = 'all';
 
@@ -1573,9 +1617,13 @@
       renderOrdersTable();
     }));
     try{
-      const q = (orderFilter !== 'all' && orderFilter !== 'Cancellation Requested') ? ('?status=' + encodeURIComponent(orderFilter)) : '';
+      // Three filters are worked out here from the orders themselves; the rest are real statuses the server filters.
+      const own = ['Cancellation Requested', 'Not opened yet', 'Refund pending'];
+      const q = orderFilter === 'Refund pending' ? '?status=Cancelled' : (orderFilter !== 'all' && !own.includes(orderFilter)) ? ('?status=' + encodeURIComponent(orderFilter)) : '';
       let {orders} = await adminApiFetch('/admin/orders' + q);
       if(orderFilter === 'Cancellation Requested') orders = orders.filter(o=>o.cancelRequestStatus === 'Requested');
+      if(orderFilter === 'Not opened yet') orders = orders.filter(o=>o.viewedAt === null);
+      if(orderFilter === 'Refund pending') orders = orders.filter(o=>o.status === 'Cancelled' && o.refundStatus === 'Pending');
       ordersCache = orders;
       renderOrdersTable();
     }catch(e){ toast(e.message, 'error'); }
@@ -1604,7 +1652,7 @@
           <td style="font-size:12.5px;">${o.items.map(i=>`${hl(i.name)}${i.color?' ('+escHTML(i.color)+')':''} ×${i.qty}`).join('<br>')}</td>
           <td>${money(o.total)}</td>
           <td>
-            ${o.status === 'Cancelled' ? '<span class="order-status cancelled">Cancelled</span>' : `
+            ${o.status === 'Cancelled' ? '<span class="order-status cancelled">Cancelled</span>' : o.cancelRequestStatus === 'Requested' ? `<span class="order-locked-note" title="The status cannot be changed until the customer's cancellation request is approved or rejected">Status locked: ${escHTML(o.status)}</span>` : `
             <select class="admin-input" data-order-status="${escHTML(o.id)}">
               <option value="auto" ${!o.manualStatus?'selected':''}>Auto (${o.status})</option>
               ${STAGE_NAMES.map(s=>`<option value="${s}" ${o.manualStatus===s?'selected':''}>${s}</option>`).join('')}
@@ -1719,7 +1767,11 @@
             <div class="detail-block">
               <h5>Confirmation Sent</h5>
               ${(o.notifications && o.notifications.length) ? o.notifications.map(n=>`
-                <p><span class="status-pill status-${n.status==='sent'?'confirmed':(n.status==='failed'?'cancelled':'pending')}">${n.channel.toUpperCase()}: ${n.status.replace(/_/g,' ')}</span></p>
+                <div class="notif-row">
+                  <span class="status-pill status-${n.status==='sent'?'confirmed':(n.status==='failed'?'cancelled':'pending')}">${n.channel.toUpperCase()}: ${n.status.replace(/_/g,' ')}</span>
+                  <div class="notif-heading">${n.subject ? escHTML(n.subject) : (n.channel === 'sms' ? 'Text message' : 'Email')}</div>
+                  <div class="notif-meta">${n.recipient ? 'To ' + escHTML(n.recipient) + ' · ' : ''}${new Date(n.created_at).toLocaleString('en-IN')}</div>
+                </div>
               `).join('') : `<p style="color:var(--ink-soft);font-size:13px;">No notification attempts recorded.</p>`}
             </div>
           </div>
@@ -1745,6 +1797,7 @@
           </div>` : o.cancelRequestStatus === 'Requested' ? `
           <div class="detail-block" style="border-color:var(--gold);">
             <h5>Cancellation Requested</h5>
+            <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:8px;">The order status is locked until you approve or reject this request.</p>
             <p>Reason: <strong>${CANCEL_REASON_LABEL[o.cancelRequestReason] || o.cancelRequestReason}</strong></p>
             ${o.cancelRequestDetail ? `<p style="margin-top:6px;"><em>"${escHTML(o.cancelRequestDetail)}"</em></p>` : ''}
             <div class="form-field" style="margin-top:10px;"><label>Note (required to reject, optional to approve — the customer sees this)</label>
@@ -2604,14 +2657,15 @@
         return;
       }
       table.innerHTML = `
-        <thead><tr><th>When</th><th>Order</th><th>Channel</th><th>Recipient</th><th>Status</th></tr></thead>
+        <thead><tr><th>When</th><th>Order</th><th>Channel</th><th>Heading</th><th>Recipient</th><th>Status</th></tr></thead>
         <tbody>
           ${notifications.map(n=>`
             <tr>
               <td style="white-space:nowrap;">${new Date(n.created_at).toLocaleString('en-IN')}</td>
               <td>${n.order_id || '—'}</td>
               <td>${n.channel.toUpperCase()}</td>
-              <td>${n.recipient || '—'}</td>
+              <td>${n.subject ? escHTML(n.subject) : '—'}</td>
+              <td>${n.recipient ? escHTML(n.recipient) : '—'}</td>
               <td><span class="status-pill ${n.status==='sent'?'status-confirmed':(n.status==='failed'?'status-cancelled':'status-pending')}">${n.status.replace(/_/g,' ')}</span></td>
             </tr>`).join('')}
         </tbody>`;

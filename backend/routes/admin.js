@@ -854,7 +854,7 @@ async function shapeAdminOrder(o, { full, preloaded } = {}) {
   };
   if (!full) return base;
   const notifications = must(
-    await supabase.from('notifications_log').select('channel, recipient, status, detail, created_at').eq('order_id', o.id).order('created_at', { ascending: false }),
+    await supabase.from('notifications_log').select('channel, recipient, subject, status, detail, created_at').eq('order_id', o.id).order('created_at', { ascending: false }),
     'shapeAdminOrder:notifications'
   );
   const productIds = [...new Set(items.map(li => li.product_id).filter(Boolean))];
@@ -937,6 +937,23 @@ router.get('/orders/bulk', asyncRoute(async (req, res) => {
   res.json({ orders: shaped });
 }));
 
+// What is waiting for the store owner right now - shown at the top of the Overview, each with the screen that handles it.
+// Counts only (cheap head-only queries); the Orders / Returns screens hold the detail. Sits under /orders so only a Super Admin
+// or an Order Manager can read it. Must stay ahead of '/orders/:id'.
+router.get('/orders/action-items', asyncRoute(async (req, res) => {
+  const count = async build => { const r = await build(supabase.from('orders').select('id', { count: 'exact', head: true })); if (r.error) throw new Error(r.error.message); return r.count || 0; };
+  const countReturns = async status => { const r = await supabase.from('return_requests').select('id', { count: 'exact', head: true }).eq('status', status); if (r.error) throw new Error(r.error.message); return r.count || 0; };
+  const [newOrders, cancelRequests, refundsDue, returnsToRefund, returnsToReceive, inquiries] = await Promise.all([
+    count(q => q.is('admin_viewed_at', null)),                                              // not opened by any admin yet (bold in the Orders list)
+    count(q => q.eq('cancel_request_status', 'Requested').is('cancelled_at', null)),         // customer asked to cancel, not decided
+    count(q => q.not('cancelled_at', 'is', null).eq('refund_status', 'Pending')),            // cancelled and paid online: money still to send back
+    countReturns('Received'),                                                                 // saree is back: refund to pay
+    countReturns('Approved'),                                                                 // approved: waiting for the saree to come back
+    countReturns('Requested')                                                                 // new inquiries nobody has decided on
+  ]);
+  res.json({ actions: { newOrders, cancelRequests, refundsDue, returnsToRefund, returnsToReceive, inquiries } });
+}));
+
 router.get('/orders/:id', asyncRoute(async (req, res) => {
   const order = must(await supabase.from('orders').select('*').eq('id', req.params.id).maybeSingle(), 'getAdminOrder');
   if (!order) return res.status(404).json({ message: 'Order not found.' });
@@ -959,6 +976,15 @@ router.put('/orders/:id/status', asyncRoute(async (req, res) => {
   const manualStatus = (!status || status === 'auto') ? null : status;
   if (manualStatus && !STAGE_NAMES.includes(manualStatus)) {
     return res.status(400).json({ message: 'Invalid status.' });
+  }
+  // A cancelled order has no steps left (and would otherwise e-mail the customer "your order has shipped").
+  if (order.cancelled_at) {
+    return res.status(409).json({ message: 'This order has been cancelled, so its status cannot be changed.' });
+  }
+  // The customer has asked to cancel: the order must not move on (to Shipped, say) until that request has been approved or
+  // rejected - otherwise the request could be answered after the saree has already left. (The bulk upload skips these too.)
+  if (order.cancel_request_status === 'Requested') {
+    return res.status(409).json({ message: 'The customer has asked to cancel this order. Approve or reject the cancellation request first - the order status cannot be changed until then.' });
   }
 
   const { advanced } = await setOrderManualStatus(order, manualStatus, 'manual');
@@ -1367,7 +1393,7 @@ router.put('/returns/:id(\\d{1,9})/decision', asyncRoute(async (req, res) => {
   const customer = must(await supabase.from('users').select('name, email').eq('id', existing.user_id).maybeSingle(), 'decideReturn:customer');
   if (customer && customer.email) {
     const mail = decisionEmail({ approve: !!approve, name: customer.name, orderId: existing.order_id, adminNote: (adminNote || '').trim(), attempt: existing.attempt });
-    await sendEmail({ to: customer.email, subject: mail.subject, html: mail.html, userId: existing.user_id });
+    await sendEmail({ to: customer.email, subject: mail.subject, html: mail.html, orderId: existing.order_id, userId: existing.user_id });
   }
 
   const updated = must(await supabase.from('return_requests').select('*').eq('id', existing.id).single(), 'decideReturn:reread');
@@ -1467,6 +1493,7 @@ router.put('/returns/:id(\\d{1,9})/refund', asyncRoute(async (req, res) => {
             ? `<p>This will be transferred to the bank/UPI details you provided within a few business days.</p>`
             : `<p>This will reflect back on your original payment method within a few business days.</p>`}
       </div>`,
+      orderId: existing.order_id,
       userId: existing.user_id
     });
   }
