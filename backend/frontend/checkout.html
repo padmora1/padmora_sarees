@@ -34,20 +34,18 @@
           <div class="pay-options" id="savedAddressList"></div>
         </div>
         <div class="form-row-2">
-          <div class="form-field"><label>First Name</label><input type="text" id="fName" placeholder="Ananya"></div>
-          <div class="form-field"><label>Last Name</label><input type="text" id="lName" placeholder="Sharma"></div>
+          <div class="form-field"><label>First Name *</label><input type="text" id="fName" placeholder="Ananya" autocomplete="given-name" maxlength="40"></div>
+          <div class="form-field"><label>Last Name</label><input type="text" id="lName" placeholder="Sharma" autocomplete="family-name" maxlength="40"></div>
         </div>
-        <div class="form-field" id="guestEmailField"><label>Email Address</label><input type="email" id="guestEmail" placeholder="you@example.com"><span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:6px;">We'll send your order confirmation here — no account needed.</span></div>
-        <div class="form-field"><label>Address</label><input type="text" id="line1" placeholder="House no, street, area"></div>
+        <div class="form-field" id="guestEmailField"><label>Email Address *</label><input type="email" id="guestEmail" placeholder="you@example.com" autocomplete="email" maxlength="254"><span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:6px;">We'll send your order confirmation here — no account needed.</span></div>
+        <div class="form-field"><label>Address *</label><input type="text" id="line1" placeholder="House no, street, area" maxlength="200"></div>
         <div class="form-row-2">
-          <div class="form-field"><label>City</label><input type="text" id="city" placeholder="Thane"></div>
-          <div class="form-field"><label>Pincode</label><input type="text" id="pincode" placeholder="400601"></div>
+          <div class="form-field"><label>State *</label><select id="state"></select></div>
+          <div class="form-field"><label>City *</label><select id="city"></select></div>
         </div>
         <div class="form-row-2">
-          <div class="form-field"><label>State</label>
-            <select id="state" data-states></select>
-          </div>
-          <div class="form-field"><label>Phone Number</label><input type="tel" id="phone" placeholder="+91 98765 43210"></div>
+          <div class="form-field"><label>Pincode *</label><input type="text" id="pincode"></div>
+          <div class="form-field"><label>Phone Number *</label><input type="tel" id="phone"></div>
         </div>
         <label class="filter-option" id="saveAddressField" style="margin-bottom:16px;"><input type="checkbox" id="saveAddress"> Save this address for next time</label>
         <p id="guestAccountNudge" style="display:none;font-size:12.5px;color:var(--ink-soft);margin-bottom:16px;">Checking out as a guest. <a href="/login?redirect=/checkout" style="color:var(--maroon);text-decoration:underline;">Log in</a> to save this address and track orders from your account.</p>
@@ -112,8 +110,12 @@
 <script src="js/components.js"></script>
 <script src="js/cursor.js"></script>
 <script src="js/guard.js"></script>
+<script src="js/india-geo.js"></script>
+<script src="js/address-form.js"></script>
 <script>
   let cart = { items: [], subtotal: 0, discount: 0, total: 0, coupon: null };
+  // State -> City -> Pincode -> Phone, with their checks (js/address-form.js)
+  const addressFields = AddressForm.attach({ line1: 'line1', state: 'state', city: 'city', pincode: 'pincode', phone: 'phone' });
   let savedAddresses = [];
   // Buy Now: checkout of one saree, chosen on the product page, with the bag left untouched.
   let buyNowItem = null;
@@ -123,11 +125,7 @@
     const [first, ...rest] = (a.name || '').split(' ');
     document.getElementById('fName').value = first || '';
     document.getElementById('lName').value = rest.join(' ') || '';
-    document.getElementById('line1').value = a.line1 || '';
-    document.getElementById('city').value = a.city || '';
-    document.getElementById('pincode').value = a.pincode || '';
-    if(a.state) document.getElementById('state').value = a.state;
-    document.getElementById('phone').value = a.phone || '';
+    addressFields.set(a);   // state, then its cities, line, pincode, phone
   }
 
   async function loadSavedAddresses(){
@@ -155,31 +153,23 @@
     document.querySelectorAll('.step').forEach(s => s.classList.toggle('active', Number(s.dataset.step) <= n));
   }
 
-  document.getElementById('toStep2').addEventListener('click', ()=>{
+  const toStep2Btn = document.getElementById('toStep2');
+  toStep2Btn.addEventListener('click', async ()=>{
     const errBox = document.getElementById('addrError');
-    if(!document.getElementById('line1').value || !document.getElementById('city').value || !document.getElementById('pincode').value){
-      errBox.textContent = 'Please fill in your address, city and pincode.';
-      errBox.classList.add('show');
-      return;
-    }
+    const stop = (message, inputId) => {
+      errBox.textContent = message; errBox.classList.add('show');
+      const input = document.getElementById(inputId);
+      if(input){ input.classList.add('invalid'); input.focus(); input.scrollIntoView({ block:'center', behavior:'smooth' }); input.addEventListener('input', () => input.classList.remove('invalid'), { once:true }); }
+    };
+    ['fName','guestEmail'].forEach(id => document.getElementById(id).classList.remove('invalid'));
+    if(document.getElementById('fName').value.trim().length < 2) return stop('Enter your first name.', 'fName');
     if(!isLoggedIn()){
-      const email = document.getElementById('guestEmail').value.trim();
-      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
-        errBox.textContent = 'Enter a valid email address so we can send your order confirmation.';
-        errBox.classList.add('show');
-        return;
-      }
-      // Guest checkout needs a real phone number for the courier — the server
-      // (routes/payments.js) already requires this and would reject the
-      // payment later without it, so catch it here with a clear message
-      // instead of letting the guest reach the Payment step first.
-      const phoneDigits = document.getElementById('phone').value.replace(/\D/g, '');
-      if(phoneDigits.length < 10){
-        errBox.textContent = 'Enter a phone number so our courier can reach you for delivery.';
-        errBox.classList.add('show');
-        return;
-      }
+      if(!isValidEmail(document.getElementById('guestEmail').value)) return stop('Enter a valid email address (for example name@example.com) so we can send your order confirmation.', 'guestEmail');
     }
+    toStep2Btn.disabled = true;
+    const checked = await addressFields.validate();   // address, state, city (in that state), pincode (real, and in that state), mobile
+    toStep2Btn.disabled = false;
+    if(!checked.ok){ errBox.textContent = checked.message; errBox.classList.add('show'); return; }
     errBox.classList.remove('show');
     renderCheckoutSummary();
     goToStep(2);

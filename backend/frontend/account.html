@@ -58,23 +58,21 @@
             <div id="addressList" style="margin-bottom:22px;"></div>
             <h3 style="font-size:15px;margin-bottom:14px;" id="addressFormHeading">Add a New Address</h3>
             <div class="form-error" id="addressError"></div>
-            <form id="addressForm">
+            <form id="addressForm" novalidate>
               <div class="form-row-2">
                 <div class="form-field"><label>Label</label>
                   <select id="aLabel"><option>Home</option><option>Work</option><option>Other</option></select>
                 </div>
-                <div class="form-field"><label>Full Name</label><input type="text" id="aName"></div>
+                <div class="form-field"><label>Full Name *</label><input type="text" id="aName" autocomplete="name" maxlength="80"></div>
               </div>
-              <div class="form-field"><label>Address Line</label><input type="text" id="aLine1" placeholder="House no, street, area"></div>
+              <div class="form-field"><label>Address Line *</label><input type="text" id="aLine1" placeholder="House no, street, area" maxlength="200"></div>
               <div class="form-row-2">
-                <div class="form-field"><label>City</label><input type="text" id="aCity"></div>
-                <div class="form-field"><label>Pincode</label><input type="text" id="aPincode"></div>
+                <div class="form-field"><label>State *</label><select id="aState"></select></div>
+                <div class="form-field"><label>City *</label><select id="aCity"></select></div>
               </div>
               <div class="form-row-2">
-                <div class="form-field"><label>State</label>
-                  <select id="aState" data-states></select>
-                </div>
-                <div class="form-field"><label>Phone</label><input type="tel" id="aPhone"></div>
+                <div class="form-field"><label>Pincode *</label><input type="text" id="aPincode"></div>
+                <div class="form-field"><label>Phone *</label><input type="tel" id="aPhone"></div>
               </div>
               <button type="submit" class="btn btn-primary" id="addressSubmitBtn">Save Address</button>
               <span class="cancel-order-btn" id="addressCancelEdit" style="display:none;margin-left:14px;">Cancel</span>
@@ -110,6 +108,8 @@
 <script src="js/cursor.js"></script>
 <script src="js/guard.js"></script>
 <script src="js/order-inquiry.js"></script>
+<script src="js/india-geo.js"></script>
+<script src="js/address-form.js"></script>
 <script>
   const ACCOUNT_TABS = ['profile','address','orders','returns','security'];
   function switchTab(tab){
@@ -160,6 +160,8 @@
 
   let currentAddresses = [];
   let editingAddressId = null;
+  // State -> City -> Pincode -> Phone, with their checks (js/address-form.js), the same as at checkout
+  const addressFields = AddressForm.attach({ line1: 'aLine1', state: 'aState', city: 'aCity', pincode: 'aPincode', phone: 'aPhone' });
 
   function resetAddressForm(){
     editingAddressId = null;
@@ -199,11 +201,7 @@
         editingAddressId = a.id;
         document.getElementById('aLabel').value = a.label || 'Home';
         document.getElementById('aName').value = a.name || '';
-        document.getElementById('aLine1').value = a.line1 || '';
-        document.getElementById('aCity').value = a.city || '';
-        document.getElementById('aPincode').value = a.pincode || '';
-        document.getElementById('aState').value = a.state || 'Maharashtra';
-        document.getElementById('aPhone').value = a.phone || '';
+        addressFields.set(a);   // state, then its cities, line, pincode, phone
         document.getElementById('addressFormHeading').textContent = 'Edit Address';
         document.getElementById('addressSubmitBtn').textContent = 'Save Changes';
         document.getElementById('addressCancelEdit').style.display = 'inline-block';
@@ -218,15 +216,22 @@
 
   document.getElementById('addressForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
+    const addrErr = document.getElementById('addressError');
+    addrErr.classList.remove('show');
+    const nameInput = document.getElementById('aName');
+    nameInput.classList.remove('invalid');
+    if(nameInput.value.trim().length < 2){
+      addrErr.textContent = 'Enter your full name.'; addrErr.classList.add('show');
+      nameInput.classList.add('invalid'); nameInput.focus(); nameInput.addEventListener('input', () => nameInput.classList.remove('invalid'), { once:true });
+      return;
+    }
+    const checked = await addressFields.validate();   // address, state, city (in that state), pincode (real, and in that state), mobile
+    if(!checked.ok){ addrErr.textContent = checked.message; addrErr.classList.add('show'); return; }
     try{
       const payload = {
         label: document.getElementById('aLabel').value,
-        name: document.getElementById('aName').value,
-        line1: document.getElementById('aLine1').value,
-        city: document.getElementById('aCity').value,
-        pincode: document.getElementById('aPincode').value,
-        state: document.getElementById('aState').value,
-        phone: document.getElementById('aPhone').value
+        name: nameInput.value.trim(),
+        ...checked.address
       };
       if(editingAddressId){
         await apiFetch('/addresses/' + editingAddressId, { method:'PUT', body: JSON.stringify(payload) });

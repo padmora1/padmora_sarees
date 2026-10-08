@@ -203,6 +203,27 @@ function escapeHtml(value) {
   }[ch]));
 }
 
+// ---- form checks shared by sign-up and checkout (the server repeats them) ----
+// An e-mail address in the standard form: a name of letters / digits / the usual symbols (no spaces, no leading, trailing or doubled dots),
+// one @, and a real domain with at least one dot and an ending of 2+ letters.
+const EMAIL_FORMAT = /^([A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*)@((?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63})$/;
+function isValidEmail(value) {
+  const e = String(value == null ? '' : value).trim();
+  if (e.length < 6 || e.length > 254) return false;
+  const m = EMAIL_FORMAT.exec(e);
+  return !!m && m[1].length <= 64;
+}
+// An Indian mobile: 10 digits starting 6-9 (a +91, 91 or 0 in front is fine). Returns "+91XXXXXXXXXX", or null when it is not one.
+function normalizeIndianMobile(value) {
+  let d = String(value == null ? '' : value).replace(/[\s().-]/g, '');
+  if (d.startsWith('+')) { if (!d.startsWith('+91')) return null; d = d.slice(3); }
+  d = d.replace(/\D/g, '');
+  if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
+  else if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+  return /^[6-9]\d{9}$/.test(d) ? '+91' + d : null;
+}
+const isValidIndianMobile = value => normalizeIndianMobile(value) !== null;
+
 // Every state and union territory the store can ship to — the address forms used to
 // hard-code five, which locked out most of India (Madhya Pradesh, Gujarat, Rajasthan...).
 const INDIAN_STATES = ['Andaman and Nicobar Islands', 'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chandigarh', 'Chhattisgarh',

@@ -26,19 +26,19 @@
         <p class="sub" id="regSub">No password to remember &mdash; we confirm your e-mail with a 6-digit code.</p>
         <div class="form-error" id="formError"></div>
 
-        <form id="detailsForm">
+        <form id="detailsForm" novalidate>
           <div class="form-field">
-            <label>Full Name</label>
-            <input type="text" id="name" name="name" autocomplete="name" placeholder="Ananya Sharma" required maxlength="80">
+            <label>Full Name *</label>
+            <input type="text" id="name" name="name" autocomplete="name" required maxlength="80">
           </div>
           <div class="form-field">
-            <label>Email Address</label>
-            <input type="email" id="email" name="email" autocomplete="email" placeholder="you@example.com" required>
+            <label>Email Address *</label>
+            <input type="email" id="email" name="email" autocomplete="email" required maxlength="254">
             <span class="field-hint">We send the confirmation code here, and your order updates.</span>
           </div>
           <div class="form-field">
-            <label>Mobile Number</label>
-            <div class="phone-row"><select id="countryCode" class="cc-select" name="country-code" aria-label="Country code"><option value="91" selected>+91 India</option><option value="61">+61 Australia</option><option value="973">+973 Bahrain</option><option value="880">+880 Bangladesh</option><option value="1">+1 Canada</option><option value="86">+86 China</option><option value="45">+45 Denmark</option><option value="33">+33 France</option><option value="49">+49 Germany</option><option value="852">+852 Hong Kong</option><option value="62">+62 Indonesia</option><option value="353">+353 Ireland</option><option value="972">+972 Israel</option><option value="39">+39 Italy</option><option value="81">+81 Japan</option><option value="254">+254 Kenya</option><option value="965">+965 Kuwait</option><option value="60">+60 Malaysia</option><option value="960">+960 Maldives</option><option value="230">+230 Mauritius</option><option value="977">+977 Nepal</option><option value="31">+31 Netherlands</option><option value="64">+64 New Zealand</option><option value="234">+234 Nigeria</option><option value="47">+47 Norway</option><option value="968">+968 Oman</option><option value="92">+92 Pakistan</option><option value="63">+63 Philippines</option><option value="974">+974 Qatar</option><option value="7">+7 Russia</option><option value="966">+966 Saudi Arabia</option><option value="65">+65 Singapore</option><option value="27">+27 South Africa</option><option value="82">+82 South Korea</option><option value="34">+34 Spain</option><option value="94">+94 Sri Lanka</option><option value="46">+46 Sweden</option><option value="41">+41 Switzerland</option><option value="66">+66 Thailand</option><option value="971">+971 United Arab Emirates</option><option value="44">+44 United Kingdom</option><option value="1">+1 United States</option></select><input type="tel" id="phone" name="phone" autocomplete="tel-national" inputmode="numeric" placeholder="98765 43210" required maxlength="16"></div>
+            <label>Mobile Number *</label>
+            <div class="phone-row"><select id="countryCode" class="cc-select" name="country-code" aria-label="Country code"><option value="91" selected>+91 India</option><option value="61">+61 Australia</option><option value="973">+973 Bahrain</option><option value="880">+880 Bangladesh</option><option value="1">+1 Canada</option><option value="86">+86 China</option><option value="45">+45 Denmark</option><option value="33">+33 France</option><option value="49">+49 Germany</option><option value="852">+852 Hong Kong</option><option value="62">+62 Indonesia</option><option value="353">+353 Ireland</option><option value="972">+972 Israel</option><option value="39">+39 Italy</option><option value="81">+81 Japan</option><option value="254">+254 Kenya</option><option value="965">+965 Kuwait</option><option value="60">+60 Malaysia</option><option value="960">+960 Maldives</option><option value="230">+230 Mauritius</option><option value="977">+977 Nepal</option><option value="31">+31 Netherlands</option><option value="64">+64 New Zealand</option><option value="234">+234 Nigeria</option><option value="47">+47 Norway</option><option value="968">+968 Oman</option><option value="92">+92 Pakistan</option><option value="63">+63 Philippines</option><option value="974">+974 Qatar</option><option value="7">+7 Russia</option><option value="966">+966 Saudi Arabia</option><option value="65">+65 Singapore</option><option value="27">+27 South Africa</option><option value="82">+82 South Korea</option><option value="34">+34 Spain</option><option value="94">+94 Sri Lanka</option><option value="46">+46 Sweden</option><option value="41">+41 Switzerland</option><option value="66">+66 Thailand</option><option value="971">+971 United Arab Emirates</option><option value="44">+44 United Kingdom</option><option value="1">+1 United States</option></select><input type="tel" id="phone" name="phone" autocomplete="tel-national" inputmode="numeric" required maxlength="16"></div>
             <span class="field-hint">For delivery updates. Choose your country code, then type the number without it.</span>
           </div>
           <button type="submit" class="btn btn-primary btn-block" id="sendBtn" style="justify-content:center;">Send me a code</button>
@@ -48,7 +48,7 @@
           <div class="code-sent" id="codeSent"></div>
           <div class="form-field">
             <label>6-digit code</label>
-            <input type="text" id="code" class="code-input" name="otp" autocomplete="one-time-code" inputmode="numeric" maxlength="6" placeholder="••••••" required>
+            <input type="text" id="code" class="code-input" name="otp" autocomplete="one-time-code" inputmode="numeric" maxlength="6" required>
           </div>
           <button type="submit" class="btn btn-primary btn-block" id="verifyBtn" style="justify-content:center;">Confirm &amp; Create Account</button>
           <div class="resend-row"><span id="resendInfo"></span><button type="button" id="resendBtn" disabled>Send a new code</button></div>
@@ -85,7 +85,17 @@
   }
   $('detailsForm').addEventListener('submit', async e => {
     e.preventDefault(); clearError();
-    const d = { name: $('name').value.trim(), email: $('email').value.trim(), phone: $('phone').value.trim(), countryCode: $('countryCode').value };
+    const d = { name: $('name').value.trim().replace(/\s+/g, ' '), email: $('email').value.trim(), phone: $('phone').value.trim(), countryCode: $('countryCode').value };
+    // all three are required, and the e-mail must be a real-looking address (the server checks again)
+    const bad = (id, message) => { showError(message); $(id).classList.add('invalid'); $(id).focus(); $(id).addEventListener('input', () => $(id).classList.remove('invalid'), { once: true }); };
+    ['name', 'email', 'phone'].forEach(id => $(id).classList.remove('invalid'));
+    if(d.name.length < 2) return bad('name', 'Enter your full name.');
+    if(!d.email) return bad('email', 'Enter your email address.');
+    if(!isValidEmail(d.email)) return bad('email', 'Enter a valid email address, for example name@example.com.');
+    if(!d.phone) return bad('phone', 'Enter your mobile number.');
+    if(d.countryCode === '91' ? !isValidIndianMobile(d.phone) : !/^\d{5,13}$/.test(d.phone.replace(/[\s-]/g, ''))){
+      return bad('phone', d.countryCode === '91' ? 'Enter a valid 10-digit Indian mobile number (it starts with 6, 7, 8 or 9).' : 'Enter a valid mobile number without the country code.');
+    }
     const btn = $('sendBtn'); btn.disabled = true; btn.textContent = 'Sending…';
     try{
       await sendCode(d);

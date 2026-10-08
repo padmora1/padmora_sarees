@@ -1,21 +1,13 @@
 const express = require('express');
 const { supabase, must } = require('../utils/db');
 const { requireAuth } = require('../middleware/auth');
+const { validateAddress } = require('../utils/indiaGeo');
 
 const router = express.Router();
 router.use(requireAuth);
 
-// A real Indian pincode is exactly 6 digits, never starting with 0. Phone
-// stays optional (unchanged from before — checkout's own guest flow already
-// requires one where it actually matters), but when one IS given here it must
-// at least look like a real number: enough digits, with country-code
-// prefixes like "+91" or spaces/dashes tolerated by stripping non-digits
-// first, same tolerant style the guest-order-cancel phone match already uses.
-const PINCODE_RE = /^[1-9][0-9]{5}$/;
-function isPlausiblePhone(phone) {
-  const digits = String(phone).replace(/\D/g, '');
-  return digits.length >= 10 && digits.length <= 15;
-}
+// Every address saved here goes through the same checks as checkout (utils/indiaGeo.js): full name, address, a state, a city that is
+// in that state, a pincode that exists there, and a mobile number.
 
 async function listAddresses(userId) {
   return must(
@@ -35,16 +27,11 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { label, name, line1, city, state, pincode, phone, isDefault } = req.body;
-    if (!line1 || !city || !pincode) {
-      return res.status(400).json({ message: 'Address line, city and pincode are required.' });
-    }
-    if (!PINCODE_RE.test(String(pincode).trim())) {
-      return res.status(400).json({ message: 'Enter a valid 6-digit pincode.' });
-    }
-    if (phone && !isPlausiblePhone(phone)) {
-      return res.status(400).json({ message: 'Enter a valid phone number.' });
-    }
+    const { label, isDefault } = req.body;
+    // the same rules as checkout: full name, address, a state, a city that is in that state, a pincode that exists there, a mobile number
+    const checked = await validateAddress(req.body);
+    if (checked.error) return res.status(400).json({ message: checked.error, field: checked.field });
+    const { name, line1, city, state, pincode, phone } = checked.address;
 
     // Saving the same address twice (for example "save this address" ticked at checkout while the form was filled
     // from an address that is already saved) must not create a second copy: hand back the existing one.
@@ -84,16 +71,10 @@ router.put('/:id(\\d{1,9})', async (req, res) => {
     const existing = must(await supabase.from('addresses').select('id').eq('id', id).eq('user_id', req.userId).maybeSingle(), 'putAddress:lookup');
     if (!existing) return res.status(404).json({ message: 'Address not found.' });
 
-    const { label, name, line1, city, state, pincode, phone } = req.body;
-    if (!line1 || !city || !pincode) {
-      return res.status(400).json({ message: 'Address line, city and pincode are required.' });
-    }
-    if (!PINCODE_RE.test(String(pincode).trim())) {
-      return res.status(400).json({ message: 'Enter a valid 6-digit pincode.' });
-    }
-    if (phone && !isPlausiblePhone(phone)) {
-      return res.status(400).json({ message: 'Enter a valid phone number.' });
-    }
+    const { label } = req.body;
+    const checked = await validateAddress(req.body);
+    if (checked.error) return res.status(400).json({ message: checked.error, field: checked.field });
+    const { name, line1, city, state, pincode, phone } = checked.address;
 
     must(await supabase.from('addresses').update({
       label: label || 'Home', name: name || '', line1, city, state: state || '', pincode, phone: phone || ''

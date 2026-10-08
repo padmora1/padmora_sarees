@@ -12,6 +12,7 @@ const { resolveCoupon, computeOrderTotals } = require('../utils/pricing');
 const { sendOrderConfirmation } = require('../utils/notify');
 const razorpay = require('../utils/razorpay');
 const { OrderError, resolvePricedLineItems, placeOrderTx, findOrCreateGuestUser } = require('./orders');
+const { validateAddress, isValidEmail } = require('../utils/indiaGeo');
 
 const router = express.Router();
 
@@ -35,12 +36,6 @@ function logGatewayError(err) {
   }
 }
 
-function validateAddress(address, { requirePhone } = {}) {
-  if (!address || !address.line1 || !address.city || !address.pincode) return 'A complete shipping address is required.';
-  if (requirePhone && !address.phone) return 'A complete shipping address is required.';
-  return null;
-}
-
 async function insertPendingCheckout({ id, userId, isGuest, email, lineItems, subtotal, couponCode, address, amount, direct }) {
   must(await supabase.from('pending_checkouts').insert({
     id, user_id: userId || null, is_guest: !!isGuest, email: email || null,
@@ -53,9 +48,11 @@ async function insertPendingCheckout({ id, userId, isGuest, email, lineItems, su
 
 // ---- Authenticated: price the logged-in cart (or, for Buy Now, just the posted item) and open a Razorpay order ----
 router.post('/razorpay/order', requireAuth, async (req, res) => {
-  const { address, couponCode, items } = req.body || {};
-  const addrError = validateAddress(address);
-  if (addrError) return res.status(400).json({ message: addrError });
+  const { couponCode, items } = req.body || {};
+  // a complete, real address: state, a city that is in it, a pincode that exists there, a mobile number (cleaned up before it is stored)
+  const checked = await validateAddress((req.body || {}).address);
+  if (checked.error) return res.status(400).json({ message: checked.error, field: checked.field });
+  const address = checked.address;
 
   try {
     // Buy Now sends the one saree being bought; the bag is neither read nor changed. Without `items` this is the
@@ -89,12 +86,13 @@ router.post('/razorpay/order', requireAuth, async (req, res) => {
 
 // ---- Guest: price posted items and open a Razorpay order ----
 router.post('/razorpay/guest-order', async (req, res) => {
-  const { address, couponCode, items, email } = req.body || {};
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return res.status(400).json({ message: 'A valid email is required so we can send your order confirmation.' });
+  const { couponCode, items, email } = req.body || {};
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ message: 'Enter a valid email address so we can send your order confirmation.', field: 'email' });
   }
-  const addrError = validateAddress(address, { requirePhone: true });
-  if (addrError) return res.status(400).json({ message: addrError });
+  const checked = await validateAddress((req.body || {}).address);
+  if (checked.error) return res.status(400).json({ message: checked.error, field: checked.field });
+  const address = checked.address;
   if (!Array.isArray(items) || !items.length) {
     return res.status(400).json({ message: 'Your bag is empty.' });
   }
