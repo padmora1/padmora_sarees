@@ -150,6 +150,30 @@ function money(n) {
   catch (e) { return '₹' + Number(n).toLocaleString('en-IN'); }
 }
 
+// What a customer sees about the money for a CANCELLED order (empty for any other order): whether a refund is pending, has been
+// processed (with the amount and date), or is not needed because nothing was charged (Cash on Delivery).
+function refundBoxHTML(o) {
+  if (!o || o.status !== 'Cancelled') return '';
+  const day = d => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  const amount = money(o.refundAmount != null ? o.refundAmount : o.total);
+  let tone, pill, title, text;
+  if (o.refundStatus === 'Not Applicable' || (o.payment === 'COD' && o.refundStatus !== 'Processed')) {
+    tone = 'na'; pill = 'No refund needed'; title = 'No refund needed';
+    text = 'You chose Cash on Delivery, so nothing was charged for this order.';
+  } else if (o.refundStatus === 'Processed') {
+    tone = 'done'; pill = 'Refund processed'; title = amount + ' refunded';
+    text = 'Sent back to your original payment method' + (o.refundProcessedAt ? ' on ' + day(o.refundProcessedAt) : '') + '. It usually reaches your account within 5–7 working days.';
+  } else {
+    tone = 'wait'; pill = 'Refund pending'; title = amount + ' to be refunded';
+    text = 'We will send this back to your original payment method. The status here changes to “Refund processed” once it has been sent.';
+  }
+  return `<div class="refund-box refund-${tone}" data-refund-status="${tone}">
+    <div class="refund-box-head"><span class="refund-pill">${pill}</span>${o.cancelledAt ? `<span class="refund-when">Order cancelled ${day(o.cancelledAt)}</span>` : ''}</div>
+    <strong>${title}</strong>
+    <p>${text}</p>
+  </div>`;
+}
+
 // Escapes text that came from another customer (a review, a name, anything
 // user-submitted) before it's dropped into an HTML template string. Without
 // this, a review body like "<img src=x onerror=...>" runs as real HTML for
