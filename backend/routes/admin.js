@@ -18,7 +18,7 @@ const { sanitizeRich } = require('../utils/richText');
 const { splitOccasions, normalizeOccasions } = require('../utils/occasions');
 const { DEFAULT_ANNOUNCEMENT, DEFAULT_WEAVE_SECTION, validateAnnouncement, validateWeaveSection } = require('../utils/homeSections');
 const { runBackup, listBackups, BACKUP_DIR } = require('../utils/backup');
-const { RETURN_REASONS } = require('../utils/returns');
+const { RETURN_REASONS, computeReturnRefund } = require('../utils/returns');
 const { sendEmail, sendOrderStatusEmail, emailConfigured, smsConfigured } = require('../utils/notify');
 const reviewReminders = require('../utils/reviewReminders');
 const { publicEmail } = require('../utils/instagramOrders');
@@ -1338,20 +1338,56 @@ router.put('/orders/:id/cancel-decision', asyncRoute(async (req, res) => {
 // runs this: Requested -> Approved/Rejected -> (Approved only) Received ->
 // Refunded. Refund can only happen after Received on purpose — money never
 // moves before the returned saree has actually been inspected.
-async function shapeAdminReturn(r) {
-  const order = must(await supabase.from('orders').select('*').eq('id', r.order_id).maybeSingle(), 'shapeAdminReturn:order');
-  const customer = must(await supabase.from('users').select('name, email, phone').eq('id', r.user_id).maybeSingle(), 'shapeAdminReturn:customer');
-  const returnItems = must(await supabase.from('return_request_items').select('id, qty, order_item_id').eq('return_id', r.id), 'shapeAdminReturn:items');
-  const orderItemIds = returnItems.map(i => i.order_item_id);
-  const orderItems = orderItemIds.length
-    ? must(await supabase.from('order_items').select('id, name, color, price, variant_id').in('id', orderItemIds), 'shapeAdminReturn:orderItems')
-    : [];
-  const orderItemById = Object.fromEntries(orderItems.map(oi => [oi.id, oi]));
-  const photos = must(await supabase.from('return_request_photos').select('id, url').eq('return_id', r.id).order('id'), 'shapeAdminReturn:photos');
+// The other requests of the same inquiry (same order + attempt): when only some sarees are acted on they are split off into their own
+// "part", so one inquiry can be several requests, each with its own status.
+async function loadReturnSiblings(rows) {
+  const orderIds = [...new Set(rows.map(r => r.order_id))];
+  if (!orderIds.length) return {};
+  const all = await fetchAllByIds(orderIds, c => supabase.from('return_requests').select('id, order_id, attempt, part, status').in('order_id', c).order('id'), 'returnSiblings');
+  const out = {};
+  all.forEach(x => { const k = x.order_id + ':' + (x.attempt || 1); (out[k] || (out[k] = [])).push({ id: x.id, part: x.part || 1, status: x.status }); });
+  return out;
+}
+
+// Everything the Returns screen needs about a set of requests, read in a handful of queries (not five per request).
+async function loadReturnContext(rows) {
+  const ids = rows.map(r => r.id);
+  const orderIds = [...new Set(rows.map(r => r.order_id))];
+  const userIds = [...new Set(rows.map(r => r.user_id))];
+  const [orders, users, items, photos] = await Promise.all([
+    orderIds.length ? fetchAllByIds(orderIds, c => supabase.from('orders').select('id, total, payment, subtotal, discount, address_name, address_line1, address_city, address_state, address_pincode, address_phone').in('id', c).order('id'), 'returnCtx:orders') : [],
+    userIds.length ? fetchAllByIds(userIds, c => supabase.from('users').select('id, name, email, phone').in('id', c).order('id'), 'returnCtx:users') : [],
+    ids.length ? fetchAllByIds(ids, c => supabase.from('return_request_items').select('id, return_id, qty, order_item_id').in('return_id', c).order('id'), 'returnCtx:items') : [],
+    ids.length ? fetchAllByIds(ids, c => supabase.from('return_request_photos').select('id, return_id, url').in('return_id', c).order('id'), 'returnCtx:photos') : []
+  ]);
+  const orderItemIds = [...new Set(items.map(i => i.order_item_id))];
+  const orderItems = orderItemIds.length ? await fetchAllByIds(orderItemIds, c => supabase.from('order_items').select('id, name, color, price, variant_id').in('id', c).order('id'), 'returnCtx:orderItems') : [];
+  const group = (list, key) => { const out = {}; list.forEach(x => (out[x[key]] || (out[x[key]] = [])).push(x)); return out; };
+  return {
+    orderById: Object.fromEntries(orders.map(o => [o.id, o])),
+    userById: Object.fromEntries(users.map(u => [u.id, u])),
+    itemsByReturn: group(items, 'return_id'),
+    photosByReturn: group(photos, 'return_id'),
+    orderItemById: Object.fromEntries(orderItems.map(oi => [oi.id, oi]))
+  };
+}
+
+async function shapeAdminReturn(r, siblingsMap, context) {
+  const sibMap = siblingsMap || await loadReturnSiblings([r]);
+  const ctx = context || await loadReturnContext([r]);
+  const siblings = (sibMap[r.order_id + ':' + (r.attempt || 1)] || []).sort((a, b) => a.part - b.part);
+  const order = ctx.orderById[r.order_id] || null;
+  const customer = ctx.userById[r.user_id] || null;
+  const returnItems = ctx.itemsByReturn[r.id] || [];
+  const orderItemById = ctx.orderItemById;
+  const photos = ctx.photosByReturn[r.id] || [];
   return {
     id: r.id,
     orderId: r.order_id,
     attempt: r.attempt || 1,
+    part: r.part || 1,
+    partCount: siblings.length || 1,
+    siblings,
     maxAttempts: INQUIRY_MAX_ATTEMPTS,
     orderTotal: order ? order.total : null,
     orderPayment: order ? order.payment : null,
@@ -1374,7 +1410,11 @@ async function shapeAdminReturn(r) {
     couponCode: r.coupon_code,
     items: returnItems.map(i => {
       const oi = orderItemById[i.order_item_id] || {};
-      return { returnItemId: i.id, orderItemId: i.order_item_id, name: oi.name, color: oi.color, price: oi.price, qty: i.qty, variantId: oi.variant_id };
+      // refundShare: what this line is worth back to the customer (its price less its share of the order discount) - the admin screen adds
+      // up the ticked lines to suggest an amount
+      const value = (oi.price || 0) * i.qty;
+      const share = order && order.subtotal > 0 ? Math.round((order.discount || 0) * value / order.subtotal) : 0;
+      return { returnItemId: i.id, orderItemId: i.order_item_id, name: oi.name, color: oi.color, price: oi.price, qty: i.qty, variantId: oi.variant_id, refundShare: Math.max(0, value - share) };
     }),
     photos: photos.map(p => ({ id: p.id, url: p.url })),
     requestedAt: r.requested_at,
@@ -1389,7 +1429,8 @@ router.get('/returns', asyncRoute(async (req, res) => {
   let query = supabase.from('return_requests').select('*').order('requested_at', { ascending: false });
   if (status && status !== 'all') query = query.eq('status', status);
   const rows = must(await query, 'listReturns');
-  res.json({ returns: await Promise.all(rows.map(shapeAdminReturn)) });
+  const [sibs, ctx] = await Promise.all([loadReturnSiblings(rows), loadReturnContext(rows)]);
+  res.json({ returns: await Promise.all(rows.map(r => shapeAdminReturn(r, sibs, ctx))) });
 }));
 
 router.get('/returns/:id(\\d{1,9})', asyncRoute(async (req, res) => {
@@ -1398,8 +1439,49 @@ router.get('/returns/:id(\\d{1,9})', asyncRoute(async (req, res) => {
   res.json({ return: await shapeAdminReturn(row) });
 }));
 
+// Acting on only SOME of a request's sarees. The chosen sarees are split off into their own request (a new "part" of the same
+// inquiry, with the same status so far) and the action then applies to that part; the sarees not chosen stay behind in the original
+// request, still waiting, still listed and still counted. Nothing chosen = the whole request, as before.
+// -> { row, split } or { error: { status, message } }
+async function resolveReturnTarget(existing, itemIds, opts = {}) {
+  if (itemIds === undefined || itemIds === null) return { row: existing, split: false };
+  if (!Array.isArray(itemIds) || !itemIds.length) return { error: { status: 400, message: 'Tick at least one saree.' } };
+  const items = must(await supabase.from('return_request_items').select('id, order_item_id, qty').eq('return_id', existing.id), 'returnPart:items');
+  const wanted = new Set(itemIds.map(Number));
+  const chosen = items.filter(i => wanted.has(i.id));
+  if (chosen.length !== wanted.size) return { error: { status: 400, message: 'Some of those sarees are no longer in this request. Refresh the page and try again.' } };
+  if (chosen.length === items.length) return { row: existing, split: false };
+  if (opts.blockIfRefundStarted && existing.razorpay_refund_id) {
+    return { error: { status: 409, message: 'A refund for this request has already been started. Finish it for all of its sarees first.' } };
+  }
+
+  const order = must(await supabase.from('orders').select('subtotal, discount').eq('id', existing.order_id).maybeSingle(), 'returnPart:order');
+  const orderItems = must(await supabase.from('order_items').select('id, price').in('id', chosen.map(i => i.order_item_id)), 'returnPart:orderItems');
+  const priceById = Object.fromEntries(orderItems.map(oi => [oi.id, oi.price]));
+  const partRefund = computeReturnRefund(order || {}, chosen.map(i => ({ price: priceById[i.order_item_id] || 0, qty: i.qty })), false, existing.reason_category);
+  const restRefund = Math.max(0, (existing.computed_refund_amount || 0) - partRefund);   // the rest keeps whatever else the request was worth (e.g. shipping)
+
+  const rpc = await supabase.rpc('split_return_request', {
+    p_return_id: existing.id, p_order_item_ids: chosen.map(i => i.order_item_id), p_part_refund: partRefund, p_rest_refund: restRefund, p_expected_status: existing.status
+  });
+  if (rpc.error) {
+    if (/already been updated|none of those items/i.test(rpc.error.message)) return { error: { status: 409, message: 'Someone has just updated this request. Refresh the page and try again.' } };
+    throw new Error(rpc.error.message);
+  }
+  const row = must(await supabase.from('return_requests').select('*').eq('id', rpc.data).single(), 'returnPart:reread');
+  return { row, split: row.id !== existing.id };
+}
+
+// "Saree A, Saree B" for the e-mail a customer gets about part of an inquiry
+async function returnItemsText(returnId) {
+  const items = must(await supabase.from('return_request_items').select('order_item_id').eq('return_id', returnId), 'returnItemsText:items');
+  if (!items.length) return '';
+  const oi = must(await supabase.from('order_items').select('id, name, color').in('id', items.map(i => i.order_item_id)), 'returnItemsText:orderItems');
+  return oi.map(x => x.name + (x.color ? ' (' + x.color + ')' : '')).join(', ');
+}
+
 router.put('/returns/:id(\\d{1,9})/decision', asyncRoute(async (req, res) => {
-  const { approve, adminNote } = req.body || {};
+  const { approve, adminNote, itemIds } = req.body || {};
   const existing = must(await supabase.from('return_requests').select('*').eq('id', req.params.id).maybeSingle(), 'decideReturn:lookup');
   if (!existing) return res.status(404).json({ message: 'Return request not found.' });
   if (existing.status !== 'Requested') return res.status(400).json({ message: 'This request has already been decided.' });
@@ -1407,48 +1489,70 @@ router.put('/returns/:id(\\d{1,9})/decision', asyncRoute(async (req, res) => {
     return res.status(400).json({ message: "Add a note explaining why — the customer will see it." });
   }
 
+  const target = await resolveReturnTarget(existing, itemIds);
+  if (target.error) return res.status(target.error.status).json({ message: target.error.message });
+  const row = target.row;
+
   const nextStatus = approve ? 'Approved' : 'Rejected';
   must(await supabase.from('return_requests').update({
     status: nextStatus, admin_note: (adminNote || '').trim() || null, decided_at: new Date().toISOString()
-  }).eq('id', existing.id), 'decideReturn:update');
-  await record(req, approve ? 'approved' : 'rejected', 'return_request', existing.id, { status: existing.status }, { status: nextStatus, adminNote });
+  }).eq('id', row.id).eq('status', 'Requested'), 'decideReturn:update');
+  await record(req, approve ? 'approved' : 'rejected', 'return_request', row.id, { status: existing.status }, { status: nextStatus, adminNote, part: row.part || 1, splitFrom: target.split ? existing.id : undefined });
 
-  const customer = must(await supabase.from('users').select('name, email').eq('id', existing.user_id).maybeSingle(), 'decideReturn:customer');
+  const customer = must(await supabase.from('users').select('name, email').eq('id', row.user_id).maybeSingle(), 'decideReturn:customer');
   if (customer && customer.email) {
-    const mail = decisionEmail({ approve: !!approve, name: customer.name, orderId: existing.order_id, adminNote: (adminNote || '').trim(), attempt: existing.attempt });
-    await sendEmail({ to: customer.email, subject: mail.subject, html: mail.html, orderId: existing.order_id, userId: existing.user_id });
+    const sibs = must(await supabase.from('return_requests').select('id, status').eq('order_id', row.order_id).eq('attempt', row.attempt), 'decideReturn:siblings');
+    const partial = sibs.length > 1;
+    const mail = decisionEmail({
+      approve: !!approve, name: customer.name, orderId: row.order_id, adminNote: (adminNote || '').trim(), attempt: row.attempt,
+      itemsText: partial ? await returnItemsText(row.id) : '',
+      // a second chance is offered only when nothing of the inquiry was approved
+      allRejected: sibs.every(x => x.status === 'Rejected')
+    });
+    await sendEmail({ to: customer.email, subject: mail.subject, html: mail.html, orderId: row.order_id, userId: row.user_id });
   }
 
-  const updated = must(await supabase.from('return_requests').select('*').eq('id', existing.id).single(), 'decideReturn:reread');
-  res.json({ return: await shapeAdminReturn(updated) });
+  const updated = must(await supabase.from('return_requests').select('*').eq('id', row.id).single(), 'decideReturn:reread');
+  res.json({ return: await shapeAdminReturn(updated), split: target.split });
 }));
 
 router.put('/returns/:id(\\d{1,9})/receive', asyncRoute(async (req, res) => {
-  const { itemRestock } = req.body || {}; // { [returnItemId]: true/false }
+  const { itemRestock, itemIds } = req.body || {}; // itemRestock: { [returnItemId]: true/false }
   const existing = must(await supabase.from('return_requests').select('*').eq('id', req.params.id).maybeSingle(), 'receiveReturn:lookup');
   if (!existing) return res.status(404).json({ message: 'Return request not found.' });
   if (existing.status !== 'Approved') return res.status(400).json({ message: 'Only an approved return can be marked received.' });
 
+  const target = await resolveReturnTarget(existing, itemIds);
+  if (target.error) return res.status(target.error.status).json({ message: target.error.message });
+  const row = target.row;
+
   const rpc = await supabase.rpc('return_mark_received', {
-    p_return_id: existing.id, p_item_restock: itemRestock || {}, p_changed_by: req.adminName
+    p_return_id: row.id, p_item_restock: itemRestock || {}, p_changed_by: req.adminName
   });
   if (rpc.error) throw new Error(rpc.error.message);
 
-  await record(req, 'marked received', 'return_request', existing.id, { status: existing.status }, { status: 'Received', restocked: rpc.data });
-  const updated = must(await supabase.from('return_requests').select('*').eq('id', existing.id).single(), 'receiveReturn:reread');
-  res.json({ return: await shapeAdminReturn(updated) });
+  await record(req, 'marked received', 'return_request', row.id, { status: existing.status }, { status: 'Received', restocked: rpc.data, part: row.part || 1, splitFrom: target.split ? existing.id : undefined });
+  const updated = must(await supabase.from('return_requests').select('*').eq('id', row.id).single(), 'receiveReturn:reread');
+  res.json({ return: await shapeAdminReturn(updated), split: target.split });
 }));
 
 router.put('/returns/:id(\\d{1,9})/refund', asyncRoute(async (req, res) => {
-  const { refundMethod, finalAmount } = req.body || {};
-  const existing = must(await supabase.from('return_requests').select('*').eq('id', req.params.id).maybeSingle(), 'refundReturn:lookup');
-  if (!existing) return res.status(404).json({ message: 'Return request not found.' });
-  if (existing.status !== 'Received') return res.status(400).json({ message: 'Only a received return can be refunded.' });
+  const { refundMethod, finalAmount, itemIds } = req.body || {};
+  const first = must(await supabase.from('return_requests').select('*').eq('id', req.params.id).maybeSingle(), 'refundReturn:lookup');
+  if (!first) return res.status(404).json({ message: 'Return request not found.' });
+  if (first.status !== 'Received') return res.status(400).json({ message: 'Only a received return can be refunded.' });
 
-  const method = refundMethod || existing.refund_method;
+  const method = refundMethod || first.refund_method;
   if (!['original', 'bank_transfer', 'store_credit'].includes(method)) {
     return res.status(400).json({ message: 'Invalid refund method.' });
   }
+  if (finalAmount != null && (!Number.isFinite(Number(finalAmount)) || Number(finalAmount) < 0)) {
+    return res.status(400).json({ message: 'Enter a valid refund amount.' });
+  }
+
+  const target = await resolveReturnTarget(first, itemIds, { blockIfRefundStarted: true });
+  if (target.error) return res.status(target.error.status).json({ message: target.error.message });
+  const existing = target.row;   // the sarees being refunded (a part split off the request, or the whole request)
   const amount = finalAmount != null ? Number(finalAmount) : existing.computed_refund_amount;
   if (!Number.isFinite(amount) || amount < 0) {
     return res.status(400).json({ message: 'Enter a valid refund amount.' });
@@ -1499,7 +1603,7 @@ router.put('/returns/:id(\\d{1,9})/refund', asyncRoute(async (req, res) => {
     return res.status(500).json({ message: 'Could not process refund: ' + e.message + already });
   }
 
-  await record(req, 'refunded', 'return_request', existing.id, { status: existing.status }, { status: 'Refunded', method, amount, couponCode, razorpayRefundId: rzpRefundId });
+  await record(req, 'refunded', 'return_request', existing.id, { status: existing.status }, { status: 'Refunded', method, amount, couponCode, razorpayRefundId: rzpRefundId, part: existing.part || 1, splitFrom: target.split ? first.id : undefined });
 
   const customer = must(await supabase.from('users').select('name, email').eq('id', existing.user_id).maybeSingle(), 'refundReturn:customer');
   if (customer && customer.email) {
@@ -1522,7 +1626,7 @@ router.put('/returns/:id(\\d{1,9})/refund', asyncRoute(async (req, res) => {
   }
 
   const updated = must(await supabase.from('return_requests').select('*').eq('id', existing.id).single(), 'refundReturn:reread');
-  res.json({ return: await shapeAdminReturn(updated) });
+  res.json({ return: await shapeAdminReturn(updated), split: target.split });
 }));
 
 // ---- Product pricing & profit ----

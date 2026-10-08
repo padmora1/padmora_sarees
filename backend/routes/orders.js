@@ -5,7 +5,7 @@ const { supabase, must, getProductsByIds, getVariantsByIds, getPrimaryImagesByVa
 const { requireAuth } = require('../middleware/auth');
 const { resolveCoupon, computeOrderTotals } = require('../utils/pricing');
 const { computeStatus, buildTimeline, isCancellable, CANCEL_REASONS } = require('../utils/orderStatus');
-const { getInquiryState } = require('../utils/inquiry');
+const { getInquiryState, summarizeStatus } = require('../utils/inquiry');
 const { loadRefundsByOrder } = require('../utils/refunds');
 const { inquiryToken } = require('../utils/inquiryToken');
 const { isBlocked, recordFailure } = require('../utils/attemptLimiter');
@@ -23,7 +23,9 @@ async function shapeOrder(order) {
   const imageByVariant = await getPrimaryImagesByVariantIds(items.map(li => li.variant_id));
   const status = await computeStatus(order); // may stamp delivered_at as a side effect — must run before reading it below
   const inquiry = await getInquiryState(order, { status });   // return / refund inquiry (up to two tries per order)
-  const latestRequest = inquiry.requests[inquiry.requests.length - 1] || null;
+  // the newest inquiry (attempt); it may have been split into several requests, one per group of sarees decided separately
+  const latestParts = inquiry.requests.filter(r => r.attempt === inquiry.attemptsUsed);
+  const latestRequest = latestParts[latestParts.length - 1] || null;
   const cancellable = await isCancellable(order);
   const timeline = await buildTimeline(order);
   // Money handed back for returned sarees (a return marked Refunded): shown on the order, which is final from then on.
@@ -77,8 +79,9 @@ async function shapeOrder(order) {
     cancelAdminNote: order.cancel_admin_note,
     placedAt: order.placed_at,
     deliveredAt: order.delivered_at,
-    returnStatus: latestRequest ? latestRequest.status : null,
+    returnStatus: latestParts.length ? summarizeStatus(latestParts.map(r => r.status)) : null,
     returnRequestId: latestRequest ? latestRequest.id : null,
+    returnParts: latestParts.length > 1 ? latestParts.map(r => ({ status: r.status, adminNote: r.adminNote || null, orderItemIds: r.orderItemIds })) : null,
     canRequestReturn: inquiry.eligible,
     inquiry: { windowDays: inquiry.policy.windowDays, eligible: inquiry.eligible, reason: inquiry.reason, secondChance: !!inquiry.secondChance, attempt: inquiry.attempt || inquiry.attemptsUsed, attemptsUsed: inquiry.attemptsUsed, maxAttempts: inquiry.maxAttempts, finalRejected: !!inquiry.finalRejected, activeStatus: inquiry.activeStatus || null, deadline: inquiry.deadline || null }
   };

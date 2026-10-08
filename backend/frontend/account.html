@@ -248,6 +248,12 @@
   // The one-line status shown under a delivered order that has an inquiry.
   function inquiryLine(o){
     const i = o.inquiry || {};
+    // decided saree by saree: say where each group of sarees stands
+    if(o.returnParts && o.returnStatus !== 'Rejected'){
+      const say = { Requested: 'waiting for our team to review it', Approved: 'approved — please ship it back to us', Received: 'received — refund being processed', Refunded: 'refunded', Rejected: 'not approved' };
+      const names = p => (p.orderItemIds || []).map(id => { const it = (o.items || []).find(x => x.id === id); return it ? it.name : ''; }).filter(Boolean).join(', ');
+      return o.returnParts.map(p => escapeHtml(names(p) || 'Saree(s)') + ' — ' + (say[p.status] || escapeHtml(p.status))).join('<br>');
+    }
     const n = i.maxAttempts ? ` (${i.attempt || i.attemptsUsed} of ${i.maxAttempts})` : '';
     if(o.returnStatus === 'Rejected'){
       return i.finalRejected ? 'Inquiry not approved — this was the final decision'
@@ -371,10 +377,18 @@
         <div style="display:flex;gap:10px;"><button type="button" class="btn btn-primary btn-sm rv-submit">Submit Review</button><button type="button" class="btn btn-sm rv-cancel">Cancel</button></div>
       </div>`;
     const err = mount.querySelector('.rv-error');
-    mount.querySelectorAll('.star-input button').forEach(b => b.addEventListener('click', () => {
-      stars = Number(b.dataset.star); err.classList.remove('show');
-      mount.querySelectorAll('.star-input button').forEach(x => x.classList.toggle('active', Number(x.dataset.star) <= stars));
-    }));
+    const starBtns = [...mount.querySelectorAll('.star-input button')];
+    const paintStars = upTo => starBtns.forEach(x => x.classList.toggle('active', Number(x.dataset.star) <= upTo));
+    starBtns.forEach(b => {
+      b.setAttribute('aria-pressed', 'false');
+      b.addEventListener('click', () => {
+        stars = Number(b.dataset.star); err.classList.remove('show'); paintStars(stars);
+        starBtns.forEach(x => x.setAttribute('aria-pressed', Number(x.dataset.star) <= stars ? 'true' : 'false'));
+      });
+      // pointing at a star lights up that many stars (without choosing yet)
+      b.addEventListener('mouseenter', () => starBtns.forEach(x => x.classList.toggle('hover', Number(x.dataset.star) <= Number(b.dataset.star))));
+    });
+    mount.querySelector('.star-input').addEventListener('mouseleave', () => starBtns.forEach(x => x.classList.remove('hover')));
     // ---- camera-only photos for this review ----
     const MAX_REVIEW_PHOTOS = 5;
     const photos = [];

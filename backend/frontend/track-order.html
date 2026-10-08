@@ -253,6 +253,11 @@
       button = true;
     }else if(i.reason === 'already_requested'){
       text = 'Your inquiry is with our team (' + (i.activeStatus || order.returnStatus) + '). We will reply by e-mail.';
+      if(order.returnParts){   // decided saree by saree
+        const say = { Requested: 'waiting for review', Approved: 'approved - please ship it back', Received: 'received - refund being processed', Refunded: 'refunded', Rejected: 'not approved' };
+        const names = p => (p.orderItemIds || []).map(id => { const it = (order.items || []).find(x => x.id === id); return it ? it.name : ''; }).filter(Boolean).join(', ');
+        text = 'Your inquiry: ' + order.returnParts.map(p => (names(p) || 'Saree(s)') + ' - ' + (say[p.status] || p.status)).join('; ') + '.';
+      }
     }else if(i.reason === 'final_rejected'){
       text = 'Both of your inquiries for this order were reviewed and could not be approved. Please contact us if you need more help.';
     }else{

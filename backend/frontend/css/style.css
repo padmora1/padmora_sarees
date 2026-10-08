@@ -421,8 +421,10 @@ body::after{right:0;transform:scaleX(-1);}
 .return-item-qty{font-size:11.5px;color:var(--ink-soft);display:flex;align-items:center;gap:5px;}
 .return-item-qty select{padding:3px 6px;font-size:12px;border-radius:3px;border:1px solid rgba(173,59,92,0.25);}
 .return-photo-preview{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
-.order-review-btn{font:inherit;font-size:11.5px;margin-left:8px;padding:3px 10px;border-radius:999px;border:1px solid var(--maroon);background:#fff;color:var(--maroon);cursor:pointer;}
-.order-review-btn:hover{background:var(--maroon);color:#fff;}
+.order-review-btn{font:inherit;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:7px;margin-top:8px;padding:10px 20px;border-radius:6px;border:1px solid var(--maroon);background:var(--maroon);color:#fff;cursor:pointer;box-shadow:0 2px 8px rgba(122,39,64,0.22);transition:background .15s,transform .15s;}
+.order-review-btn::before{content:'★';font-size:15px;line-height:1;}
+.order-review-btn:hover,.order-review-btn:focus-visible{background:var(--maroon-deep);transform:translateY(-1px);}
+.order-item-row .order-review-btn{display:flex;width:fit-content;}
 .order-reviewed{font-size:11.5px;color:var(--teal,#2f7d62);margin-left:8px;}
 .order-review-form{margin:8px 0 12px;padding:14px;background:var(--ivory,#FFF0E6);border-radius:4px;}
 .co-items{margin:0 0 12px;border:1px solid rgba(173,59,92,0.14);border-radius:8px;background:#fff;}
@@ -1057,9 +1059,12 @@ footer{background:var(--maroon-deep);color:var(--ivory-deep);padding:50px 0 0;ma
 /* Reviews */
 .review-summary{display:flex;align-items:center;gap:18px;margin-bottom:24px;flex-wrap:wrap;}
 .review-summary .big-rating{font-family:var(--font-display);font-size:44px;color:var(--maroon-deep);}
-.star-input{display:flex;gap:6px;margin:8px 0 16px;}
-.star-input button{font-size:26px;color:var(--gold-soft);line-height:1;}
-.star-input button.active,.star-input button:hover{color:var(--gold);}
+/* rating picker: a star you have not chosen is white with a gold outline (empty); chosen stars are filled gold */
+.star-input{display:flex;gap:4px;margin:8px 0 16px;}
+.star-input button{font-size:36px;line-height:1;padding:2px 3px;color:#fff;-webkit-text-stroke:1.6px var(--gold);cursor:pointer;transition:transform .12s;}
+.star-input button:hover{transform:scale(1.12);}
+.star-input button:focus-visible{outline:2px solid var(--maroon);outline-offset:2px;border-radius:4px;}
+.star-input button.active,.star-input button.hover{color:var(--gold);}
 .review-card{border-bottom:1px solid rgba(173,59,92,0.1);padding:18px 0;}
 .review-card-head{display:flex;align-items:center;gap:10px;font-size:13px;margin-bottom:6px;flex-wrap:wrap;}
 .review-card-head strong{font-size:13.5px;}

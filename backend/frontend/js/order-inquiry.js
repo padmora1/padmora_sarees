@@ -74,9 +74,12 @@ const OrderInquiry = (function(){
   // ---- views ----
   function noticeView(order, inq){
     const last = (inq.requests || [])[(inq.requests || []).length - 1];
+    // an inquiry can have been decided saree by saree: then each group of sarees gets its own line
+    const itemNames = r => (r.orderItemIds || []).map(id => { const it = (order.items || []).find(x => x.id === id); return it ? it.name : ''; }).filter(Boolean).join(', ');
+    const split = a => (inq.requests || []).filter(x => x.attempt === a).length > 1;
     const lines = (inq.requests || []).map(r => `
       <div class="oi-hist ${r.status === 'Rejected' ? 'is-rejected' : ''}">
-        <strong>Inquiry ${r.attempt} of ${inq.maxAttempts}</strong> · ${fmtDate(r.requestedAt)} — ${esc(STATUS_TEXT[r.status] || r.status)}
+        <strong>Inquiry ${r.attempt} of ${inq.maxAttempts}</strong>${split(r.attempt) && itemNames(r) ? ' · ' + esc(itemNames(r)) : ''} · ${fmtDate(r.requestedAt)} — ${esc(STATUS_TEXT[r.status] || r.status)}
         ${r.adminNote ? `<p>Note from our team: ${esc(r.adminNote)}</p>` : ''}
       </div>`).join('');
     body().innerHTML = `
