@@ -23,6 +23,7 @@ const { sendEmail, sendOrderStatusEmail, emailConfigured, smsConfigured } = requ
 const reviewReminders = require('../utils/reviewReminders');
 const { publicEmail } = require('../utils/instagramOrders');
 const profit = require('../utils/profit');
+const { loadRefundsByOrder } = require('../utils/refunds');
 const razorpayUtil = require('../utils/razorpay');
 const { MAX_ATTEMPTS: INQUIRY_MAX_ATTEMPTS, decisionEmail } = require('../utils/inquiry');
 const { checkWishlistAlerts } = require('../utils/wishlistAlerts');
@@ -215,7 +216,12 @@ function asyncRoute(handler) {
 router.get('/stats', asyncRoute(async (req, res) => {
   const orders = must(await supabase.from('orders').select('*'), 'stats:orders');
   const activeOrders = orders.filter(o => !o.cancelled_at);
-  const revenue = activeOrders.reduce((s, o) => s + o.total, 0);
+  // Revenue is what the store actually kept: an order's total minus what was handed back for returns (the same refunds the
+  // profit report subtracts), so Total Revenue and Net Profit move together when a return is refunded.
+  const refunds = await loadRefundsByOrder();
+  const netOf = o => o.total - ((refunds[o.id] && refunds[o.id].amount) || 0);
+  const refundedTotal = activeOrders.reduce((s, o) => s + (refunds[o.id] ? refunds[o.id].amount : 0), 0);
+  const revenue = activeOrders.reduce((s, o) => s + netOf(o), 0);
   const userCount = (await supabase.from('users').select('*', { count: 'exact', head: true }).eq('is_admin', false)).count || 0;
 
   // Low stock is variant-level now — "Green" can be down to its last piece
@@ -237,7 +243,7 @@ router.get('/stats', asyncRoute(async (req, res) => {
   // single-store dashboard, not trying to be multi-timezone-aware.
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const todayOrders = activeOrders.filter(o => new Date(o.placed_at) >= todayStart);
-  const todayRevenue = todayOrders.reduce((s, o) => s + o.total, 0);
+  const todayRevenue = todayOrders.reduce((s, o) => s + netOf(o), 0);
   const avgOrderValue = activeOrders.length ? Math.round(revenue / activeOrders.length) : 0;
 
   const guestUsers = must(await supabase.from('users').select('id').eq('is_guest', true), 'stats:guestUsers');
@@ -263,6 +269,7 @@ router.get('/stats', asyncRoute(async (req, res) => {
       totalOrders: activeOrders.length,
       cancelledOrders: orders.length - activeOrders.length,
       revenue,
+      refundedTotal,
       userCount,
       unreadMessages,
       todayOrders: todayOrders.length,
@@ -816,12 +823,15 @@ async function shapeAdminOrderList(orders) {
   const imageByVariant = {};
   const variantIds = [...new Set(items.map(li => li.variant_id).filter(Boolean))];
   for (let i = 0; i < variantIds.length; i += 150) Object.assign(imageByVariant, await getPrimaryImagesByVariantIds(variantIds.slice(i, i + 150)));
-  return Promise.all(orders.map(o => shapeAdminOrder(o, { preloaded: { items: itemsByOrder[o.id] || [], imageByVariant } })));
+  const refunds = await loadRefundsByOrder(orders.map(o => o.id));
+  return Promise.all(orders.map(o => shapeAdminOrder(o, { preloaded: { items: itemsByOrder[o.id] || [], imageByVariant, refunds } })));
 }
 
 async function shapeAdminOrder(o, { full, preloaded } = {}) {
   const items = preloaded ? preloaded.items : must(await supabase.from('order_items').select('*').eq('order_id', o.id), 'shapeAdminOrder:items');
   const imageByVariant = preloaded ? preloaded.imageByVariant : await getPrimaryImagesByVariantIds(items.map(li => li.variant_id));
+  const refundInfo = (preloaded ? (preloaded.refunds || {}) : await loadRefundsByOrder([o.id]))[o.id] || null;
+  const totalUnits = items.reduce((n, li) => n + Number(li.qty || 0), 0);
   const status = await computeStatus(o);
   const base = {
     id: o.id,
@@ -848,6 +858,13 @@ async function shapeAdminOrder(o, { full, preloaded } = {}) {
     cancelRequestDetail: o.cancel_request_detail,
     cancelRequestedAt: o.cancel_requested_at,
     cancelAdminNote: o.cancel_admin_note,
+    // Money handed back for returned sarees (a return marked Refunded). null when nothing was returned and refunded. `full` = every
+    // saree of the order came back; otherwise only some did. This is what Total Revenue and Net Profit subtract.
+    returnRefund: refundInfo ? {
+      amount: refundInfo.amount, returnedUnits: refundInfo.returnedUnits, totalUnits,
+      full: totalUnits > 0 && refundInfo.returnedUnits >= totalUnits,
+      returns: refundInfo.returns
+    } : null,
     address: { name: o.address_name, city: o.address_city, state: o.address_state, pincode: o.address_pincode },
     placedAt: o.placed_at,
     viewedAt: o.admin_viewed_at
@@ -2469,22 +2486,26 @@ router.get('/analytics/revenue-trend', asyncRoute(async (req, res) => {
   since.setHours(0, 0, 0, 0);
 
   const orders = must(
-    await supabase.from('orders').select('placed_at, total, cancelled_at').gte('placed_at', since.toISOString()),
+    await supabase.from('orders').select('id, placed_at, total, cancelled_at').gte('placed_at', since.toISOString()),
     'revenueTrend:orders'
   );
+  const refunds = await loadRefundsByOrder(orders.filter(o => !o.cancelled_at).map(o => o.id));   // money handed back for returns comes off the day the order was placed
 
   // One bucket per calendar day (server-local), oldest first, zero-filled so
   // a quiet day still shows as a real bar instead of a gap in the axis.
+  // Days are the server's own calendar days on both sides (the buckets and each order's date). They used to be built from local
+  // midnights but matched against UTC dates, so on a server not running in UTC today's orders fell into no bucket at all.
+  const dayKey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const byDay = new Map();
   for (let i = 0; i < days; i++) {
     const d = new Date(since); d.setDate(d.getDate() + i);
-    byDay.set(d.toISOString().slice(0, 10), { date: d.toISOString().slice(0, 10), revenue: 0, orders: 0 });
+    byDay.set(dayKey(d), { date: dayKey(d), revenue: 0, orders: 0 });
   }
   orders.forEach(o => {
     if (o.cancelled_at) return;
-    const key = new Date(o.placed_at).toISOString().slice(0, 10);
+    const key = dayKey(new Date(o.placed_at));
     const bucket = byDay.get(key);
-    if (bucket) { bucket.revenue += o.total; bucket.orders += 1; }
+    if (bucket) { bucket.revenue += o.total - ((refunds[o.id] && refunds[o.id].amount) || 0); bucket.orders += 1; }
   });
 
   res.json({ days: Array.from(byDay.values()) });
@@ -2492,12 +2513,13 @@ router.get('/analytics/revenue-trend', asyncRoute(async (req, res) => {
 
 // ---- Revenue by day of week (which days actually sell) ----
 router.get('/analytics/day-of-week', asyncRoute(async (req, res) => {
-  const orders = must(await supabase.from('orders').select('placed_at, total, cancelled_at'), 'dayOfWeek:orders');
+  const orders = must(await supabase.from('orders').select('id, placed_at, total, cancelled_at'), 'dayOfWeek:orders');
+  const refunds = await loadRefundsByOrder();
   const DOW = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const buckets = DOW.map(name => ({ day: name, revenue: 0, orders: 0 }));
   orders.forEach(o => {
     if (o.cancelled_at) return;
-    buckets[new Date(o.placed_at).getDay()].revenue += o.total;
+    buckets[new Date(o.placed_at).getDay()].revenue += o.total - ((refunds[o.id] && refunds[o.id].amount) || 0);
     buckets[new Date(o.placed_at).getDay()].orders += 1;
   });
   res.json({ days: buckets });
