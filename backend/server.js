@@ -87,9 +87,10 @@ app.use(cors());
 app.use(express.json());
 
 // ---- Speed: HTTP caching of public data, and emptying the in-memory caches after changes ----
-const { invalidateAll } = require('./utils/cache');
-// Read-only storefront data any visitor may see. The browser (and a CDN, if one is ever put in front) may reuse it for 15 s
-// and keep showing it for up to a minute while it fetches a fresh copy - repeat visits and back/forward are instant.
+const { invalidateAll, onInvalidate } = require('./utils/cache');
+const dataVersion = require('./utils/dataVersion');
+// Read-only storefront data any visitor may see. It carries an ETag, so the browser asks "has it changed?" each time and gets a
+// tiny "no, same as yours" (304) when it has not.
 // Anything personal (cart, wishlist, orders, account) is never in this list. A product page carries a "you already pre-booked
 // this" flag for a signed-in shopper, so a request with credentials is never stored or shared.
 const PUBLIC_GET = /^\/(products(\/(reels|lookup|facets|\d{1,9}))?|collections(\/[^/]+)?|fabrics|occasions|content\/[a-z-]+|settings\/(store|footer|shipping|return-policy|tax)|bootstrap|home|faq|upcoming-sarees)$/;
@@ -98,19 +99,23 @@ app.use('/api', (req, res, next) => {
     res.setHeader('Vary', 'Authorization');
     if (req.headers.authorization) res.setHeader('Cache-Control', 'private, no-cache');
     else {
-      res.setHeader('Cache-Control', 'public, max-age=15, stale-while-revalidate=60');
+      // Always re-asked (a quick 304 when nothing changed): a change made in the admin must show on the very next page load, never
+      // after a minute of the browser reusing an old copy.
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
       const send = res.json.bind(res);
       res.json = body => { if (res.statusCode >= 400) res.setHeader('Cache-Control', 'no-store'); return send(body); };   // never keep an error
     }
   }
   next();
 });
-// A change made through this server shows at once: the admin's edits, an order (stock), a pre-booking, a review, a return.
-// (A change made by the other app shows within ~15 s, when the cached copy ages out.)
+// A change shows at once: the admin's edits, an order (stock), a pre-booking, a review, a return. This copy of the server empties its
+// memory immediately, and stamps the change in the database so every OTHER copy of the server (a host may run several) empties its
+// own within a few seconds (utils/dataVersion.js).
+//
 const CHANGES_DATA = /^\/(admin|orders|checkout|payments|returns|products)(\/|$)/;
 app.use('/api', (req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS' && CHANGES_DATA.test(req.path)) {
-    res.on('finish', () => { if (res.statusCode < 400 || /^\/admin/.test(req.path)) invalidateAll(); });
+    res.on('finish', () => { if (res.statusCode < 400 || /^\/admin/.test(req.path)) { invalidateAll(); dataVersion.bump(); } });
   }
   next();
 });
@@ -168,6 +173,7 @@ function withQuery(req, cleanPath) {
 // page's script. Search engines and link previews (WhatsApp, Instagram, Facebook) often do not run that script, so the
 // server writes the saree's title, description, share photo and canonical address into the page before sending it.
 const productMetaCache = new Map();   // id -> { at, meta }
+onInvalidate(() => productMetaCache.clear());
 const PRODUCT_META_TTL = 60 * 1000;
 const escAttr = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 async function productMeta(id) {
@@ -334,6 +340,7 @@ app.use((err, req, res, next) => {
 dbReady.then(() => {
   app.listen(PORT, () => {
     console.log(`Padmora by Yashi server running at http://localhost:${PORT}`);
+    dataVersion.start();   // notice changes made through any other copy of the server
 
     // Background jobs — real setInterval timers on this long-running Node
     // process, not decorative. Each one is also individually safe to call

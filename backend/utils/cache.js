@@ -2,8 +2,8 @@
 // footer, the home page...). Without it each page view re-read the whole catalogue from the remote database (several round
 // trips, hundreds of milliseconds) just to draw a menu.
 //
-//   - fresh (default 15 s): served straight from memory;
-//   - older, but not too old (default 1 min): served from memory at once AND refreshed in the background, so nobody waits;
+//   - fresh (default 5 s): served straight from memory;
+//   - older, but not too old (default 15 s): served from memory at once AND refreshed in the background, so nobody waits;
 //   - first request, or a failed/very old entry: waits for one load (concurrent requests share it - never a stampede);
 //   - if a refresh fails, the last good copy keeps being served rather than an error page.
 // invalidateAll() empties every cache at once: the admin calls it after any change and checkout after an order, so a change
@@ -11,7 +11,7 @@
 // shows within `fresh` seconds.
 const registry = new Set();
 
-function swr(load, { fresh = 15000, stale = 60 * 1000, maxKeys = 300 } = {}) {
+function swr(load, { fresh = 5000, stale = 15000, maxKeys = 300 } = {}) {
   const entries = new Map();   // key -> { value, at, loading, gen }
   let generation = 0;
   const cache = { invalidate() { generation++; entries.clear(); } };
@@ -44,6 +44,13 @@ function swr(load, { fresh = 15000, stale = 60 * 1000, maxKeys = 300 } = {}) {
   return get;
 }
 
-function invalidateAll() { registry.forEach(c => c.invalidate()); }
+// Other small caches (settings, a product's share-preview text...) register here to be emptied together with everything else.
+const hooks = new Set();
+function onInvalidate(fn) { hooks.add(fn); }
 
-module.exports = { swr, invalidateAll };
+function invalidateAll() {
+  registry.forEach(c => c.invalidate());
+  hooks.forEach(fn => { try { fn(); } catch (e) { /* a hook must never stop the rest */ } });
+}
+
+module.exports = { swr, invalidateAll, onInvalidate };

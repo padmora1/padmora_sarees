@@ -167,7 +167,7 @@ async function loadCatalogue() {
 // home page. It is kept in memory (see utils/cache.js): served instantly, refreshed in the background every ~15 s, and emptied
 // the moment this server changes something. The rows are SHARED between callers, so a caller must only read them (all the
 // shaping helpers build new objects). Admin screens ask for { fresh: true } to always see the database.
-const catalogueCache = swr(loadCatalogue, { fresh: 15000 });
+const catalogueCache = swr(loadCatalogue, { fresh: 5000 });
 async function getProducts({ fresh = false } = {}) {
   if (fresh) { catalogueCache.invalidate(); return catalogueCache(); }
   return catalogueCache();
@@ -309,6 +309,7 @@ async function getCollectionBySlug(slug) {
 // by the other app (admin and storefront are separate processes) is picked up within SETTINGS_TTL_MS.
 const SETTINGS_TTL_MS = 8000;
 const settingsCache = new Map(); // key -> { raw: string | null, at: number }
+require('./cache').onInvalidate(() => settingsCache.clear());   // a change anywhere (this copy or another) re-reads settings at once
 
 async function getSetting(key, fallback) {
   let hit = settingsCache.get(key);
