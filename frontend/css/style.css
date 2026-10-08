@@ -1175,7 +1175,8 @@ body.rv-modal-open{overflow:hidden;}
 .cat-rail{display:flex;gap:22px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding:14px 14px 30px;margin:-14px -14px -26px;scroll-padding:0 14px;}
 .cat-rail::-webkit-scrollbar{display:none;}
 .cat-item{flex:0 0 calc(25% - 16.5px);scroll-snap-align:start;text-align:center;cursor:pointer;}
-.cat-swatch{width:100%;aspect-ratio:1;border-radius:50%;margin-bottom:12px;border:2px solid var(--gold-soft);padding:5px;}
+/* the picture fills the whole circle edge to edge; only a slim border frames it */
+.cat-swatch{width:100%;aspect-ratio:1;border-radius:50%;margin-bottom:12px;border:2px solid var(--gold-soft);padding:0;overflow:hidden;background-clip:padding-box;}
 .cat-swatch-inner{width:100%;height:100%;border-radius:50%;}
 .cat-item strong{font-size:13px;font-weight:500;}
 /* placeholders shown for the first moments of a page load, so the weave row never looks empty */

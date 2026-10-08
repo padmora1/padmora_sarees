@@ -56,6 +56,12 @@
                 <option>Returns &amp; Exchange</option>
               </select>
             </div>
+            <div class="form-field" id="cOrderField" style="display:none;">
+              <label for="cOrder">Order ID <span style="color:var(--maroon);">*</span></label>
+              <select id="cOrderPick" style="display:none;margin-bottom:8px;"></select>
+              <input type="text" id="cOrder" placeholder="e.g. ZR12345" autocomplete="off" maxlength="40">
+              <small id="cOrderHint" style="display:block;margin-top:4px;color:var(--ink-soft);">You will find it in your order confirmation e-mail.</small>
+            </div>
             <div class="form-field"><label>Message</label><textarea id="cMessage" rows="5" required></textarea></div>
             <button type="submit" class="btn btn-primary">Send Message</button>
           </form>
@@ -78,11 +84,56 @@
   }).catch(() => {});
 </script>
 <script>
+  // Order Support and Returns & Exchange are always about one order: the Order ID is asked for (and required). Signed-in customers pick
+  // it from their own orders; anyone can type it. A link from an order inquiry (/contact?order=ZR123&topic=order-support) fills it in.
+  const ORDER_SUBJECTS = ['Order Support', 'Returns & Exchange'];
+  const subjectEl = document.getElementById('cSubject'), orderField = document.getElementById('cOrderField');
+  const orderInput = document.getElementById('cOrder'), orderPick = document.getElementById('cOrderPick');
+  const OTHER = '__other';
+  const needsOrder = () => ORDER_SUBJECTS.includes(subjectEl.value);
+  function syncOrderField(){
+    orderField.style.display = needsOrder() ? '' : 'none';
+    orderInput.required = needsOrder() && (orderPick.style.display === 'none' || orderPick.value === OTHER);
+  }
+  function syncPick(){
+    const typing = orderPick.style.display === 'none' || orderPick.value === OTHER;
+    orderInput.style.display = typing ? '' : 'none';
+    orderInput.required = needsOrder() && typing;
+  }
+  subjectEl.addEventListener('change', syncOrderField);
+  orderPick.addEventListener('change', syncPick);
+  const qs = new URLSearchParams(location.search);
+  const wanted = (qs.get('order') || '').trim();
+  const topic = qs.get('topic');
+  if(topic === 'returns') subjectEl.value = 'Returns & Exchange';
+  else if(topic === 'order-support' || wanted) subjectEl.value = 'Order Support';
+  if(wanted) orderInput.value = wanted;
+  syncOrderField();
+  // a signed-in customer: their name and e-mail, and a list of their own orders to choose from
+  if(isLoggedIn()){
+    const u = getStoredUser();
+    if(u){ if(u.name) document.getElementById('cName').value = u.name; if(u.email) document.getElementById('cEmail').value = u.email; }
+    apiFetch('/orders').then(({ orders }) => {
+      if(!orders || !orders.length) return;
+      const fmt = d => d ? new Date(d).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : '';
+      orderPick.innerHTML = orders.map(o => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.id)} · ${fmt(o.placedAt)} · ${escapeHtml(o.status)}</option>`).join('') + `<option value="${OTHER}">Another order ID…</option>`;
+      const match = wanted && orders.find(o => o.id.toLowerCase() === wanted.toLowerCase());
+      orderPick.value = match ? match.id : (wanted ? OTHER : orders[0].id);
+      orderPick.style.display = '';
+      document.getElementById('cOrderHint').textContent = 'Choose the order this is about, or pick "Another order ID" to type one.';
+      syncPick(); syncOrderField();
+    }).catch(() => {});
+  }
+  const chosenOrder = () => (orderPick.style.display !== 'none' && orderPick.value !== OTHER) ? orderPick.value : orderInput.value.trim();
+
   document.getElementById('contactForm').addEventListener('submit', async (e)=>{
     e.preventDefault();
     const errBox = document.getElementById('contactError');
     const okBox = document.getElementById('contactSuccess');
     errBox.classList.remove('show'); okBox.style.display = 'none';
+    if(needsOrder() && !chosenOrder()){
+      errBox.textContent = 'Enter the order ID this message is about.'; errBox.classList.add('show'); orderInput.focus(); return;
+    }
     try{
       const res = await apiFetch('/contact', {
         method:'POST',
@@ -90,12 +141,14 @@
           name: document.getElementById('cName').value,
           email: document.getElementById('cEmail').value,
           subject: document.getElementById('cSubject').value,
-          message: document.getElementById('cMessage').value
+          message: document.getElementById('cMessage').value,
+          orderId: needsOrder() ? chosenOrder() : ''
         })
       });
       okBox.textContent = res.message;
       okBox.style.display = 'block';
       document.getElementById('contactForm').reset();
+      syncOrderField(); syncPick();
     }catch(err){
       errBox.textContent = err.message;
       errBox.classList.add('show');

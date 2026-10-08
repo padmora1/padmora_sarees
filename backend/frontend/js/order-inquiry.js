@@ -85,7 +85,7 @@ const OrderInquiry = (function(){
     body().innerHTML = `
       <div class="oi-notice ${inq.finalRejected ? 'is-final' : ''}"><p>${esc(inq.message || 'An inquiry cannot be made for this order.')}</p></div>
       ${lines}
-      <div class="oi-foot"><button type="button" class="btn btn-outline btn-sm" data-oi-close>Close</button><a class="btn btn-primary btn-sm" href="/contact">Contact us</a></div>`;
+      <div class="oi-foot"><button type="button" class="btn btn-outline btn-sm" data-oi-close>Close</button><a class="btn btn-primary btn-sm" href="/contact?order=${encodeURIComponent(order.id)}&topic=order-support">Contact us</a></div>`;
   }
 
   function doneView(res){
@@ -100,10 +100,12 @@ const OrderInquiry = (function(){
   }
 
   function formView(order, inq){
-    const items = order.items || [];
+    // sarees already inside an earlier inquiry (open or refunded) cannot be sent again; a rejected one can
+    const taken = inq.unavailableOrderItemIds || [];
+    const items = (order.items || []).filter(i => !taken.includes(i.id));
     const prev = (inq.requests || [])[(inq.requests || []).length - 1];
     body().innerHTML = `
-      ${inq.secondChance ? `<div class="oi-notice is-second"><strong>This is your second and last chance.</strong>${prev && prev.adminNote ? `<p>Our note on your first inquiry: “${esc(prev.adminNote)}”</p>` : ''}<p>Clearer photos and a fuller description help us decide. After this inquiry our decision is final.</p></div>` : ''}
+      ${inq.extra ? `<div class="oi-notice is-second"><strong>Our team has opened another inquiry for this order.</strong><p>Choose the saree(s) you want to send, tell us what is wrong and add clear photos.</p></div>` : ''}${inq.secondChance ? `<div class="oi-notice is-second"><strong>This is your second and last chance.</strong>${prev && prev.adminNote ? `<p>Our note on your first inquiry: “${esc(prev.adminNote)}”</p>` : ''}<p>Clearer photos and a fuller description help us decide. After this inquiry our decision is final.</p></div>` : ''}
       <form id="oiForm" novalidate>
         <div class="form-field"><label for="oiType">What is your inquiry about?</label>
           <select id="oiType">${(inq.types || []).map(t => `<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('')}</select></div>

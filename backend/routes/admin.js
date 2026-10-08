@@ -18,7 +18,8 @@ const { sanitizeRich } = require('../utils/richText');
 const { splitOccasions, normalizeOccasions } = require('../utils/occasions');
 const { DEFAULT_ANNOUNCEMENT, DEFAULT_WEAVE_SECTION, validateAnnouncement, validateWeaveSection } = require('../utils/homeSections');
 const { runBackup, listBackups, BACKUP_DIR } = require('../utils/backup');
-const { RETURN_REASONS, computeReturnRefund } = require('../utils/returns');
+const { RETURN_REASONS, computeReturnRefund, getReturnPolicy } = require('../utils/returns');
+const { inquiryLink } = require('../utils/inquiryToken');
 const { sendEmail, sendOrderStatusEmail, emailConfigured, smsConfigured } = require('../utils/notify');
 const reviewReminders = require('../utils/reviewReminders');
 const { publicEmail } = require('../utils/instagramOrders');
@@ -879,8 +880,12 @@ async function shapeAdminOrder(o, { full, preloaded } = {}) {
   const fabricById = Object.fromEntries(fabrics.map(p => [p.id, p.fabric]));
   base.items.forEach(li => { li.fabric = fabricById[li.productId] || ''; });
   await attachSkus([base]);
+  const inquiryRows = must(await supabase.from('return_requests').select('id, attempt, part, status').eq('order_id', o.id).order('id'), 'shapeAdminOrder:inquiries');
+  const extraLive = Number(o.extra_inquiries || 0) > 0 && o.extra_inquiry_until && new Date(o.extra_inquiry_until).getTime() >= Date.now();
   return {
     ...base,
+    // the order's inquiries (each request is one group of sarees) and any extra inquiry an admin has allowed that is still waiting to be used
+    inquiry: { requests: inquiryRows.map(r => ({ id: r.id, attempt: r.attempt || 1, part: r.part || 1, status: r.status })), extraAllowed: extraLive ? Number(o.extra_inquiries) : 0, extraUntil: extraLive ? o.extra_inquiry_until : null },
     customerPhone: o.address_phone,
     address: {
       name: o.address_name, line1: o.address_line1, city: o.address_city,
@@ -1278,6 +1283,48 @@ router.post('/orders/:id/refund/razorpay', asyncRoute(async (req, res) => {
 // Deciding a pending cancellation request: approving here is the only place
 // that actually cancels + restocks the order now (see routes/orders.js,
 // which only ever writes a pending request, never cancels directly).
+// Lets ONE more order inquiry be sent for this order (e.g. the customer wrote in through Contact Us, or only part of their first
+// inquiry was approved). Reopens the inquiry window for the store's return-window days; the customer is e-mailed the link.
+router.post('/orders/:id/allow-inquiry', asyncRoute(async (req, res) => {
+  const order = must(await supabase.from('orders').select('*').eq('id', req.params.id).maybeSingle(), 'allowInquiry:order');
+  if (!order) return res.status(404).json({ message: 'Order not found.' });
+  if ((await computeStatus(order)) !== 'Delivered') return res.status(400).json({ message: 'Order inquiries open once the order has been delivered.' });
+  const policy = await getReturnPolicy();
+  if (!policy.enabled) return res.status(400).json({ message: 'Returns are switched off in Settings, so no inquiry can be sent.' });
+  const rows = must(await supabase.from('return_requests').select('id, status').eq('order_id', order.id), 'allowInquiry:requests');
+  if (rows.some(r => ['Requested', 'Approved', 'Received'].includes(r.status))) {
+    return res.status(400).json({ message: 'An inquiry for this order is still being handled. Finish it in Returns first.' });
+  }
+  const taken = rows.filter(r => r.status !== 'Rejected').map(r => r.id);
+  const takenItems = taken.length ? must(await supabase.from('return_request_items').select('order_item_id').in('return_id', taken), 'allowInquiry:taken') : [];
+  const orderItems = must(await supabase.from('order_items').select('id').eq('order_id', order.id), 'allowInquiry:items');
+  if (orderItems.length && orderItems.every(i => takenItems.some(t => t.order_item_id === i.id))) {
+    return res.status(400).json({ message: 'Every saree of this order is already part of an inquiry that was refunded, so there is nothing left to send.' });
+  }
+
+  const until = new Date(Date.now() + policy.windowDays * 864e5).toISOString();
+  const credits = Number(order.extra_inquiries || 0) > 0 && order.extra_inquiry_until && new Date(order.extra_inquiry_until).getTime() >= Date.now() ? Number(order.extra_inquiries) : 0;
+  must(await supabase.from('orders').update({ extra_inquiries: credits + 1, extra_inquiry_until: until }).eq('id', order.id), 'allowInquiry:update');
+  await record(req, 'allowed another inquiry', 'order', order.id, { extraInquiries: credits }, { extraInquiries: credits + 1, until });
+
+  const customer = order.user_id ? must(await supabase.from('users').select('name, email').eq('id', order.user_id).maybeSingle(), 'allowInquiry:customer') : null;
+  if (customer && customer.email) {
+    const first = String(customer.name || '').trim().split(/\s+/)[0] || 'there';
+    const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    await sendEmail({
+      to: customer.email, subject: `You can send another inquiry for order ${order.id}`, orderId: order.id, userId: order.user_id,
+      html: `<div style="font-family:Georgia,serif;max-width:480px;margin:0 auto;color:#2b1015;">
+        <h2 style="color:#7A1F2B;">Another inquiry is open for you</h2>
+        <p>Hi ${esc(first)},</p>
+        <p>Thank you for getting in touch. Our team has opened <strong>another inquiry</strong> for order <strong>${esc(order.id)}</strong>. You can send it here until ${esc(new Date(until).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }))}:</p>
+        <p><a href="${esc(inquiryLink(order.id))}" style="display:inline-block;background:#ad3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:999px;font-family:Arial,sans-serif;font-weight:bold;">Send my inquiry</a></p>
+        <p style="font-size:12.5px;color:#8a6f6f;">You will find it under Account &rarr; Order History too (the Order Inquiry button on this order).</p>
+      </div>`
+    });
+  }
+  res.json({ ok: true, extraAllowed: credits + 1, extraUntil: until });
+}));
+
 router.put('/orders/:id/cancel-decision', asyncRoute(async (req, res) => {
   const { approve, adminNote } = req.body || {};
   const order = must(await supabase.from('orders').select('*').eq('id', req.params.id).maybeSingle(), 'decideCancel:lookup');
@@ -1388,7 +1435,7 @@ async function shapeAdminReturn(r, siblingsMap, context) {
     part: r.part || 1,
     partCount: siblings.length || 1,
     siblings,
-    maxAttempts: INQUIRY_MAX_ATTEMPTS,
+    maxAttempts: Math.max(INQUIRY_MAX_ATTEMPTS, r.attempt || 1),
     orderTotal: order ? order.total : null,
     orderPayment: order ? order.payment : null,
     customerName: customer ? customer.name : null,

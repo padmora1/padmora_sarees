@@ -23,4 +23,4 @@ function inquiryLink(orderId) {
   return `${SITE_URL()}/order-inquiry?token=${encodeURIComponent(inquiryToken(orderId))}`;
 }
 
-module.exports = { inquiryToken, readInquiryToken, inquiryLink };
+module.exports = { inquiryToken, readInquiryToken, inquiryLink, siteUrl: SITE_URL };

@@ -14,7 +14,6 @@ const STATIC_PAGES = [
   { path: '/trousseau', priority: '0.5' },
   { path: '/upcoming-sarees', priority: '0.5' },
   { path: '/about', priority: '0.6' },
-  { path: '/our-weaves', priority: '0.6' },
   { path: '/contact', priority: '0.4' },
   { path: '/faq', priority: '0.4' },
   { path: '/policies', priority: '0.4' }

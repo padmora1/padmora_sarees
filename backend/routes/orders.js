@@ -83,7 +83,7 @@ async function shapeOrder(order) {
     returnRequestId: latestRequest ? latestRequest.id : null,
     returnParts: latestParts.length > 1 ? latestParts.map(r => ({ status: r.status, adminNote: r.adminNote || null, orderItemIds: r.orderItemIds })) : null,
     canRequestReturn: inquiry.eligible,
-    inquiry: { windowDays: inquiry.policy.windowDays, eligible: inquiry.eligible, reason: inquiry.reason, secondChance: !!inquiry.secondChance, attempt: inquiry.attempt || inquiry.attemptsUsed, attemptsUsed: inquiry.attemptsUsed, maxAttempts: inquiry.maxAttempts, finalRejected: !!inquiry.finalRejected, activeStatus: inquiry.activeStatus || null, deadline: inquiry.deadline || null }
+    inquiry: { windowDays: inquiry.policy.windowDays, eligible: inquiry.eligible, reason: inquiry.reason, secondChance: !!inquiry.secondChance, attempt: inquiry.attempt || inquiry.attemptsUsed, attemptsUsed: inquiry.attemptsUsed, maxAttempts: inquiry.maxAttempts, finalRejected: !!inquiry.finalRejected, extra: !!inquiry.extra, activeStatus: inquiry.activeStatus || null, deadline: inquiry.deadline || null }
   };
 }
 
