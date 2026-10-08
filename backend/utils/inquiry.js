@@ -50,7 +50,7 @@ function explain(state) {
     case 'not_delivered': return 'Order inquiries open once your order has been delivered.';
     case 'returns_off': return 'Returns are not being accepted at the moment. Please contact us.';
     case 'window_closed': return `The ${state.policy.windowDays}-day window for an order inquiry has closed for this order. Please contact us if you need help.`;
-    case 'already_requested': return `You already have an inquiry for this order (${state.activeStatus}).`;
+    case 'already_requested': return state.activeStatus === 'Refunded' ? 'This order has already been returned and refunded.' : `You already have an inquiry for this order (${state.activeStatus}).`;
     case 'final_rejected': return 'Both of your inquiries for this order were reviewed and could not be approved. Please contact us if you need more help.';
     default: return 'An inquiry cannot be made for this order.';
   }

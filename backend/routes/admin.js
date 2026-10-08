@@ -998,6 +998,10 @@ router.put('/orders/:id/status', asyncRoute(async (req, res) => {
   if (order.cancelled_at) {
     return res.status(409).json({ message: 'This order has been cancelled, so its status cannot be changed.' });
   }
+  // Returned and refunded: the money has gone back, so the order's story is over - same as a cancelled order, its status is final.
+  if ((await loadRefundsByOrder([order.id]))[order.id]) {
+    return res.status(409).json({ message: 'This order has been returned and refunded, so its status can no longer be changed.' });
+  }
   // The customer has asked to cancel: the order must not move on (to Shipped, say) until that request has been approved or
   // rejected - otherwise the request could be answered after the saree has already left. (The bulk upload skips these too.)
   if (order.cancel_request_status === 'Requested') {
@@ -1028,6 +1032,7 @@ async function classifyBulk(ids, target) {
     orders.forEach(o => found.set(o.id, o));
   }
   const targetIdx = STAGE_NAMES.indexOf(target);
+  const refundedByOrder = await loadRefundsByOrder(ids);
   const rows = [];
   for (const id of ids) {
     const o = found.get(id);
@@ -1035,6 +1040,7 @@ async function classifyBulk(ids, target) {
     const base = { orderId: id, customer: o.address_name || o.customer_name || '' };
     const current = await computeStatus(o);
     if (current === 'Cancelled') { rows.push({ ...base, outcome: 'skip', current, message: 'Order is cancelled.' }); continue; }
+    if (refundedByOrder[id]) { rows.push({ ...base, outcome: 'skip', current, message: 'Order was returned and refunded — its status is final.' }); continue; }
     if (o.cancel_request_status === 'Requested') { rows.push({ ...base, outcome: 'skip', current, message: 'Customer has requested a cancellation — review it first.' }); continue; }
     if (current === target) { rows.push({ ...base, outcome: 'skip', current, message: `Already ${target}.` }); continue; }
     if (STAGE_NAMES.indexOf(current) > targetIdx) { rows.push({ ...base, outcome: 'skip', current, message: `Already ${current} — won't move it back to ${target}.` }); continue; }
@@ -1615,6 +1621,11 @@ router.put('/settings/tracking', asyncRoute(async (req, res) => {
   }
   const now = await getTrackingMode();
   res.json({ timing: await getSetting('tracking_timing', {}), mode: now.mode, since: now.since ? new Date(now.since).toISOString() : null });
+}));
+
+// ---- Is Razorpay set up correctly on THIS server? (Super Admin only: it sits under /settings) ----
+router.post('/settings/razorpay-check', asyncRoute(async (req, res) => {
+  res.json(await razorpayUtil.checkConnection());
 }));
 
 // ---- Store / Shipping settings (Phase 7) ----

@@ -23,6 +23,18 @@ function requirePaymentsConfigured(req, res, next) {
 }
 router.use(requirePaymentsConfigured);
 
+// Says WHY a payment could not be started in the server log (a rejected key, Razorpay down...), where the store owner can see it.
+function logGatewayError(err) {
+  const rz = err && err.error;
+  if (rz && (err.statusCode === 401 || /authentication failed/i.test(rz.description || ''))) {
+    console.error(`[razorpay] payment NOT started: Razorpay rejected the keys on this server (key ${razorpay.KEY_ID}): ${rz.description}. Set a matching RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET pair and restart.`);
+  } else if (rz) {
+    console.error(`[razorpay] payment NOT started: ${err.statusCode || ''} ${rz.code || ''} ${rz.description || ''}`.trim());
+  } else {
+    console.error('[payments] payment NOT started:', err);
+  }
+}
+
 function validateAddress(address, { requirePhone } = {}) {
   if (!address || !address.line1 || !address.city || !address.pincode) return 'A complete shipping address is required.';
   if (requirePhone && !address.phone) return 'A complete shipping address is required.';
@@ -70,7 +82,7 @@ router.post('/razorpay/order', requireAuth, async (req, res) => {
     res.json({ razorpayOrderId: rzpOrder.id, amount: total, currency: 'INR', keyId: razorpay.KEY_ID });
   } catch (err) {
     if (err instanceof OrderError) return res.status(err.status).json({ message: err.message });
-    console.error(err);
+    logGatewayError(err);
     res.status(500).json({ message: 'Could not start payment. Please try again.' });
   }
 });
@@ -102,7 +114,7 @@ router.post('/razorpay/guest-order', async (req, res) => {
     res.json({ razorpayOrderId: rzpOrder.id, amount: total, currency: 'INR', keyId: razorpay.KEY_ID });
   } catch (err) {
     if (err instanceof OrderError) return res.status(err.status).json({ message: err.message });
-    console.error(err);
+    logGatewayError(err);
     res.status(500).json({ message: 'Could not start payment. Please try again.' });
   }
 });

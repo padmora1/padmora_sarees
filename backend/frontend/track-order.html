@@ -110,6 +110,7 @@
           : (stages[stages.length-1].at || order.deliveredAt
               ? `<p class="eta-line delivered-line">Delivered on <strong>${fmtDateTime(stages[stages.length-1].at || order.deliveredAt)}</strong> 🎉</p>`
               : `<p class="eta-line delivered-line">Delivered 🎉</p>`)}
+        ${returnedBoxHTML(order)}
         ${order.cancelRequestStatus === 'Requested' ? `<p class="eta-line" style="color:var(--maroon);">⏳ Cancellation requested — pending review</p>`
           : order.cancelRequestStatus === 'Rejected' ? `<p class="eta-line" style="color:var(--ink-soft);">Cancellation request rejected${order.cancelAdminNote ? ': '+order.cancelAdminNote : ''}</p>` : ''}
 
@@ -137,7 +138,7 @@
         ${orderSummaryHTML(order)}
       </div>`;
 
-    if(isDelivered && !celebrated){
+    if(isDelivered && !celebrated && !order.returnRefund){
       celebrated = true;
       launchConfetti();
     }
