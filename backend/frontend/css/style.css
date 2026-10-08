@@ -649,6 +649,10 @@ html.iv-open{overflow:hidden;}
 .form-field label{font-size:12px;color:var(--ink-soft);display:block;margin-bottom:6px;}
 .form-field input,.form-field select,.form-field textarea{width:100%;border:1px solid rgba(173,59,92,0.25);padding:12px 14px;border-radius:2px;font-size:13.5px;background:var(--white);}
 .form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+/* a field that failed its check: red edge and the reason right under it (checkout, address book, sign-up) */
+.form-field input.invalid,.form-field select.invalid{border-color:var(--maroon);background:rgba(173,59,92,0.05);}
+.field-error{display:block;color:var(--maroon);font-size:12px;line-height:1.4;margin-top:5px;}
+.field-error:empty{display:none;}
 .form-note{text-align:center;font-size:13px;color:var(--ink-soft);margin-top:20px;}
 .form-note a{color:var(--maroon);text-decoration:underline;}
 .form-error{background:rgba(173,59,92,0.08);color:var(--maroon-deep);font-size:13px;padding:10px 14px;border-radius:2px;margin-bottom:16px;display:none;}
