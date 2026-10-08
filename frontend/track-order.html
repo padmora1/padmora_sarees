@@ -267,7 +267,7 @@
       <div class="summary-card" style="position:static;margin-top:22px;">
         <h3 style="font-size:15px;margin-bottom:6px;">Something not right with your saree?</h3>
         <p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">${text}</p>
-        ${button ? `<button type="button" class="btn btn-primary btn-sm" id="inqBtn">Order Inquiry</button>` : `<a href="/contact" class="btn btn-outline btn-sm">Contact us</a>`}
+        ${button ? `<button type="button" class="btn btn-primary btn-sm" id="inqBtn">Order Inquiry</button>` : `<a href="/contact?order=${encodeURIComponent(order.id)}&topic=order-support" class="btn btn-outline btn-sm">Contact us</a>`}
       </div>`;
     const b = document.getElementById('inqBtn');
     if(b) b.addEventListener('click', () => OrderInquiry.open(inquiryToken ? { token: inquiryToken, onDone: () => loadOrder(order.id, { silent:true, contact: guestContact }) } : { order, onDone: () => loadOrder(order.id, { silent:true }) }));

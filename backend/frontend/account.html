@@ -248,12 +248,15 @@
   // The one-line status shown under a delivered order that has an inquiry.
   function inquiryLine(o){
     const i = o.inquiry || {};
+    const extraMsg = i.extra ? 'Our team has opened another inquiry for this order — press Order Inquiry' : '';
     // decided saree by saree: say where each group of sarees stands
     if(o.returnParts && o.returnStatus !== 'Rejected'){
       const say = { Requested: 'waiting for our team to review it', Approved: 'approved — please ship it back to us', Received: 'received — refund being processed', Refunded: 'refunded', Rejected: 'not approved' };
       const names = p => (p.orderItemIds || []).map(id => { const it = (o.items || []).find(x => x.id === id); return it ? it.name : ''; }).filter(Boolean).join(', ');
-      return o.returnParts.map(p => escapeHtml(names(p) || 'Saree(s)') + ' — ' + (say[p.status] || escapeHtml(p.status))).join('<br>');
+      const lines = o.returnParts.map(p => escapeHtml(names(p) || 'Saree(s)') + ' — ' + (say[p.status] || escapeHtml(p.status))).join('<br>');
+      return (extraMsg ? extraMsg + '<br>' : '') + lines;
     }
+    if(extraMsg) return extraMsg;
     const n = i.maxAttempts ? ` (${i.attempt || i.attemptsUsed} of ${i.maxAttempts})` : '';
     if(o.returnStatus === 'Rejected'){
       return i.finalRejected ? 'Inquiry not approved — this was the final decision'
@@ -299,7 +302,7 @@
           </div>
           ${refundBoxHTML(o)}
           ${returnedBoxHTML(o)}
-          ${o.returnStatus ? `<p style="font-size:12.5px;color:var(--maroon);margin-top:10px;">↩ ${inquiryLine(o)}</p>` : ''}
+          ${o.returnStatus ? `<p style="font-size:12.5px;color:var(--maroon);margin-top:10px;">↩ ${inquiryLine(o)}${o.inquiry && !o.inquiry.eligible && (o.returnStatus === 'Rejected' || o.returnStatus === 'Refunded' || o.returnParts) ? ` · <a href="/contact?order=${encodeURIComponent(o.id)}&topic=order-support" style="color:var(--maroon);text-decoration:underline;">Need more help? Contact us</a>` : ''}</p>` : ''}
           ${o.cancelRequestStatus === 'Requested' ? `<p style="font-size:12.5px;color:var(--maroon);margin-top:10px;">⏳ Cancellation requested — pending review</p>`
             : o.cancelRequestStatus === 'Rejected' ? `<p style="font-size:12.5px;color:var(--ink-soft);margin-top:10px;">Cancellation request rejected${o.cancelAdminNote ? ': '+o.cancelAdminNote : ''}</p>` : ''}
           <div class="order-actions">

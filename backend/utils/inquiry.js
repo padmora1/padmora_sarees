@@ -3,6 +3,8 @@
 //  - only a delivered order, only inside the return window (policy: Admin -> Settings, 7 days by default);
 //  - the customer picks the kind of inquiry, the saree(s), the reason, writes what is wrong and adds at least 3 photos;
 //  - an admin approves or rejects it; a rejected inquiry gets ONE more try (a second and last chance), also within a window;
+//  - an admin can also allow EXTRA inquiries for one order (orders.extra_inquiries, usable until orders.extra_inquiry_until) - for the
+//    customer who wrote in through Contact Us, or whose first inquiry was only partly approved;
 //  - once approved, the existing return -> received -> refund steps in the admin take over.
 const fs = require('fs');
 const path = require('path');
@@ -10,7 +12,7 @@ const { supabase, must, getSetting } = require('./db');
 const { computeStatus } = require('./orderStatus');
 const { isCustomerPhotoUrl } = require('./storage');
 const { sendEmail } = require('./notify');
-const { inquiryLink } = require('./inquiryToken');
+const { inquiryLink, siteUrl } = require('./inquiryToken');
 const { RETURN_REASONS, INQUIRY_REASONS, categoryForReason, getReturnPolicy, isWithinReturnWindow, computeReturnRefund } = require('./returns');
 
 const INQUIRY_TYPES = [{ key: 'return_refund', label: 'Return and refund' }];
@@ -34,11 +36,29 @@ async function getInquiryState(order, opts = {}) {
   }
   const requests = rows.map(r => ({ id: r.id, attempt: r.attempt, part: r.part || 1, status: r.status, adminNote: r.admin_note, decidedAt: r.decided_at, requestedAt: r.requested_at, orderItemIds: itemIdsByReturn[r.id] || [] }));
   const attemptsUsed = rows.length ? Math.max(...rows.map(r => r.attempt)) : 0;
-  const base = { orderStatus, policy: { enabled: policy.enabled, windowDays: policy.windowDays }, maxAttempts: MAX_ATTEMPTS, minPhotos: MIN_PHOTOS, maxPhotos: MAX_PHOTOS, requests, attemptsUsed };
+  const IN_PROGRESS = ['Requested', 'Approved', 'Received'];
+  // sarees already inside an inquiry that is open or finished (a rejected saree may be sent again)
+  const takenReturnIds = rows.filter(r => r.status !== 'Rejected').map(r => r.id);
+  const unavailableOrderItemIds = [...new Set(takenReturnIds.flatMap(id => itemIdsByReturn[id] || []))];
+  const base = { orderStatus, policy: { enabled: policy.enabled, windowDays: policy.windowDays }, maxAttempts: Math.max(MAX_ATTEMPTS, attemptsUsed), minPhotos: MIN_PHOTOS, maxPhotos: MAX_PHOTOS, requests, attemptsUsed, unavailableOrderItemIds };
   const lastRows = rows.filter(r => r.attempt === attemptsUsed);
   const open = rows.filter(r => r.status !== 'Rejected');
-  if (open.length) return { ...base, eligible: false, reason: 'already_requested', activeStatus: summarizeStatus(open.map(r => r.status)) };
-  if (lastRows.length && attemptsUsed >= MAX_ATTEMPTS) return { ...base, eligible: false, reason: 'final_rejected', finalRejected: true };
+  const inProgress = rows.filter(r => IN_PROGRESS.includes(r.status));
+  if (inProgress.length) return { ...base, eligible: false, reason: 'already_requested', activeStatus: summarizeStatus(inProgress.map(r => r.status)) };
+
+  // extra inquiries an admin allowed for this order (still open, and not yet used up)
+  const extraUntil = order.extra_inquiry_until ? new Date(order.extra_inquiry_until) : null;
+  const extra = Number(order.extra_inquiries || 0) > 0 && !!extraUntil && extraUntil.getTime() >= Date.now();
+  const viaAdmin = async blocked => {
+    // only a delivered order with returns switched on; and at least one saree must still be free to send
+    if (!extra || orderStatus !== 'Delivered' || !policy.enabled) return blocked;
+    const all = must(await supabase.from('order_items').select('id').eq('order_id', order.id), 'inquiryState:orderItems');
+    if (all.every(i => unavailableOrderItemIds.includes(i.id))) return blocked;
+    return { ...base, maxAttempts: Math.max(MAX_ATTEMPTS, attemptsUsed + 1), eligible: true, reason: null, attempt: attemptsUsed + 1, secondChance: false, extra: true, deadline: extraUntil.toISOString(), reasons: INQUIRY_REASONS, types: INQUIRY_TYPES };
+  };
+
+  if (open.length) return viaAdmin({ ...base, eligible: false, reason: 'already_requested', activeStatus: summarizeStatus(open.map(r => r.status)) });
+  if (lastRows.length && attemptsUsed >= MAX_ATTEMPTS) return viaAdmin({ ...base, eligible: false, reason: 'final_rejected', finalRejected: true });
   if (orderStatus !== 'Delivered') return { ...base, eligible: false, reason: 'not_delivered' };
   if (!policy.enabled) return { ...base, eligible: false, reason: 'returns_off' };
   const secondChance = !!lastRows.length;   // the only way to get here with a row is a first attempt that was rejected in full
@@ -47,7 +67,7 @@ async function getInquiryState(order, opts = {}) {
   const chanceEnds = secondChance && lastDecided ? new Date(new Date(lastDecided).getTime() + policy.windowDays * DAY) : null;
   const inWindow = await isWithinReturnWindow(order);
   const inChance = !!chanceEnds && chanceEnds.getTime() >= Date.now();
-  if (!inWindow && !inChance) return { ...base, eligible: false, reason: 'window_closed' };
+  if (!inWindow && !inChance) return viaAdmin({ ...base, eligible: false, reason: 'window_closed' });
   const deadline = [windowEnds, chanceEnds].filter(Boolean).sort((a, b) => b - a)[0] || null;
   return { ...base, eligible: true, reason: null, attempt: attemptsUsed + 1, secondChance, deadline: deadline ? deadline.toISOString() : null, reasons: INQUIRY_REASONS, types: INQUIRY_TYPES };
 }
@@ -102,6 +122,7 @@ async function createInquiry({ order, userId, body }) {
     const oi = byId.get(Number(sel.orderItemId));
     const qty = Number(sel.qty);
     if (!oi || seen.has(oi.id)) return { error: { status: 400, message: 'That saree is not part of this order.' } };
+    if ((state.unavailableOrderItemIds || []).includes(oi.id)) return { error: { status: 400, message: `${oi.name} is already part of an earlier inquiry for this order.` } };
     if (!Number.isInteger(qty) || qty < 1 || qty > oi.qty) return { error: { status: 400, message: `Choose a valid quantity for ${oi.name} (up to ${oi.qty}).` } };
     seen.add(oi.id);
     lines.push({ orderItemId: oi.id, price: oi.price, qty });
@@ -113,12 +134,21 @@ async function createInquiry({ order, userId, body }) {
   // has nothing to send back to, so the team asks for payout details after approving.)
   const cod = order.payment === 'COD';
 
+  // An inquiry the admin allowed for this order uses up one of its credits first; the update only succeeds while one is left.
+  if (state.extra) {
+    const used = must(await supabase.from('orders').update({ extra_inquiries: Number(order.extra_inquiries) - 1 })
+      .eq('id', order.id).eq('extra_inquiries', Number(order.extra_inquiries)).gt('extra_inquiries', 0).select('id'), 'createInquiry:useExtra');
+    if (!used.length) return { error: { status: 409, message: 'This inquiry has just been used. Please refresh and check your order.' } };
+  }
   const rpc = await supabase.rpc('create_return_request', {
     p_order_id: order.id, p_user_id: userId, p_reason: reason, p_reason_category: category, p_reason_detail: text,
     p_refund_method: cod ? 'bank_transfer' : 'original', p_refund_account_detail: cod ? 'To be collected by Padmora (Cash on Delivery order)' : null,
     p_computed_refund_amount: refund, p_items: lines.map(l => ({ orderItemId: l.orderItemId, qty: l.qty })), p_photo_urls: photos, p_attempt: state.attempt
   });
-  if (rpc.error) throw new Error(rpc.error.message);
+  if (rpc.error) {
+    if (state.extra) await supabase.from('orders').update({ extra_inquiries: Number(order.extra_inquiries) }).eq('id', order.id);   // not stored: give the credit back
+    throw new Error(rpc.error.message);
+  }
   const request = must(await supabase.from('return_requests').select('*').eq('id', rpc.data).single(), 'createInquiry:reread');
   notifySubmitted(order, userId, request, state).catch(() => {});
   return { request, state };
@@ -150,6 +180,8 @@ async function notifySubmitted(order, userId, request, state) {
 
 // The e-mail a customer gets when an admin approves or rejects their inquiry. A first rejection carries the private link
 // for the second (last) chance.
+const contactLink = orderId => `${siteUrl()}/contact?order=${encodeURIComponent(orderId)}&topic=order-support`;
+
 function decisionEmail({ approve, name, orderId, adminNote, attempt, itemsText, allRejected }) {
   const first = String(name || '').trim().split(/\s+/)[0] || 'there';
   const subject = approve ? `Your inquiry for order ${orderId} was approved` : `Update on your inquiry for order ${orderId}`;
@@ -167,6 +199,7 @@ function decisionEmail({ approve, name, orderId, adminNote, attempt, itemsText, 
     <p><a href="${esc(inquiryLink(orderId))}" style="display:inline-block;background:#ad3b5c;color:#fff;text-decoration:none;padding:12px 22px;border-radius:999px;font-family:Arial,sans-serif;font-weight:bold;">Send my second inquiry</a></p>
     <p style="font-size:12px;color:#8a6f6f;">It is available for 7 days. After that second inquiry, our decision is final.</p>` : ''}
     ${!approve && !again && everyPartRejected ? `<p style="color:#6f5a5c;">This was your second inquiry for this order, so we cannot take it further here. If you think we have got something wrong, just reply to this e-mail.</p>` : ''}
+    ${!approve ? `<p style="font-size:13px;color:#6f5a5c;">Questions about this decision, or need us to look again? <a href="${esc(contactLink(orderId))}" style="color:#7A1F2B;">Contact us about order ${esc(orderId)}</a> &mdash; the order number is filled in for you, and we can open another inquiry for you if it is needed.</p>` : ''}
   </div>`;
   return { subject, html };
 }

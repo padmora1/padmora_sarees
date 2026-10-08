@@ -442,8 +442,9 @@
   // places like a customer's order history that only show a summary line.
   async function viewOrderFromElsewhere(orderId){
     orderFilter = 'all';
-    document.getElementById('orderSearchBox').value = '';
-    switchTab('orders');
+    switchTab('orders');   // first: the search box only exists once the Orders screen has been opened
+    const searchBox = document.getElementById('orderSearchBox');
+    if(searchBox && searchBox.value){ searchBox.value = ''; searchBox.dispatchEvent(new Event('input', { bubbles: true })); }
     await loadOrders();
     openOrderId = orderId;
     renderOrdersTable();
@@ -1791,6 +1792,14 @@
             ${o.returnRefund.returns.map(r => `<p style="font-size:12.5px;color:var(--ink-soft);margin-top:4px;">Return #${r.id} · ${money(r.amount)}${r.method ? ' · ' + escHTML(String(r.method).replace(/_/g, ' ')) : ''}${r.refundedAt ? ' · ' + new Date(r.refundedAt).toLocaleString('en-IN') : ''}</p>`).join('')}
           </div>` : ''}
 
+          ${o.status === 'Delivered' && o.inquiry ? `
+          <div class="detail-block" data-inquiry-block>
+            <h5>Order inquiries</h5>
+            ${o.inquiry.requests.length ? o.inquiry.requests.map(r => `<p style="font-size:12.5px;">Inquiry ${r.attempt}${o.inquiry.requests.filter(x => x.attempt === r.attempt).length > 1 ? ' · part ' + r.part : ''} · request #${r.id} · <span class="status-pill status-${r.status==='Rejected'?'cancelled':(r.status==='Refunded'?'confirmed':'pending')}">${r.status}</span></p>`).join('') : `<p style="font-size:12.5px;color:var(--ink-soft);">The customer has not sent an inquiry for this order.</p>`}
+            <p style="font-size:12.5px;color:var(--ink-soft);margin:8px 0;">${o.inquiry.extraAllowed ? `<strong style="color:var(--teal);">Another inquiry is open for the customer</strong> until ${new Date(o.inquiry.extraUntil).toLocaleDateString('en-IN', {day:'numeric', month:'short', year:'numeric'})} (${o.inquiry.extraAllowed} allowed, not used yet).` : 'The customer normally gets two inquiries. If they wrote to you, you can let them send another.'}</p>
+            <button class="btn btn-sm btn-outline" id="allowInquiryBtn">Allow another inquiry</button>
+          </div>` : ''}
+
           ${o.status === 'Cancelled' ? `
           <div class="detail-block" style="border-color:var(--maroon);">
             <h5>Cancellation</h5>
@@ -1837,6 +1846,14 @@
       document.getElementById('closeOrderDetail').addEventListener('click', ()=>{ openOrderId = null; renderOrderDetail(); renderOrdersTable(); });
       document.getElementById('printPackingSlip').addEventListener('click', ()=>{
         window.open('/packing-slip?id=' + encodeURIComponent(o.id), '_blank');
+      });
+      const allowBtn = document.getElementById('allowInquiryBtn');
+      if(allowBtn) allowBtn.addEventListener('click', async ()=>{
+        const ok = await showConfirmDialog('The customer is e-mailed a link to send one more inquiry for this order, open for the next few days (the return window set in Settings). Sarees already refunded cannot be sent again.', {title:'Allow another inquiry?', confirmLabel:'Allow'});
+        if(!ok) return;
+        allowBtn.disabled = true;
+        try{ await adminApiFetch('/admin/orders/' + o.id + '/allow-inquiry', {method:'POST'}); toast('Another inquiry allowed — the customer has been e-mailed'); await renderOrderDetail(); }
+        catch(e){ toast(e.message, 'error'); allowBtn.disabled = false; }
       });
       const refundSel = document.getElementById('refundStatusSelect');
       if(refundSel) refundSel.addEventListener('change', async ()=>{
@@ -2185,7 +2202,7 @@
           <div class="detail-block" style="border-color:var(--gold);">
             <h5>Decision</h5>
             ${partNote}
-            <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">${(r.attempt || 1) >= (r.maxAttempts || 2) ? '<strong style="color:var(--maroon);">This is the customer’s second and last inquiry.</strong> Rejecting it is final — they cannot send another for this order.' : (pickable || r.partCount > 1) ? 'Rejecting e-mails the customer your note. They get <strong>one more chance</strong> (a second inquiry) only if none of the sarees in this inquiry end up approved.' : 'If you reject this, the customer is e-mailed your note and gets <strong>one more chance</strong> (a second inquiry). Approving starts the return and refund.'}</p>
+            <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;">${(r.attempt || 1) >= (r.maxAttempts || 2) ? '<strong style="color:var(--maroon);">This is the customer’s second and last inquiry.</strong> Rejecting it is final unless you open another inquiry for them from the order.' : (pickable || r.partCount > 1) ? 'Rejecting e-mails the customer your note. They get <strong>one more chance</strong> (a second inquiry) only if none of the sarees in this inquiry end up approved.' : 'If you reject this, the customer is e-mailed your note and gets <strong>one more chance</strong> (a second inquiry). Approving starts the return and refund.'}</p>
             <div class="form-field"><label>Note (required to reject, optional to approve — the customer sees this)</label>
               <textarea class="admin-input" id="retDecisionNote" rows="2"></textarea>
             </div>
@@ -4446,7 +4463,7 @@
     if(messagesTools) return;
     messagesTools = AdminLists.createTools(document.getElementById('messageTools'), {
       searchId: 'messageSearchBox', noun: 'messages',
-      placeholder: 'Search customer name, e-mail, subject, message…',
+      placeholder: 'Search customer name, e-mail, order ID, subject, message…',
       sorts: [{value:'new',label:'Newest first'},{value:'old',label:'Oldest first'}],
       extraHTML: '<label>Show <select class="admin-input" id="messageFilter"><option value="all">All messages</option><option value="unread">Unread</option><option value="noreply">Not replied yet</option><option value="replied">Replied</option></select></label>',
       onChange: renderMessagesList, exportCsv: exportMessagesCsv
@@ -4459,7 +4476,7 @@
     const rows = messagesCache.filter(m =>
       AdminLists.inRange(m.created_at, t.state.from, t.state.to) &&
       (f === 'all' || (f === 'unread' && !m.read) || (f === 'noreply' && !m.admin_reply) || (f === 'replied' && !!m.admin_reply)) &&
-      AdminLists.matches(groups, [m.name, m.email, m.subject, m.message, m.admin_reply].join(' ')));
+      AdminLists.matches(groups, [m.name, m.email, m.subject, m.message, m.admin_reply, m.order_id].join(' ')));
     const by = { new: (x, y) => new Date(y.created_at) - new Date(x.created_at), old: (x, y) => new Date(x.created_at) - new Date(y.created_at) };
     return rows.sort(by[t.state.sort] || by.new);
   }
@@ -4467,8 +4484,8 @@
     const rows = visibleMessages();
     if(!rows.length){ toast('Nothing to export for this search and date range.', 'error'); return; }
     AdminLists.downloadCsv('padmora-messages-' + AdminLists.today() + '.csv',
-      ['Date','Name','E-mail','Subject','Message','Read','Your reply','Replied at'],
-      rows.map(m => [new Date(m.created_at).toLocaleString('en-IN'), m.name, m.email, m.subject, m.message, m.read ? 'Yes' : 'No', m.admin_reply || '', m.replied_at ? new Date(m.replied_at).toLocaleString('en-IN') : '']));
+      ['Date','Name','E-mail','Subject','Order ID','Message','Read','Your reply','Replied at'],
+      rows.map(m => [new Date(m.created_at).toLocaleString('en-IN'), m.name, m.email, m.subject, m.order_id || '', m.message, m.read ? 'Yes' : 'No', m.admin_reply || '', m.replied_at ? new Date(m.replied_at).toLocaleString('en-IN') : '']));
     toast(rows.length + ' message' + (rows.length === 1 ? '' : 's') + ' exported');
   }
 
@@ -4487,6 +4504,8 @@
     const groups = messagesTools.groups();
     const hl = text => AdminLists.highlight(text, groups);
     messagesTools.setCount(messages.length, messagesCache.length);
+    const ordersNav = document.querySelector('.account-nav button[data-tab="orders"]');
+    const canOpenOrders = !!ordersNav && ordersNav.style.display !== 'none';   // a role without the Orders screen sees the number only
     try{
       document.getElementById('messagesList').innerHTML = messages.length ? messages.map(m=>`
         <div class="order-card" style="${!m.read?'border-color:var(--maroon);':''}">
@@ -4494,7 +4513,7 @@
             <span><strong>${hl(m.name)}</strong> · ${hl(m.email)}</span>
             <span style="font-size:11px;">${AdminLists.fmtDateTime(m.created_at)}</span>
           </div>
-          <p style="font-size:12.5px;color:var(--gold);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">${hl(m.subject)}</p>
+          <p style="font-size:12.5px;color:var(--gold);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">${hl(m.subject)}${m.order_id ? (canOpenOrders ? ` · <a href="#" class="msg-order-link" data-open-order="${escHTML(m.order_id)}" title="Open this order" style="color:var(--maroon);text-decoration:underline;font-weight:600;">Order #${hl(m.order_id)}</a>` : ` · Order #${hl(m.order_id)}`) : ''}</p>
           <p style="font-size:13.5px;color:var(--ink-soft);">${hl(m.message)}</p>
           ${!m.read ? `<div class="cancel-order-btn" data-read="${m.id}" style="color:var(--teal);">Mark as read</div>` : ''}
           ${m.admin_reply ? `<div class="detail-block" style="margin-top:10px;"><h5>Your reply${m.replied_at?' — '+new Date(m.replied_at).toLocaleString('en-IN'):''}</h5><p style="font-size:13px;">${escHTML(m.admin_reply)}</p></div>` : `
@@ -4504,6 +4523,7 @@
           </div>`}
         </div>`).join('') : `<p style="color:var(--ink-soft);">${messagesCache.length ? 'No messages match this search, filter and date range.' : 'No messages yet.'}</p>`;
 
+      document.querySelectorAll('.msg-order-link').forEach(a=>a.addEventListener('click', e=>{ e.preventDefault(); viewOrderFromElsewhere(a.dataset.openOrder); }));
       document.querySelectorAll('[data-read]').forEach(el=>el.addEventListener('click', async ()=>{
         try{ await adminApiFetch('/admin/contact/' + el.dataset.read + '/read', {method:'PUT'}); loadMessages(); }
         catch(e){ toast(e.message, 'error'); }

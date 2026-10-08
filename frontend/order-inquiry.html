@@ -80,8 +80,8 @@
       ${last ? `<p style="font-size:13.5px;color:var(--maroon);margin:16px 0 6px;">↩ Inquiry ${last.attempt} of ${inquiry.maxAttempts}: ${esc(LABEL[last.status] || last.status)}${last.adminNote ? ' — “' + esc(last.adminNote) + '”' : ''}</p>` : ''}
       <div style="margin-top:18px;">
         ${inquiry.eligible
-          ? `<button type="button" class="btn btn-primary" id="openInq">${inquiry.secondChance ? 'Send my second inquiry' : 'Start an order inquiry'}</button>`
-          : `<div class="oi-notice"><p>${esc(inquiry.message || '')}</p></div><a href="/contact" class="btn btn-primary btn-sm" style="margin-top:6px;">Contact us</a>`}
+          ? `<button type="button" class="btn btn-primary" id="openInq">${inquiry.extra ? 'Send another inquiry' : inquiry.secondChance ? 'Send my second inquiry' : 'Start an order inquiry'}</button>`
+          : `<div class="oi-notice"><p>${esc(inquiry.message || '')}</p></div><a href="/contact?order=${encodeURIComponent(order.id)}&topic=order-support" class="btn btn-primary btn-sm" style="margin-top:6px;">Contact us</a>`}
       </div>
       <p style="margin-top:14px;"><a href="#" id="otherOrder" style="font-size:12.5px;color:var(--maroon);text-decoration:underline;">Look up a different order</a></p>`;
     const btn = $('openInq');
