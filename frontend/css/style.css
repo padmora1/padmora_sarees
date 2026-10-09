@@ -1196,7 +1196,16 @@ body.rv-modal-open{overflow:hidden;}
   .cat-rail-wrap .reel-scroll-btn.at-end{opacity:0;}
   .cat-rail-wrap .reel-scroll-btn.left{left:6px;} .cat-rail-wrap .reel-scroll-btn.right{right:6px;}
 }
-@media (max-width:980px){ .cat-item{flex:0 0 calc(50% - 11px);} }
+@media (max-width:980px){ .cat-item{flex:0 0 calc(33.333% - 14.7px);} }
+/* Phones: three smaller circles across (about 110px) instead of two big ones, so Shop by Weave takes a small part of the screen and
+   the next band shows on the first screen; more weaves than three scroll sideways as before. */
+@media (max-width:760px){
+  .cat-rail{gap:14px;}
+  .cat-item{flex:0 0 calc(33.333% - 9.4px);}
+  .cat-swatch{margin-bottom:8px;border-width:2px;}
+  .cat-item strong{display:block;font-size:12px;line-height:1.25;}
+  .cat-rail-wrap .reel-scroll-btn{top:calc(14vw - 15px);}
+}
 
 
 /* A collection's "meaning" copy (collection.html) — set apart as a small
@@ -1719,15 +1728,15 @@ body.oi-open{overflow:hidden;}
 .hpv-col.phone{flex:0 0 auto;}
 .hpv-cap{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);font-weight:600;margin-bottom:6px;}
 .hpv-frame{position:relative;overflow:hidden;border-radius:4px;box-shadow:0 0 0 1px rgba(43,26,29,.18),0 6px 18px rgba(43,26,29,.1);background:var(--cream, #fdf1e8);}
-.hpv-frame.desk{cursor:grab;touch-action:none;}
-.hpv-frame.desk.dragging{cursor:grabbing;}
+.hpv-frame.desk,.hpv-frame.phone{cursor:grab;touch-action:none;}
+.hpv-frame.desk.dragging,.hpv-frame.phone.dragging{cursor:grabbing;}
 .hpv-inner{position:absolute;left:0;top:0;transform-origin:0 0;}
 .hpv-inner.desk{width:1366px;height:384px;}
 .hpv-inner.phone{width:390px;}
 .hpv-hero{position:relative;overflow:hidden;width:100%;height:100%;background:linear-gradient(160deg,#7A2740 0%,#AD3B5C 45%,#D9A97C 100%);}
 .hpv-inner.phone .hpv-hero{height:auto;min-height:120px;}
 .hpv-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;user-select:none;-webkit-user-drag:none;pointer-events:none;}
-.hpv-img.natural{position:static;display:block;height:auto;}
+.hpv-img.natural{position:static;display:block;height:auto;min-height:203px;object-fit:cover;}
 .hpv-btn{position:absolute;transform:translate(-50%,-50%);z-index:2;display:inline-flex;align-items:center;gap:1em;padding:.6em .6em .6em 1.9em;max-width:38%;background:rgba(255,240,230,0.96);color:var(--maroon-deep);font-weight:600;letter-spacing:.12em;text-transform:uppercase;border-radius:999px;box-shadow:0 0 0 .5em rgba(255,240,230,0.26),0 1em 2.4em rgba(0,0,0,0.3);white-space:nowrap;overflow:hidden;pointer-events:none;font-family:var(--font-body, inherit);}
 .hpv-btn > span{overflow:hidden;text-overflow:ellipsis;}
 .hpv-btn i{flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:3em;height:3em;border-radius:50%;background:var(--maroon);}
