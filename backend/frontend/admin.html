@@ -2961,6 +2961,7 @@
           <div class="form-field"><label>Story</label><textarea id="fStory" rows="2">${f.story||''}</textarea></div>
           ${!isNew ? `<div class="form-row-2">
             <div class="form-field"><label>Circle picture (shown in “Shop by Weave” on the homepage)</label><input type="file" accept="image/*" id="fThumbUpload">
+              <div id="fThumbPvWrap" style="display:none;margin-top:10px;"><div class="hpv-cap">How it will look in the circle (not saved yet)</div><div class="hpv-circle" id="fThumbPv"></div></div>
               <span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:4px;">The picture fills the whole circle, edge to edge, inside a slim border. A square photo (e.g. 800×800) works best — otherwise the middle of it is shown.</span>
               ${f.thumbnail?`<div style="display:flex;align-items:center;gap:12px;margin-top:8px;"><img src="${f.thumbnail}" style="height:64px;width:64px;border-radius:50%;object-fit:cover;border:2px solid var(--gold-soft);"><button type="button" class="btn btn-sm" style="color:var(--maroon);" id="fThumbRemove">Remove</button></div>`:'<span style="display:block;font-size:11.5px;color:var(--ink-soft);margin-top:6px;">None yet — the circle shows the colour above.</span>'}
             </div>
@@ -2970,6 +2971,12 @@
         </div>`;
       if(!f.slug) document.getElementById('fName').addEventListener('input', e=>{ document.getElementById('fSlug').value = slugify(e.target.value); });
       document.getElementById('fCancel').addEventListener('click', ()=>{ editor.innerHTML=''; });
+      const thumbPick = document.getElementById('fThumbUpload');
+      if(thumbPick) thumbPick.addEventListener('change', () => {
+        const file = thumbPick.files[0], wrap = document.getElementById('fThumbPvWrap');
+        if(!file || !wrap){ if(wrap) wrap.style.display = 'none'; return; }
+        wrap.style.display = ''; document.getElementById('fThumbPv').style.backgroundImage = "url('" + URL.createObjectURL(file) + "')";
+      });
       const thumbRemove = document.getElementById('fThumbRemove');
       if(thumbRemove) thumbRemove.addEventListener('click', async ()=>{
         try{
@@ -3382,9 +3389,117 @@
           <div class="form-field"><label>Opens (image and button)</label><select id="hCtaLink">${heroLinkOpts.map(o=>`<option value="${heroAttr(o.v)}" ${o.v===heroCurLink?'selected':''}>${heroAttr(o.l)}</option>`).join('')}</select></div>
         </div>
         <div class="form-field"><label>Image description (for screen readers / SEO)</label><input id="hAlt" value="${h.altText||''}" placeholder="Handloom sarees from Padmora"></div>
+
+        <div class="hpv" id="heroPv">
+          <h4>How it will look on your website</h4>
+          <p class="hpv-note">Updates as you choose a picture, type the button text or move the sliders — nothing is published until you press <strong>Save Hero</strong>. On computers and tablets the banner is a wide strip, so part of the picture is trimmed: <strong>drag the picture</strong> in the computer (or phone) preview, or use the sliders, to choose what stays in view.</p>
+          <div class="hpv-stage">
+            <div class="hpv-col desk"><div class="hpv-cap">On a computer</div><div class="hpv-frame desk" id="hpvDesk"></div></div>
+            <div class="hpv-col phone"><div class="hpv-cap">On a phone</div><div class="hpv-frame phone" id="hpvPhone"></div></div>
+          </div>
+          <div class="hpv-controls">
+            <div><label for="hFocusY">Keep in view — up / down: <strong id="hFocusYv"></strong></label><input type="range" id="hFocusY" min="0" max="100" step="1"></div>
+            <div><label for="hFocusX">Keep in view — left / right: <strong id="hFocusXv"></strong></label><input type="range" id="hFocusX" min="0" max="100" step="1"></div>
+            <div><label for="hFocusMX">Phone — keep in view — left / right: <strong id="hFocusMXv"></strong></label><input type="range" id="hFocusMX" min="0" max="100" step="1"></div>
+          </div>
+          <div class="hpv-info" id="hpvInfo"></div>
+        </div>
+
         <label style="font-size:12.5px;"><input type="checkbox" id="hActive" ${h.active!==false?'checked':''}> Show hero banner</label>
         <div style="margin-top:14px;"><button class="btn btn-primary btn-sm" id="hSave">Save Hero</button></div>
       </div>`;
+
+    // ---- live preview (no saving): the same banner rules the homepage uses, drawn at a real screen width and scaled to fit ----
+    const pv = { desk: h.desktopImage || '', mob: h.mobileImage || '', fx: Number.isFinite(Number(h.focusX)) && h.focusX !== '' && h.focusX != null ? Number(h.focusX) : 50, fy: Number.isFinite(Number(h.focusY)) && h.focusY !== '' && h.focusY != null ? Number(h.focusY) : 25, mfx: Number.isFinite(Number(h.mobileFocusX)) && h.mobileFocusX !== '' && h.mobileFocusX != null ? Number(h.mobileFocusX) : 75, dim: {} };
+    const pvUrls = [];
+    const ARROW = '<svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+    const btnLabel = () => escHTML(document.getElementById('hCtaText').value.trim() || 'Shop All Sarees');
+    const deskFrame = document.getElementById('hpvDesk'), phoneFrame = document.getElementById('hpvPhone');
+    function fitPreview(){
+      const dInner = deskFrame.querySelector('.hpv-inner');
+      if(dInner){ const k = deskFrame.clientWidth / 1366; dInner.style.transform = 'scale(' + k + ')'; deskFrame.style.height = (384 * k) + 'px'; }
+      const pInner = phoneFrame.querySelector('.hpv-inner');
+      if(pInner){ const k = 0.72; pInner.style.transform = 'scale(' + k + ')'; phoneFrame.style.width = (390 * k) + 'px'; phoneFrame.style.height = (pInner.offsetHeight * k) + 'px'; }
+    }
+    function paintPreview(){
+      document.getElementById('hFocusY').value = pv.fy; document.getElementById('hFocusX').value = pv.fx;
+      document.getElementById('hFocusYv').textContent = Math.round(pv.fy) + '%'; document.getElementById('hFocusXv').textContent = Math.round(pv.fx) + '%';
+      document.getElementById('hFocusMX').value = pv.mfx; document.getElementById('hFocusMXv').textContent = Math.round(pv.mfx) + '%';
+      const desk = pv.desk;
+      deskFrame.innerHTML = `<div class="hpv-inner desk"><div class="hpv-hero">${desk ? `<img class="hpv-img" alt="" src="${heroAttr(desk)}" style="object-position:${pv.fx}% ${pv.fy}%">` : `<div class="hpv-empty">No picture yet</div>`}<span class="hpv-btn"><span>${btnLabel()}</span><i>${ARROW}</i></span></div></div>`;
+      const phonePic = pv.mob || pv.desk;
+      phoneFrame.innerHTML = `<div class="hpv-inner phone"><div class="hpv-hero">${phonePic ? `<img class="hpv-img natural" alt="" src="${heroAttr(phonePic)}" style="object-position:${pv.mfx}% 50%">` : `<div class="hpv-empty">No picture yet</div>`}<span class="hpv-btn"><span>${btnLabel()}</span><i>${ARROW}</i></span></div></div>`;
+      fitPreview();
+      const imgM = phoneFrame.querySelector('img');
+      if(imgM) imgM.addEventListener('load', fitPreview, { once:true });
+    }
+    function describePicture(){
+      const el = document.getElementById('hpvInfo');
+      const d = pv.dim.desk;
+      if(!pv.desk){ el.className = 'hpv-info'; el.textContent = 'Choose a desktop picture to see it here.'; return; }
+      if(!d){ el.className = 'hpv-info'; el.textContent = ''; return; }
+      const parts = [`Computer picture: ${d.w} × ${d.h}px` + (d.kb ? ` · ${d.kb >= 1024 ? (d.kb / 1024).toFixed(1) + ' MB' : d.kb + ' KB'}` : '')];
+      const warn = [];
+      if(d.w < 1600) warn.push('it is narrower than 1600px, so it may look soft on large screens');
+      if(d.w / d.h < 3.2) warn.push('it is much taller than the banner strip, so a large part is trimmed — use the sliders or drag to choose what stays');
+      if(d.kb && d.kb > 6000) warn.push('the file is very large and will load slowly (it is resized automatically, but a smaller file is better)');
+      el.className = 'hpv-info' + (warn.length ? ' warn' : '');
+      el.textContent = parts.join('') + (warn.length ? ' — heads up: ' + warn.join('; ') + '.' : ' — a good size.');
+    }
+    function measure(src, bytes){
+      const im = new Image();
+      im.onload = () => { pv.dim.desk = { w: im.naturalWidth, h: im.naturalHeight, kb: bytes ? Math.round(bytes / 1024) : 0 }; describePicture(); };
+      im.src = src;
+    }
+    function setPicture(kind, file){
+      const url = URL.createObjectURL(file); pvUrls.push(url);
+      if(kind === 'desk'){ pv.desk = url; pv.dim.desk = null; measure(url, file.size); }
+      else pv.mob = url;
+      paintPreview(); describePicture();
+    }
+    document.getElementById('hImgDesktop').addEventListener('change', e => { const f = e.target.files[0]; if(f) setPicture('desk', f); });
+    document.getElementById('hImgMobile').addEventListener('change', e => { const f = e.target.files[0]; if(f) setPicture('mob', f); });
+    document.getElementById('hCtaText').addEventListener('input', () => { deskFrame.querySelectorAll('.hpv-btn > span').forEach(n => { n.textContent = document.getElementById('hCtaText').value.trim() || 'Shop All Sarees'; }); phoneFrame.querySelectorAll('.hpv-btn > span').forEach(n => { n.textContent = document.getElementById('hCtaText').value.trim() || 'Shop All Sarees'; }); });
+    const setFocus = (fx, fy) => {
+      pv.fx = Math.min(100, Math.max(0, fx)); pv.fy = Math.min(100, Math.max(0, fy));
+      document.getElementById('hFocusY').value = pv.fy; document.getElementById('hFocusX').value = pv.fx;
+      document.getElementById('hFocusYv').textContent = Math.round(pv.fy) + '%'; document.getElementById('hFocusXv').textContent = Math.round(pv.fx) + '%';
+      const im = deskFrame.querySelector('.hpv-img'); if(im) im.style.objectPosition = pv.fx + '% ' + pv.fy + '%';
+    };
+    const setMFocus = v => {
+      pv.mfx = Math.min(100, Math.max(0, v));
+      document.getElementById('hFocusMX').value = pv.mfx; document.getElementById('hFocusMXv').textContent = Math.round(pv.mfx) + '%';
+      const im = phoneFrame.querySelector('.hpv-img'); if(im) im.style.objectPosition = pv.mfx + '% 50%';
+    };
+    document.getElementById('hFocusMX').addEventListener('input', e => setMFocus(Number(e.target.value)));
+    // drag the phone picture sideways (only a picture wider than the phone banner can move)
+    phoneFrame.addEventListener('pointerdown', e => {
+      const im = phoneFrame.querySelector('.hpv-img'); if(!im || !im.naturalWidth) return;
+      const k = 0.72, boxH = Math.max(390 * im.naturalHeight / im.naturalWidth, 203), s0 = Math.max(390 / im.naturalWidth, boxH / im.naturalHeight);
+      const ox = im.naturalWidth * s0 - 390; if(ox <= 1) return;
+      const x0 = e.clientX, m0 = pv.mfx;
+      phoneFrame.classList.add('dragging'); phoneFrame.setPointerCapture(e.pointerId);
+      const move = ev => setMFocus(m0 - ((ev.clientX - x0) / k) / ox * 100);
+      const up = () => { phoneFrame.classList.remove('dragging'); phoneFrame.removeEventListener('pointermove', move); phoneFrame.removeEventListener('pointerup', up); phoneFrame.removeEventListener('pointercancel', up); };
+      phoneFrame.addEventListener('pointermove', move); phoneFrame.addEventListener('pointerup', up); phoneFrame.addEventListener('pointercancel', up);
+    });
+    document.getElementById('hFocusY').addEventListener('input', e => setFocus(pv.fx, Number(e.target.value)));
+    document.getElementById('hFocusX').addEventListener('input', e => setFocus(Number(e.target.value), pv.fy));
+    // drag the picture inside the computer preview to choose what stays in view
+    deskFrame.addEventListener('pointerdown', e => {
+      const im = deskFrame.querySelector('.hpv-img'); if(!im || !im.naturalWidth) return;
+      const k = deskFrame.clientWidth / 1366, s0 = Math.max(1366 / im.naturalWidth, 384 / im.naturalHeight);
+      const ox = im.naturalWidth * s0 - 1366, oy = im.naturalHeight * s0 - 384;
+      const x0 = e.clientX, y0 = e.clientY, fx0 = pv.fx, fy0 = pv.fy;
+      deskFrame.classList.add('dragging'); deskFrame.setPointerCapture(e.pointerId);
+      const move = ev => setFocus(ox > 1 ? fx0 - ((ev.clientX - x0) / k) / ox * 100 : fx0, oy > 1 ? fy0 - ((ev.clientY - y0) / k) / oy * 100 : fy0);
+      const up = () => { deskFrame.classList.remove('dragging'); deskFrame.removeEventListener('pointermove', move); deskFrame.removeEventListener('pointerup', up); deskFrame.removeEventListener('pointercancel', up); };
+      deskFrame.addEventListener('pointermove', move); deskFrame.addEventListener('pointerup', up); deskFrame.addEventListener('pointercancel', up);
+    });
+    if(window.ResizeObserver) new ResizeObserver(fitPreview).observe(deskFrame); else window.addEventListener('resize', fitPreview);
+    paintPreview();
+    if(pv.desk) measure(pv.desk, 0);
+    else describePicture();
 
     // Picking a destination suggests a matching button label ("Shop All Sarees",
     // "Explore Padmavali") — but only while the label is blank or still an
@@ -3393,7 +3508,7 @@
     let heroLastSuggest = heroSuggest(heroCurLink);
     document.getElementById('hCtaLink').addEventListener('change', e=>{
       const t = document.getElementById('hCtaText');
-      if(!t.value.trim() || t.value === heroLastSuggest){ heroLastSuggest = heroSuggest(e.target.value); t.value = heroLastSuggest; }
+      if(!t.value.trim() || t.value === heroLastSuggest){ heroLastSuggest = heroSuggest(e.target.value); t.value = heroLastSuggest; t.dispatchEvent(new Event('input')); }
       else heroLastSuggest = heroSuggest(e.target.value);
     });
 
@@ -3401,7 +3516,8 @@
       try{
         await adminApiFetch('/admin/content/hero', {method:'PUT', body: JSON.stringify({
           ctaText: document.getElementById('hCtaText').value, ctaLink: document.getElementById('hCtaLink').value,
-          altText: document.getElementById('hAlt').value, active: document.getElementById('hActive').checked
+          altText: document.getElementById('hAlt').value, active: document.getElementById('hActive').checked,
+          focusX: pv.fx, focusY: pv.fy, mobileFocusX: pv.mfx
         })});
         const desktop = document.getElementById('hImgDesktop').files[0];
         const mobile = document.getElementById('hImgMobile').files[0];
