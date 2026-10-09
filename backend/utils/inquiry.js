@@ -15,7 +15,7 @@ const { sendEmail } = require('./notify');
 const { inquiryLink, siteUrl } = require('./inquiryToken');
 const { RETURN_REASONS, INQUIRY_REASONS, categoryForReason, getReturnPolicy, isWithinReturnWindow, computeReturnRefund } = require('./returns');
 
-const INQUIRY_TYPES = [{ key: 'return_refund', label: 'Return and refund' }];
+const INQUIRY_TYPES = [{ key: 'return_refund', label: 'Problem with saree' }];
 const MAX_ATTEMPTS = 2;
 const MIN_PHOTOS = 3;
 const MAX_PHOTOS = 5;

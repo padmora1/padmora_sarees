@@ -553,6 +553,9 @@ body::after{right:0;transform:scaleX(-1);}
 .product-card.sold-out .wishlist-toggle{z-index:3;}
 .product-info{padding:16px 16px 18px;}
 .product-fabric{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);font-weight:600;}
+/* on the cards the weave name is easier to read: a little larger and bolder */
+.product-card .product-fabric{font-size:13px;font-weight:700;letter-spacing:.06em;line-height:1.3;}
+@media (max-width:560px){ .product-card .product-fabric{font-size:12px;letter-spacing:.05em;} }
 .product-name{font-size:15px;margin:5px 0 6px;font-weight:500;color:var(--ink);}
 .product-rating{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-soft);margin-bottom:8px;}
 .stars{color:var(--gold);letter-spacing:1px;}
@@ -1704,3 +1707,37 @@ body.oi-open{overflow:hidden;}
 /* Storefront: the video slide of the product page gallery */
 .pd-flip-slide > video{display:block;width:100%;height:100%;object-fit:cover;background:#000;pointer-events:none;}
 .media-slot:nth-child(n+2) .info-tip::after{left:auto;right:-6px;}   /* the tips in the 2nd and 3rd columns open towards the left, so they never push the page sideways */
+
+/* Admin: "how it looks on the website" previews. The homepage banner preview mirrors the homepage's own banner rules (index.html),
+   drawn at a real screen width (1366px on a computer, 390px on a phone) and scaled down to fit, so what you see is what shoppers get. */
+.hpv{margin:18px 0 6px;padding:16px;border:1px solid rgba(173,59,92,.2);border-radius:6px;background:rgba(255,255,255,.7);}
+.hpv h4{font-size:14px;margin:0 0 4px;color:var(--maroon-deep);}
+.hpv-note{font-size:12px;color:var(--ink-soft);margin:0 0 12px;line-height:1.5;}
+.hpv-stage{display:flex;flex-wrap:wrap;gap:22px;align-items:flex-start;}
+.hpv-col{min-width:0;}
+.hpv-col.desk{flex:1 1 480px;}
+.hpv-col.phone{flex:0 0 auto;}
+.hpv-cap{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);font-weight:600;margin-bottom:6px;}
+.hpv-frame{position:relative;overflow:hidden;border-radius:4px;box-shadow:0 0 0 1px rgba(43,26,29,.18),0 6px 18px rgba(43,26,29,.1);background:var(--cream, #fdf1e8);}
+.hpv-frame.desk{cursor:grab;touch-action:none;}
+.hpv-frame.desk.dragging{cursor:grabbing;}
+.hpv-inner{position:absolute;left:0;top:0;transform-origin:0 0;}
+.hpv-inner.desk{width:1366px;height:384px;}
+.hpv-inner.phone{width:390px;}
+.hpv-hero{position:relative;overflow:hidden;width:100%;height:100%;background:linear-gradient(160deg,#7A2740 0%,#AD3B5C 45%,#D9A97C 100%);}
+.hpv-inner.phone .hpv-hero{height:auto;min-height:120px;}
+.hpv-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;user-select:none;-webkit-user-drag:none;pointer-events:none;}
+.hpv-img.natural{position:static;display:block;height:auto;}
+.hpv-btn{position:absolute;transform:translate(-50%,-50%);z-index:2;display:inline-flex;align-items:center;gap:1em;padding:.6em .6em .6em 1.9em;max-width:38%;background:rgba(255,240,230,0.96);color:var(--maroon-deep);font-weight:600;letter-spacing:.12em;text-transform:uppercase;border-radius:999px;box-shadow:0 0 0 .5em rgba(255,240,230,0.26),0 1em 2.4em rgba(0,0,0,0.3);white-space:nowrap;overflow:hidden;pointer-events:none;font-family:var(--font-body, inherit);}
+.hpv-btn > span{overflow:hidden;text-overflow:ellipsis;}
+.hpv-btn i{flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:3em;height:3em;border-radius:50%;background:var(--maroon);}
+.hpv-btn i svg{width:1.3em;height:1.3em;stroke:var(--ivory);fill:none;stroke-width:2;}
+.hpv-inner.desk .hpv-btn{top:82%;left:85%;font-size:14px;}
+.hpv-inner.phone .hpv-btn{top:65%;left:78%;font-size:7px;}
+.hpv-empty{display:flex;align-items:center;justify-content:center;width:100%;height:100%;min-height:120px;color:rgba(255,255,255,.85);font-size:20px;}
+.hpv-controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px 22px;margin-top:14px;}
+.hpv-controls label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:2px;}
+.hpv-controls input[type=range]{width:100%;accent-color:var(--maroon);}
+.hpv-info{font-size:12px;margin-top:10px;line-height:1.5;}
+.hpv-info.warn{color:#9a5a00;}
+.hpv-circle{width:120px;aspect-ratio:1;border-radius:50%;border:2px solid var(--gold-soft);overflow:hidden;background-size:cover;background-position:center;}

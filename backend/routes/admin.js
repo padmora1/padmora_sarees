@@ -2226,7 +2226,14 @@ router.get('/content/hero', asyncRoute(async (req, res) => {
 
 router.put('/content/hero', asyncRoute(async (req, res) => {
   const current = await getSetting('hero_banner', {});
-  const next = { ...current, ...req.body };
+  const body = { ...req.body };
+  // which part of the picture stays in view in the homepage banner: a percentage, 0-100
+  for (const k of ['focusX', 'focusY']) {
+    if (!(k in body)) continue;
+    const n = Number(body[k]);
+    if (body[k] === '' || body[k] === null || !Number.isFinite(n)) delete body[k]; else body[k] = Math.min(100, Math.max(0, Math.round(n)));
+  }
+  const next = { ...current, ...body };
   await setSetting('hero_banner', next);
   res.json({ hero: next });
 }));
