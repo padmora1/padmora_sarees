@@ -49,13 +49,13 @@
             <h4>Fabric</h4>
             <div id="fabricFilters"></div>
           </div>
-          <div class="filter-group">
-            <h4>Occasion</h4>
-            <div id="occasionFilters"></div>
+          <div class="filter-group filter-collapsible" id="occasionGroup">
+            <button type="button" class="filter-toggle" aria-expanded="false" aria-controls="occasionFilters"><span>Occasion<span class="filter-count" id="occasionCount" hidden></span></span><svg class="filter-chev" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+            <div id="occasionFilters" class="filter-options-scroll"></div>
           </div>
-          <div class="filter-group">
-            <h4>Color</h4>
-            <div id="colorFilters"></div>
+          <div class="filter-group filter-collapsible" id="colorGroup">
+            <button type="button" class="filter-toggle" aria-expanded="false" aria-controls="colorFilters"><span>Color<span class="filter-count" id="colorCount" hidden></span></span><svg class="filter-chev" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+            <div id="colorFilters" class="filter-options-scroll"></div>
           </div>
           <div class="filter-group">
             <h4>Price up to ₹<span id="priceLabel">25000</span></h4>
@@ -226,6 +226,41 @@
     return true;
   }
 
+  // Computers: the filter column is only as tall as the screen space left below its top edge, so the whole column is on screen at once
+  // - at the top of the page too - and its lower filters (Price, Clear all) are reached by scrolling the column itself. As the page is
+  // scrolled the column grows to the full height of the window. Phones and tablets use the drawer instead (no limit here).
+  const filtersCol = document.getElementById('filtersPanel');
+  let fitQueued = false;
+  function fitFiltersColumn(){
+    fitQueued = false;
+    if(window.innerWidth <= 980){ filtersCol.style.maxHeight = ''; return; }
+    const top = Math.max(filtersCol.getBoundingClientRect().top, 100);   // 100 = where it sticks under the header
+    filtersCol.style.maxHeight = Math.max(260, window.innerHeight - top - 16) + 'px';
+  }
+  const queueFit = () => { if(!fitQueued){ fitQueued = true; requestAnimationFrame(fitFiltersColumn); } };
+  window.addEventListener('scroll', queueFit, { passive:true });
+  window.addEventListener('resize', queueFit);
+  fitFiltersColumn();
+
+  // Occasion and Color are dropdowns: closed by default, they open to a short scrollable list; a group that already has ticks (a link
+  // from the homepage, a reload) starts open, and the number ticked shows beside its name.
+  const collapsibles = [['occasionGroup', 'occasion', 'occasionCount'], ['colorGroup', 'color', 'colorCount']];
+  function setGroupOpen(group, open){
+    group.classList.toggle('open', open);
+    group.querySelector('.filter-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  collapsibles.forEach(([id]) => {
+    const g = document.getElementById(id);
+    g.querySelector('.filter-toggle').addEventListener('click', () => setGroupOpen(g, !g.classList.contains('open')));
+  });
+  function updateGroupCounts(openTicked){
+    collapsibles.forEach(([id, key, countId]) => {
+      const n = state[key].size, el = document.getElementById(countId), g = document.getElementById(id);
+      el.textContent = n ? ' (' + n + ')' : ''; el.hidden = !n;
+      if(openTicked && n) setGroupOpen(g, true);
+    });
+  }
+
   function renderFilterOptions(){
     // A one-option fabric filter is just noise (e.g. inside a small collection).
     document.getElementById('fabricFilterGroup').style.display = allFabrics.length > 1 ? '' : 'none';
@@ -236,14 +271,15 @@
     document.getElementById('colorFilters').innerHTML = allColors.map(c=>`
       <label class="filter-option color-filter-option"><input type="checkbox" value="${c}" class="colorCheck" ${state.color.has(c)?'checked':''}> <span class="color-filter-dot" style="background:${swatchBg(c)};"></span>${c.charAt(0).toUpperCase()+c.slice(1)}</label>`).join('');
 
+    updateGroupCounts(true);
     document.querySelectorAll('.fabricCheck').forEach(cb=>cb.addEventListener('change',()=>{
       cb.checked ? state.fabric.add(cb.value) : state.fabric.delete(cb.value); state.loadedCount = 20; loadProducts();
     }));
     document.querySelectorAll('.occasionCheck').forEach(cb=>cb.addEventListener('change',()=>{
-      cb.checked ? state.occasion.add(cb.value) : state.occasion.delete(cb.value); state.loadedCount = 20; loadProducts();
+      cb.checked ? state.occasion.add(cb.value) : state.occasion.delete(cb.value); updateGroupCounts(false); state.loadedCount = 20; loadProducts();
     }));
     document.querySelectorAll('.colorCheck').forEach(cb=>cb.addEventListener('change',()=>{
-      cb.checked ? state.color.add(cb.value) : state.color.delete(cb.value); state.loadedCount = 20; loadProducts();
+      cb.checked ? state.color.add(cb.value) : state.color.delete(cb.value); updateGroupCounts(false); state.loadedCount = 20; loadProducts();
     }));
   }
 
