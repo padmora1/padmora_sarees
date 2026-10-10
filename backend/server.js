@@ -7,6 +7,8 @@ const path = require('path');
 // error — exactly the kind of gap that stays invisible until a required
 // value (no fallback) actually needs to be present, like Razorpay's keys.
 require('dotenv').config({ path: path.join(__dirname, '.env') });
+const { applySiteUrl, blockSearchEngines } = require('./utils/siteUrl');
+applySiteUrl();   // SITE_URL typed without https:// is fixed before any e-mail / sitemap code reads it
 const express = require('express');
 const cors = require('cors');
 
@@ -71,6 +73,7 @@ app.disable('x-powered-by');
 app.use((req, res, next) => {
   const adminArea = isAdminHost(req) || /^\/(admin|admin-login|api\/admin)/.test(req.path);
   res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (blockSearchEngines()) res.setHeader('X-Robots-Tag', 'noindex, nofollow');   // a test copy of the shop must never be listed by Google
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('X-Frame-Options', adminArea ? 'DENY' : 'SAMEORIGIN');
   res.setHeader('Content-Security-Policy', adminArea ? "frame-ancestors 'none'" : "frame-ancestors 'self'");
@@ -353,6 +356,12 @@ dbReady.then(() => {
     // repeatedly (idempotent per-event, see each module's own comments), so a
     // slow tick overlapping the next one can't double-send anything.
     const HOUR = 60 * 60 * 1000;
+    // A second copy of the shop that shares the real database (a test site) must NOT also send the customers' reminder e-mails: set
+    // DISABLE_BACKGROUND_JOBS=true on it and only the real site runs these timers.
+    if (/^(1|true|yes|on)$/i.test(String(process.env.DISABLE_BACKGROUND_JOBS || '').trim())) {
+      console.log('[server] DISABLE_BACKGROUND_JOBS is on: no reminders, alerts or scheduled backups run in this copy');
+      return;
+    }
     setTimeout(() => runBackup().catch(err => console.error('Initial backup failed:', err.message)), 5000);
     setInterval(() => runBackup().catch(err => console.error('Scheduled backup failed:', err.message)), 6 * HOUR);
 
