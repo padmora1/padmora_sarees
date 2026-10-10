@@ -41,6 +41,32 @@ function verifySignature({ razorpay_order_id, razorpay_payment_id, razorpay_sign
   return expected === razorpay_signature;
 }
 
+// Asks Razorpay for the payment itself (status, amount, currency, which Razorpay order it belongs to) - the signature proves the
+// browser's message is genuine, this proves the money really is there, for the right amount. -> the payment object.
+// Throws with err.statusCode set (404 = no such payment).
+async function fetchPayment(paymentId) {
+  const res = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`, {
+    headers: { Authorization: 'Basic ' + Buffer.from(`${KEY_ID}:${KEY_SECRET}`).toString('base64') }
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(body.error?.description || `Razorpay responded ${res.status}`);
+    err.error = body.error;
+    err.statusCode = res.status;
+    throw err;
+  }
+  return body;
+}
+
+// Razorpay signs every webhook call: HMAC-SHA256 of the raw request body with the webhook secret (set in the Razorpay dashboard and
+// as RAZORPAY_WEBHOOK_SECRET here), sent in the X-Razorpay-Signature header.
+function verifyWebhookSignature(rawBody, signature, secret) {
+  if (!secret || !signature || !rawBody) return false;
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  const a = Buffer.from(expected), b = Buffer.from(String(signature));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 // Refunds a captured payment back to the customer's original payment method.
 // Razorpay itself rejects a refund that would exceed what was captured (minus
 // earlier refunds), which is the final safety net against over-refunding.
@@ -100,4 +126,4 @@ async function checkConnection() {
   }
 }
 
-module.exports = { razorpay, isConfigured, createOrder, verifySignature, refundPayment, refundErrorMessage, checkConnection, KEY_ID };
+module.exports = { razorpay, isConfigured, createOrder, verifySignature, fetchPayment, verifyWebhookSignature, refundPayment, refundErrorMessage, checkConnection, KEY_ID };
