@@ -122,24 +122,43 @@ async function resolvePricedLineItems(rawItems) {
 // happen inside the place_order() Postgres function (see the
 // product_view_and_order_functions migration), so it's genuinely atomic —
 // the Postgres equivalent of better-sqlite3's db.transaction(fn).
-async function placeOrderTx({ userId, lineItems, subtotal, couponCode: requestedCoupon, address, payment, afterInsertWithinTx }) {
-  const { code: couponCode, discount } = await resolveCoupon(requestedCoupon, subtotal, userId);
-  const { shippingFee, taxAmount, total } = await computeOrderTotals(subtotal, discount);
+// `locked` ({ discount, shippingFee }) is what the customer was shown and paid at checkout: when given, the order uses exactly those
+// numbers (a coupon that expired or a shipping fee that was edited a minute later must not change an order that is already paid).
+// `orderId` lets the caller reserve the id first (so a retry can tell the order was already placed).
+async function placeOrderTx({ userId, lineItems, subtotal, couponCode: requestedCoupon, address, payment, afterInsertWithinTx, locked, orderId: givenId, onOrderId }) {
+  let couponCode, discount, shippingFee, taxAmount, total;
+  if (locked && Number.isFinite(Number(locked.discount)) && Number.isFinite(Number(locked.shippingFee))) {
+    couponCode = requestedCoupon || null; discount = Number(locked.discount); shippingFee = Number(locked.shippingFee); taxAmount = 0;
+    total = Math.max(0, subtotal - discount) + shippingFee;
+  } else {
+    ({ code: couponCode, discount } = await resolveCoupon(requestedCoupon, subtotal, userId));
+    ({ shippingFee, taxAmount, total } = await computeOrderTotals(subtotal, discount));
+  }
 
-  const orderId = 'ZR' + Math.floor(10000 + Math.random() * 89999);
-
-  const rpc = await supabase.rpc('place_order', {
-    p_order_id: orderId, p_user_id: userId, p_subtotal: subtotal, p_discount: discount,
-    p_shipping_fee: shippingFee, p_tax_amount: taxAmount, p_total: total, p_coupon_code: couponCode,
-    p_address_name: address.name || '', p_address_line1: address.line1, p_address_city: address.city,
-    p_address_state: address.state || '', p_address_pincode: address.pincode, p_address_phone: address.phone || '',
-    p_gift_note: null, p_payment: payment || 'UPI', p_line_items: lineItems
-  });
+  // The id is random; on the (rare) clash with an existing order a new one is drawn. `onOrderId` is told each id before it is used, so a caller
+  // that must survive a crash can remember which order id belongs to this checkout.
+  let orderId = null, rpc = null;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    orderId = (attempt === 0 && givenId) || ('ZR' + Math.floor(10000 + Math.random() * 89999));
+    if (onOrderId) await onOrderId(orderId);
+    rpc = await supabase.rpc('place_order', {
+      p_order_id: orderId, p_user_id: userId, p_subtotal: subtotal, p_discount: discount,
+      p_shipping_fee: shippingFee, p_tax_amount: taxAmount, p_total: total, p_coupon_code: couponCode,
+      p_address_name: address.name || '', p_address_line1: address.line1, p_address_city: address.city,
+      p_address_state: address.state || '', p_address_pincode: address.pincode, p_address_phone: address.phone || '',
+      p_gift_note: null, p_payment: payment || 'UPI', p_line_items: lineItems
+    });
+    if (!rpc.error) break;
+    if (rpc.error.code === '23505' && /orders_pkey|\(id\)/.test(rpc.error.message || rpc.error.details || 'orders_pkey')) continue;   // that order id is taken: draw another
+    break;
+  }
   if (rpc.error) {
-    // A RAISE EXCEPTION inside place_order() (the stock>=qty guard) surfaces
-    // here — same "not enough stock" condition the old SQLite transaction
-    // rollback used to signal, just reported by Postgres instead.
-    throw new OrderError(409, rpc.error.message || 'Not enough stock to complete this order.');
+    // A RAISE EXCEPTION inside place_order() (the stock>=qty guard) surfaces here as "Not enough stock left for ..."; a saree removed
+    // meanwhile is a foreign-key error. Both mean "this order cannot be placed" (OrderError). Anything else (a database hiccup) is
+    // NOT the customer's problem and is thrown as a plain error so the caller can retry.
+    const msg = rpc.error.message || '';
+    if (/not enough stock/i.test(msg) || rpc.error.code === '23503') throw new OrderError(409, /not enough stock/i.test(msg) ? msg : 'One of the sarees is no longer available.');
+    throw new Error('place_order failed: ' + msg);
   }
 
   if (afterInsertWithinTx) await afterInsertWithinTx();

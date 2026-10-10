@@ -85,6 +85,8 @@ try { compression = require('compression'); } catch (e) { console.warn('[server]
 if (compression) app.use(compression());
 
 app.use(cors());
+// Razorpay's payment webhook must see the raw body (its signature is over the exact bytes), so it is mounted before the JSON parser.
+app.post('/api/payments/razorpay/webhook', express.raw({ type: '*/*', limit: '1mb' }), require('./routes/paymentWebhook'));
 app.use(express.json());
 
 // ---- Speed: HTTP caching of public data, and emptying the in-memory caches after changes ----
