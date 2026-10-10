@@ -356,6 +356,12 @@ dbReady.then(() => {
     // repeatedly (idempotent per-event, see each module's own comments), so a
     // slow tick overlapping the next one can't double-send anything.
     const HOUR = 60 * 60 * 1000;
+    // A second copy of the shop that shares the real database (a test site) must NOT also send the customers' reminder e-mails: set
+    // DISABLE_BACKGROUND_JOBS=true on it and only the real site runs these timers.
+    if (/^(1|true|yes|on)$/i.test(String(process.env.DISABLE_BACKGROUND_JOBS || '').trim())) {
+      console.log('[server] DISABLE_BACKGROUND_JOBS is on: no reminders, alerts or scheduled backups run in this copy');
+      return;
+    }
     setTimeout(() => runBackup().catch(err => console.error('Initial backup failed:', err.message)), 5000);
     setInterval(() => runBackup().catch(err => console.error('Scheduled backup failed:', err.message)), 6 * HOUR);
 
