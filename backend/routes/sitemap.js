@@ -3,6 +3,8 @@
 // moment a product is added or archived.
 const express = require('express');
 const { getProducts, getFabrics, getCollections } = require('../utils/db');
+const { normalizeSiteUrl, blockSearchEngines } = require('../utils/siteUrl');
+const siteBase = req => normalizeSiteUrl(process.env.SITE_URL) || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
 
 const router = express.Router();
 
@@ -21,7 +23,7 @@ const STATIC_PAGES = [
 
 router.get('/sitemap.xml', async (req, res) => {
   try {
-    const base = process.env.SITE_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+    const base = siteBase(req);
     const [products, fabrics, collections] = await Promise.all([getProducts(), getFabrics(), getCollections({ activeOnly: true }).catch(() => [])]);
     const urls = [
       ...STATIC_PAGES.map(p => ({ loc: base + p.path, priority: p.priority })),
@@ -44,7 +46,9 @@ router.get('/sitemap.xml', async (req, res) => {
 });
 
 router.get('/robots.txt', (req, res) => {
-  const base = process.env.SITE_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+  // a test copy (BLOCK_SEARCH_ENGINES=true) asks every search engine to stay away from the whole site
+  if (blockSearchEngines()) return res.type('text/plain').send('User-agent: *\nDisallow: /\n');
+  const base = siteBase(req);
   res.type('text/plain').send(
     `User-agent: *\n` +
     `Allow: /\n` +
